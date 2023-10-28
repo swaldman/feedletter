@@ -1,16 +1,21 @@
 package com.mchange.feedletter.db
 
 object PgSchema:
-
-  trait TraitV0:
+  trait Base:
+    val TABLE_METADATA_NAME =
+      "metadata"
     val TABLE_METADATA_CREATE =
       "CREATE TABLE metadata( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
     val TABLE_METADATA_INSERT =
       "INSERT INTO metadata VALUES( ?, ? )"
+    val TABLE_METADATA_UPDATE =
+      "UPDATE metadata SET value = ? WHERE key = ?"
     val TABLE_METADATA_SELECT =
       "SELECT value FROM metadata WHERE key = ?"
-      
+  trait TraitV0 extends Base:
+    val Version = 0
   trait TraitV1 extends TraitV0:
+    override val Version = 1
     val TABLE_FEED_CREATE =
       "CREATE TABLE feed( url VARCHAR(1024) PRIMARY KEY )"
     val TABLE_ITEM_CREATE =
@@ -26,7 +31,9 @@ object PgSchema:
          |  FOREIGN KEY(feed_url) REFERENCES feed(url)
          |)""".stripMargin
     val TABLE_SUBSCRIPTION_TYPE_CREATE =
-      "CREATE TABLE subscription_type( stype VARCHAR(32) )"
+      "CREATE TABLE subscription_type( stype VARCHAR(32) PRIMARY KEY )"
+    val TABLE_SUBSCRIPTION_TYPE_INSERT =
+      "INSERT INTO subscription_type VALUES ( ? )"
     val TABLE_ASSIGNABLE_CREATE = // an assignable represents a collection of posts for a single mail
       """|CREATE TABLE assignable(
          |  feed_url VARCHAR(1024),

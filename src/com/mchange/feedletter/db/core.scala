@@ -7,6 +7,7 @@ import scala.util.control.NonFatal
 import java.lang.System
 
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
+
 def releaseConnection( conn : Connection ) : UIO[Unit] = ZIO.succeed:
   try
     conn.close()
