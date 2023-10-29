@@ -100,7 +100,7 @@ object PgDatabase extends Migratory:
     from match
       case None      => upMigrateFrom_New()
       case Some( 0 ) => upMigrateFrom_0()
-      case Some( targetDbVersion ) =>
+      case Some( `targetDbVersion` ) =>
         ZIO.fail( new CannotUpMigrate( s"Cannot upmigrate from current target DB version: V${targetDbVersion}" ) )
       case Some( other ) =>
         ZIO.fail( new CannotUpMigrate( s"Cannot upmigrate from unknown DB version: V${other}" ) )
