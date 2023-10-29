@@ -31,9 +31,10 @@ object PgDatabase extends Migratory:
   val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
 
   override def dump(config : Config, ds : DataSource) : Task[Unit] = ZIO.attemptBlocking:
+    if !os.exists( config.dumpDir ) then os.makeDir.all( config.dumpDir )
     val parsedCommand = List("pg_dump", config.dbName)
     val ts = DumpTimestampFormatter.format( java.time.Instant.now )
-    val dumpFile = config.dumpDir / ("feedletter-pg-dump." + ts + ".sql")g
+    val dumpFile = config.dumpDir / ("feedletter-pg-dump." + ts + ".sql")
     os.proc( parsedCommand ).call( stdout = dumpFile )
   
   override def discoveredDbVersion(config : Config, ds : DataSource) : Task[Option[Int]] =
