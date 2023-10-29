@@ -28,7 +28,13 @@ object PgDatabase extends Migratory:
     case Immediate
     case Weekly
 
-  override def dump(config : Config, ds : DataSource) : Task[Unit] = ???
+  val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
+
+  override def dump(config : Config, ds : DataSource) : Task[Unit] = ZIO.attemptBlocking:
+    val parsedCommand = List("pg_dump", config.dbName)
+    val ts = DumpTimestampFormatter.format( java.time.Instant.now )
+    val dumpFile = config.dumpDir / ("feedletter-pg-dump." + ts + ".sql")g
+    os.proc( parsedCommand ).call( stdout = dumpFile )
   
   override def discoveredDbVersion(config : Config, ds : DataSource) : Task[Option[Int]] =
     def extractVersion( conn : Connection ) : Task[Int] = ZIO.attemptBlocking:
