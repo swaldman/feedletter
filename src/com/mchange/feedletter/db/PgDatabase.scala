@@ -29,20 +29,21 @@ object PgDatabase extends Migratory:
     case Immediate
     case Weekly
 
-  val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
-
   def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] = ZIO.attemptBlocking:
     Using.resource( conn.prepareStatement( LatestSchema.TABLE_METADATA_SELECT ) ): ps =>
       ps.setString(1, MetadataKey.SchemaVersion.toString)
       Using.resource( ps.executeQuery() ): rs =>
         zeroOrOneResult( s"metadata key '$key'", rs )( _.getString(1) )
 
-  override def dump(config : Config, ds : DataSource) : Task[Unit] = ZIO.attemptBlocking:
-    if !os.exists( config.dumpDir ) then os.makeDir.all( config.dumpDir )
-    val parsedCommand = List("pg_dump", config.dbName)
-    val ts = DumpTimestampFormatter.format( java.time.Instant.now )
-    val dumpFile = config.dumpDir / ("feedletter-pg-dump." + ts + ".sql")
-    os.proc( parsedCommand ).call( stdout = dumpFile )
+  override def dump(config : Config, ds : DataSource) : Task[Unit] =
+    def runDump( dumpFile : os.Path ) : Task[Unit] =
+      ZIO.attemptBlocking:
+        val parsedCommand = List("pg_dump", config.dbName)
+        os.proc( parsedCommand ).call( stdout = dumpFile )
+    for
+      dumpFile <- Migratory.prepareDumpFileForInstant(config, java.time.Instant.now)
+      _        <- runDump( dumpFile )
+    yield ()  
 
   override def dbVersionStatus(config : Config, ds : DataSource) : Task[DbVersionStatus] =
     withConnection( ds ): conn =>
