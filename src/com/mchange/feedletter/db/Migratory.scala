@@ -5,22 +5,27 @@ import java.time.Instant
 import javax.sql.DataSource
 import com.mchange.feedletter.Config
 import java.time.temporal.ChronoUnit
+import com.mchange.feedletter.Main.config
+import com.mchange.feedletter.db.Migratory.lastHourDumpFileExists
 
 object Migratory:
-  val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
-
-  def prepareDumpFileForInstant( config : Config, instant : Instant ) : Task[os.Path] = ZIO.attemptBlocking:
-    if !os.exists( config.dumpDir ) then os.makeDir.all( config.dumpDir )
-    val ts = DumpTimestampFormatter.format( instant )
-    config.dumpDir / ("feedletter-pg-dump." + ts + ".sql")
+  private val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
 
   private val DumpFileNameRegex = """^feedletter-pg-dump\.(.+)\.sql$""".r
 
+  private def dumpFileName( timestamp : String ) : String =
+    "feedletter-pg-dump." + timestamp + ".sql"
+    
   private def extractTimestampFromDumpFileName( dfn : String ) : Option[Instant] =
     DumpFileNameRegex.findFirstMatchIn(dfn)
       .map( m => m.group(1) )
       .map( DumpTimestampFormatter.parse )
       .map( Instant.from )
+
+  def prepareDumpFileForInstant( config : Config, instant : Instant ) : Task[os.Path] = ZIO.attemptBlocking:
+    if !os.exists( config.dumpDir ) then os.makeDir.all( config.dumpDir )
+    val ts = DumpTimestampFormatter.format( instant )
+    config.dumpDir / dumpFileName(ts)
 
   def lastHourDumpFileExists( config : Config ) : Task[Boolean] = ZIO.attemptBlocking:
     if os.exists( config.dumpDir ) then
@@ -49,7 +54,7 @@ trait Migratory:
         case DbVersionStatus.OutOfDate( schemaVersion, requiredVersion ) =>
           assert( schemaVersion < requiredVersion, s"An out-of-date scheme should have schema version (${schemaVersion}) < required version (${requiredVersion})" )
           upMigrate( config, ds, Some( schemaVersion ) )
-        case DbVersionStatus.SchemaMetadataNotFound =>
+        case DbVersionStatus.SchemaMetadataNotFound => // uninitialized db, we presume
           upMigrate( config, ds, None )
         case other =>
           throw new CannotUpMigrate( s"""${other}: ${other.errMessage.getOrElse("<no message>")}""" ) // we should never see <no message>
@@ -58,4 +63,17 @@ trait Migratory:
       _      <- handleStatus( status )
     yield ()
           
+  def cautiousMigrate( config : Config, ds : DataSource ) : Task[Unit] =
+    val safeToTry = 
+      for
+        initialStatus <- dbVersionStatus(config, ds)
+        dumped <- lastHourDumpFileExists(config)
+      yield
+        initialStatus == DbVersionStatus.SchemaMetadataNotFound || dumped
 
+    safeToTry.flatMap: safe =>
+      if safe then
+        migrate(config, ds)
+      else
+        ZIO.fail( new NoRecentDump("Please dump the database prior to migrating, no recent dump file found.") )
+      
