@@ -15,7 +15,9 @@ object feedletter extends RootModule with ScalaModule with BuildInfo {
     ivy"dev.zio::zio:2.0.18",
     ivy"dev.zio::zio-cli:0.5.0",
     ivy"com.mchange::audiofluidity-rss:0.0.3",
-    ivy"org.postgresql:postgresql:42.6.0"
+    ivy"org.postgresql:postgresql:42.6.0",
+    ivy"com.mchange:c3p0:0.9.5.5",
+    ivy"com.mchange::mlog-scala:0.3.14"
   )
 
   def buildInfoMembers = Seq(

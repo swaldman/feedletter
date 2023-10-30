@@ -7,6 +7,9 @@ import com.mchange.feedletter.Config
 import java.time.temporal.ChronoUnit
 import com.mchange.feedletter.Main.config
 import com.mchange.feedletter.db.Migratory.lastHourDumpFileExists
+import com.mchange.feedletter.BuildInfo.version
+import com.mchange.sc.v1.log.*
+import MLevel.*
 
 object Migratory:
   private val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
@@ -41,6 +44,8 @@ object Migratory:
       false
     
 trait Migratory:
+  private lazy given logger : MLogger = mlogger( this )
+
   def targetDbVersion : Int
   
   def dump(config : Config, ds : DataSource) : Task[Unit]
@@ -49,13 +54,18 @@ trait Migratory:
 
   def migrate(config : Config, ds : DataSource) : Task[Unit] =
     def handleStatus( status : DbVersionStatus ) : Task[Unit] =
+      TRACE.log( s"handleStatus( ${status} )" )
       status match
-        case DbVersionStatus.Current(_) => ZIO.succeed( () )
+        case DbVersionStatus.Current(version) =>
+          INFO.log( s"Schema up-to-date (current version: ${version})" )
+          ZIO.succeed( () )
         case DbVersionStatus.OutOfDate( schemaVersion, requiredVersion ) =>
           assert( schemaVersion < requiredVersion, s"An out-of-date scheme should have schema version (${schemaVersion}) < required version (${requiredVersion})" )
-          upMigrate( config, ds, Some( schemaVersion ) )
+          INFO.log( s"Up-migrating from schema version ${schemaVersion})" )
+          upMigrate( config, ds, Some( schemaVersion ) ) *> migrate( config, ds )
         case DbVersionStatus.SchemaMetadataNotFound => // uninitialized db, we presume
-          upMigrate( config, ds, None )
+          INFO.log( s"Initializing new schema")
+          upMigrate( config, ds, None ) *> migrate( config, ds )
         case other =>
           throw new CannotUpMigrate( s"""${other}: ${other.errMessage.getOrElse("<no message>")}""" ) // we should never see <no message>
     for

@@ -3,6 +3,7 @@ package com.mchange.feedletter
 import zio.*
 import zio.cli.{CliApp,Command,Options,ZIOCliDefault}
 import zio.cli.HelpDoc.Span.text
+import com.mchange.feedletter.db.PgDatabase
 
 object Main extends ZIOCliDefault:
 
@@ -29,6 +30,12 @@ object Main extends ZIOCliDefault:
     version = com.mchange.feedletter.BuildInfo.version,
     summary = text("Manage e-mail subscriptions to RSS feeds."),
     command = mainCommand
-  )(
-    thing => Console.printLine(s"Hello: ${thing}")
-  )
+  ){
+    case CommandConfig.DbMigrate(force) =>
+      if force then
+        PgDatabase.migrate(config, config.dataSource)
+      else  
+        PgDatabase.cautiousMigrate(config, config.dataSource)
+    case CommandConfig.DbDump => ???
+    case CommandConfig.DbInit => ???
+  }

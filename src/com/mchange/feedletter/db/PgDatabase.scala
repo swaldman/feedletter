@@ -9,9 +9,14 @@ import scala.util.Using
 import java.sql.SQLException
 import java.time.ZonedDateTime
 
+import com.mchange.sc.v1.log.*
+import MLevel.*
+
 import audiofluidity.rss.util.formatPubDate
 
 object PgDatabase extends Migratory:
+  private lazy given logger : MLogger = mlogger( this )
+
   val LatestSchema = PgSchema.V1
   override val targetDbVersion = LatestSchema.Version
 
@@ -72,12 +77,13 @@ object PgDatabase extends Migratory:
               ZIO.succeed( DbVersionStatus.SchemaMetadataDisordered(s"Metadata table found, but an Exception occurred while accessing it: ${sqle.toString()}") )
           catch
             case t : SQLException =>
-              t.printStackTrace()
+              WARNING.log("Exception while connecting to database.", t)
               ZIO.succeed( DbVersionStatus.ConnectionFailed )
   end dbVersionStatus
   
   override def upMigrate(config : Config, ds : DataSource, from : Option[Int]) : Task[Unit] =
     def upMigrateFrom_New() : Task[Unit] =
+      TRACE.log( "upMigrateFrom_New()" )
       withConnection( ds ): conn =>
         ZIO.attemptBlocking:
           conn.setAutoCommit(false)
@@ -92,6 +98,7 @@ object PgDatabase extends Migratory:
           conn.commit()
     
     def upMigrateFrom_0() : Task[Unit] =
+      TRACE.log( "upMigrateFrom_0()" )
       withConnection( ds ): conn =>
         ZIO.attemptBlocking:
           conn.setAutoCommit(false)
@@ -124,6 +131,7 @@ object PgDatabase extends Migratory:
           )
           conn.commit()
           
+    TRACE.log( s"upMigrate( from=${from} )" )
     from match
       case None      => upMigrateFrom_New()
       case Some( 0 ) => upMigrateFrom_0()

@@ -39,10 +39,10 @@ object PgSchema:
          |  feed_url VARCHAR(1024),
          |  stype VARCHAR(32),
          |  within_type_id VARCHAR(1024),
-         |  completed : BOOLEAN,
+         |  completed BOOLEAN,
          |  PRIMARY KEY(feed_url, stype, within_type_id),
          |  FOREIGN KEY(feed_url) REFERENCES feed(url),
-         |  FOREIGN KEY stype REFERENCES subscription_type(stype)
+         |  FOREIGN KEY(stype) REFERENCES subscription_type(stype)
          |)""".stripMargin
     val TABLE_ASSIGNMENT_CREATE = // an assignment represents a membership of a post in a collection
       """|CREATE TABLE assignment(
@@ -50,7 +50,7 @@ object PgSchema:
          |  stype VARCHAR(32),
          |  within_type_id VARCHAR(1024),
          |  guid VARCHAR(1024),
-         |  FOREIGN KEY( guid ) REFERENCES item( guid ),
+         |  FOREIGN KEY( feed_url, guid ) REFERENCES item( feed_url, guid ),
          |  FOREIGN KEY( feed_url, stype, within_type_id ) REFERENCES assignable( feed_url, stype, within_type_id )
          |)""".stripMargin
     val TABLE_SUBSCRIPTION_CREATE =
@@ -59,7 +59,7 @@ object PgSchema:
          |  feed_url VARCHAR(256),
          |  stype VARCHAR(32),
          |  PRIMARY KEY( email, feed_url ),
-         |  FOREIGN KEY( feed_url ) REFERENCES feed(url)
+         |  FOREIGN KEY( feed_url ) REFERENCES feed(url),
          |  FOREIGN KEY( stype ) REFERENCES subscription_type( stype )
          |)""".stripMargin
     val SEQUENCE_MAILABLE_SEQ_CREATE =
@@ -71,7 +71,7 @@ object PgSchema:
          |  feed_url VARCHAR(1024),
          |  stype VARCHAR(32),
          |  within_type_id VARCHAR(1024),
-         |  mailed : BOOLEAN,
+         |  mailed BOOLEAN,
          |  PRIMARY KEY( seqnum ),
          |  FOREIGN KEY (feed_url, stype, within_type_id) REFERENCES assignable(feed_url, stype, within_type_id)
          |)""".stripMargin
