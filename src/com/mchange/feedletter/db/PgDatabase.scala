@@ -20,6 +20,7 @@ object PgDatabase extends Migratory:
   
   enum MetadataKey:
     case SchemaVersion
+    case CreatorAppVersion
     case NextMailBatchTime
     case MailBatchSize
     case MailBatchDelaySecs
@@ -30,34 +31,49 @@ object PgDatabase extends Migratory:
 
   val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
 
+  def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] = ZIO.attemptBlocking:
+    Using.resource( conn.prepareStatement( LatestSchema.TABLE_METADATA_SELECT ) ): ps =>
+      ps.setString(1, MetadataKey.SchemaVersion.toString)
+      Using.resource( ps.executeQuery() ): rs =>
+        zeroOrOneResult( s"metadata key '$key'", rs )( _.getString(1) )
+
   override def dump(config : Config, ds : DataSource) : Task[Unit] = ZIO.attemptBlocking:
     if !os.exists( config.dumpDir ) then os.makeDir.all( config.dumpDir )
     val parsedCommand = List("pg_dump", config.dbName)
     val ts = DumpTimestampFormatter.format( java.time.Instant.now )
     val dumpFile = config.dumpDir / ("feedletter-pg-dump." + ts + ".sql")
     os.proc( parsedCommand ).call( stdout = dumpFile )
-  
-  override def discoveredDbVersion(config : Config, ds : DataSource) : Task[Option[Int]] =
-    def extractVersion( conn : Connection ) : Task[Int] = ZIO.attemptBlocking:
-      Using.resource( conn.prepareStatement( LatestSchema.TABLE_METADATA_SELECT ) ): ps =>
-        ps.setString(1, MetadataKey.SchemaVersion.toString)
-        Using.resource( ps.executeQuery() ): rs =>
-          if !rs.next() then throw new UnexpectedlyEmptyResultSet("Expected a value for key 'SchemaVersion', none found.") else
-            val out = rs.getString(1).toInt
-            if rs.next() then throw new NonUniqueRow("Expected a unique value for metadata key 'SchemaVersion'. Multiple rows found.") else
-              out
-    end extractVersion
-    
+
+  override def dbVersionStatus(config : Config, ds : DataSource) : Task[DbVersionStatus] =
     withConnection( ds ): conn =>
-      extractVersion(conn).map( i => Some(i) ).catchSome:
+      val okeyDokeyIsh = 
+        for
+          mbDbVersion <- fetchMetadataValue(conn, MetadataKey.SchemaVersion)
+          mbCreatorAppVersion <- fetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
+        yield
+          try
+            mbDbVersion.map( _.toInt ) match
+              case Some( version ) if version == LatestSchema.Version => DbVersionStatus.Current( version )
+              case Some( version ) if version < LatestSchema.Version => DbVersionStatus.OutOfDate( version, LatestSchema.Version )
+              case Some( version ) => DbVersionStatus.UnexpectedVersion( Some(version.toString), mbCreatorAppVersion, Some( com.mchange.feedletter.BuildInfo.version ), Some(LatestSchema.Version.toString()) )
+              case None => DbVersionStatus.SchemaMetadataDisordered( s"Expected key '${MetadataKey.SchemaVersion}' was not found in schema metadata!" )
+          catch
+            case nfe : NumberFormatException =>
+              DbVersionStatus.UnexpectedVersion( mbDbVersion, mbCreatorAppVersion, Some( com.mchange.feedletter.BuildInfo.version ), Some(LatestSchema.Version.toString()) )
+      okeyDokeyIsh.catchSome:
         case sqle : SQLException =>
           val dbmd = conn.getMetaData()
-          val rs = dbmd.getTables(null,null,LatestSchema.TABLE_METADATA_NAME,null)
-          if !rs.next() then // the metadata table does not exist
-            ZIO.succeed( None )
-          else
-            ZIO.fail( sqle )
-  end discoveredDbVersion
+          try
+            val rs = dbmd.getTables(null,null,LatestSchema.TABLE_METADATA_NAME,null)
+            if !rs.next() then // the metadata table does not exist
+              ZIO.succeed( DbVersionStatus.SchemaMetadataNotFound )
+            else
+              ZIO.succeed( DbVersionStatus.SchemaMetadataDisordered(s"Metadata table found, but an Exception occurred while accessing it: ${sqle.toString()}") )
+          catch
+            case t : SQLException =>
+              t.printStackTrace()
+              ZIO.succeed( DbVersionStatus.ConnectionFailed )
+  end dbVersionStatus
   
   override def upMigrate(config : Config, ds : DataSource, from : Option[Int]) : Task[Unit] =
     def upMigrateFrom_New() : Task[Unit] =
@@ -66,7 +82,12 @@ object PgDatabase extends Migratory:
           conn.setAutoCommit(false)
           Using.resource( conn.createStatement() ): stmt =>
             stmt.executeUpdate( PgSchema.V0.TABLE_METADATA_CREATE )
-          insertMetadataKeys( PgSchema.V0, conn, (MetadataKey.SchemaVersion, "0") )  
+          insertMetadataKeys(
+            PgSchema.V0,
+            conn,
+            (MetadataKey.SchemaVersion, "0"),
+            (MetadataKey.CreatorAppVersion, com.mchange.feedletter.BuildInfo.version)
+          )  
           conn.commit()
     
     def upMigrateFrom_0() : Task[Unit] =
@@ -94,7 +115,12 @@ object PgDatabase extends Migratory:
             (MetadataKey.MailBatchSize, DefaultMailBatchSize.toString()),
             (MetadataKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString())
           )
-          updateMetadataKeys(PgSchema.V1, conn, (MetadataKey.SchemaVersion, "1"))
+          updateMetadataKeys(
+            PgSchema.V1,
+            conn,
+            (MetadataKey.SchemaVersion, "1"),
+            (MetadataKey.CreatorAppVersion, com.mchange.feedletter.BuildInfo.version)
+          )
           conn.commit()
           
     from match
