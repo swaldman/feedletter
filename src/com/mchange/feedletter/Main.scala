@@ -25,8 +25,14 @@ object Main extends ZIOCliDefault:
   val dbMigrateCommand = Command("migrate", forceOption).map( force => CommandConfig.DbMigrate(force) )
 
   val dbCommand = Command("db").subcommands(dbInitCommand, dbMigrateCommand, dbDumpCommand)
+
+  val updateCommand = Command("update").map( _ => CommandConfig.Update )
+
+  val sendmailCommand = Command("sendmail").map( _ => CommandConfig.Sendmail )
+
+  val daemonCommand = Command("daemon").map( _ => CommandConfig.Daemon )
   
-  val mainCommand = Command("feedletter").subcommands(dbCommand)
+  val mainCommand = Command("feedletter").subcommands( daemonCommand, dbCommand, sendmailCommand, updateCommand )
 
   val cliApp = CliApp.make(
     name = "feedletter",

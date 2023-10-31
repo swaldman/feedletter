@@ -45,6 +45,9 @@ object CommandConfig:
         ds <- ZIO.service[DataSource]
         _ <- doMigrate( config, ds )
       yield ()
-    end zcommand  
+    end zcommand
+  case object Update extends CommandConfig
+  case object Sendmail extends CommandConfig
+  case object Daemon extends CommandConfig
 sealed trait CommandConfig:
-  def zcommand : ZCommand = ZIO.unit
+  def zcommand : ZCommand = ZIO.fail( new NotImplementedError("No zcommand has been implemented for this command") ) // tempory, make abstract when we stabilize
