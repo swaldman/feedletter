@@ -5,7 +5,6 @@ import java.time.Instant
 import javax.sql.DataSource
 import com.mchange.feedletter.Config
 import java.time.temporal.ChronoUnit
-import com.mchange.feedletter.Main.config
 import com.mchange.feedletter.db.Migratory.lastHourDumpFileExists
 import com.mchange.feedletter.BuildInfo.version
 import com.mchange.sc.v1.log.*
