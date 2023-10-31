@@ -1,6 +1,12 @@
 package com.mchange.feedletter
 
-lazy val DontTouchMe = ???
+import zio.*
+import javax.sql.DataSource
+import com.mchange.feedletter.Config
+
+type ZCommand = ZIO[AppSetup & Config & DataSource, Throwable, Any]
+
+
 
 
 
