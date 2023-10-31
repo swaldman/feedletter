@@ -40,7 +40,7 @@ object PgDatabase extends Migratory:
       Using.resource( ps.executeQuery() ): rs =>
         zeroOrOneResult( s"metadata key '$key'", rs )( _.getString(1) )
 
-  override def dump(config : Config, ds : DataSource) : Task[Unit] =
+  override def dump(config : Config, ds : DataSource) : Task[os.Path] =
     def runDump( dumpFile : os.Path ) : Task[Unit] =
       ZIO.attemptBlocking:
         val parsedCommand = List("pg_dump", config.dbName)
@@ -48,7 +48,7 @@ object PgDatabase extends Migratory:
     for
       dumpFile <- Migratory.prepareDumpFileForInstant(config, java.time.Instant.now)
       _        <- runDump( dumpFile )
-    yield ()  
+    yield dumpFile
 
   override def dbVersionStatus(config : Config, ds : DataSource) : Task[DbVersionStatus] =
     withConnection( ds ): conn =>

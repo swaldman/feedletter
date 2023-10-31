@@ -47,7 +47,7 @@ trait Migratory:
 
   def targetDbVersion : Int
   
-  def dump(config : Config, ds : DataSource) : Task[Unit]
+  def dump(config : Config, ds : DataSource) : Task[os.Path]
   def dbVersionStatus(config : Config, ds : DataSource) : Task[DbVersionStatus]
   def upMigrate(config : Config, ds : DataSource, from : Option[Int]) : Task[Unit]
 
