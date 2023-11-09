@@ -22,8 +22,12 @@ object PgSchema:
       """|CREATE TABLE item(
          |  feed_url VARCHAR(1024),
          |  guid VARCHAR(1024),
-         |  contentHash INTEGER,
+         |  title VARCHAR(1024),
+         |  author VARCHAR(1024),
+         |  article TEXT,
          |  publicationDate TIMESTAMP,
+         |  link VARCHAR(1024),
+         |  contentHash INTEGER, -- ItemContent.## (hashCode)
          |  lastChecked TIMESTAMP,
          |  stableSince TIMESTAMP,
          |  assigned BOOLEAN,
