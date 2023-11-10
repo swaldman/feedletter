@@ -1,7 +1,6 @@
 package com.mchange.feedletter
 
 import java.time.Instant
-import scala.util.hashing.MurmurHash3
 import scala.xml.{Elem,Node}
 import scala.util.{Success,Failure}
 import audiofluidity.rss.util.attemptLenientParsePubDateToInstant
@@ -13,13 +12,19 @@ object ItemContent:
   private lazy given logger : MLogger = mlogger( this )
 
   private def parseAuthorFromAuthorElem( authorElem : Node ) : String = authorElem.text // could do better!
+
+  private def lenientRdfContentNamespace(node : Node ) : Boolean =
+    node.namespace.contains("://purl.org/rss/1.0/modules/content")
+  
+  private def lenientDublinCoreNamespace(node : Node ) : Boolean =
+    node.namespace.contains("://purl.org/dc/elements/1.1")
   
   def fromItemElem( itemElem : Elem ) =
     def extractCreatorAuthor : Option[String] =
-      def mbCreator = (itemElem \ "creator").headOption.map( _.text )
+      def mbCreator = (itemElem \ "creator").filter(lenientDublinCoreNamespace).headOption.map( _.text )
       def mbAuthor  = (itemElem \ "author").headOption.map( parseAuthorFromAuthorElem )
       mbCreator orElse mbAuthor
-    def extractContent = ((itemElem \ "encoded").headOption orElse (itemElem \ "description").headOption).map( _.text )
+    def extractContent = ((itemElem \ "encoded").filter(lenientRdfContentNamespace).headOption orElse (itemElem \ "description").headOption).map( _.text )
     def extractTitle = (itemElem \ "title").headOption.map( _.text )
     def extractPubDate =
       (itemElem \ "pubDate").headOption.map( _.text ).flatMap: dateStr =>
