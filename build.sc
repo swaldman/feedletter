@@ -12,6 +12,7 @@ object feedletter extends RootModule with ScalaModule with BuildInfo {
   def ivyDeps = Agg(
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
     ivy"com.lihaoyi::os-lib:0.9.1",
+    ivy"com.lihaoyi::requests:0.8.0",
     ivy"dev.zio::zio:2.0.18",
     ivy"dev.zio::zio-cli:0.5.0",
     ivy"com.mchange::audiofluidity-rss:0.0.3",

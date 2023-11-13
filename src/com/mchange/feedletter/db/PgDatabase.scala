@@ -1,18 +1,19 @@
 package com.mchange.feedletter.db
 
 import zio.*
-import java.sql.Connection
+import java.sql.{Connection,Timestamp}
 import javax.sql.DataSource
 import com.mchange.feedletter.Config
 
 import scala.util.Using
 import java.sql.SQLException
-import java.time.ZonedDateTime
+import java.time.{Instant,ZonedDateTime}
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
+import com.mchange.feedletter.{doDigestFeed, ItemContent}
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -154,4 +155,43 @@ object PgDatabase extends Migratory:
         ps.setString(2, mdkey.toString())
         ps.executeUpdate()
 
-   
+  private final case class ItemStatus( contentHash : Int, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
+
+  private def checkItem( conn : Connection, feedUrl : String, guid : String ) : Option[ItemStatus] =
+    Using.resource( conn.prepareStatement( LatestSchema.TABLE_ITEM_CHECK_SELECT ) ): ps =>
+      ps.setString(1, feedUrl)
+      ps.setString(2, guid)
+      Using.resource( ps.executeQuery() ): rs =>
+        zeroOrOneResult("item-check-select", rs): rs =>
+          ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getBoolean(4) )
+
+  private def updateItem( config : Config, conn : Connection, feedUrl : String, guid : String, status : Option[ItemStatus], itemContent : ItemContent ) : Unit =
+    status match
+      case Some( ItemStatus( contentHash, lastChecked, stableSince, assigned ) ) =>
+        val now = Instant.now
+        if itemContent.## == contentHash then
+          ???
+        else
+          ???
+      case None =>
+        Using.resource( conn.prepareStatement( LatestSchema.TABLE_ITEM_INSERT ) ): ps =>
+          val now = Instant.now
+          ps.setString( 1, feedUrl )
+          ps.setString( 2, guid )
+          ps.setString( 3, itemContent.title.getOrElse( null ) )
+          ps.setString( 4, itemContent.author.getOrElse( null ) )
+          ps.setString( 5, itemContent.article.getOrElse( null ) )
+          ps.setTimestamp( 6, itemContent.pubDate.map( Timestamp.from ).getOrElse( null ) )
+          ps.setString( 7, itemContent.link.getOrElse( null ) )
+          ps.setInt( 8, itemContent.## )
+          ps.setTimestamp( 9, Timestamp.from( now ) )
+          ps.setTimestamp( 10, Timestamp.from( now ) )
+          ps.setBoolean( 11, false )
+          ps.executeUpdate()
+        
+
+  def updateFeed( config : Config, ds : DataSource, feedUrl : String ) : Task[Unit] =
+    withConnection( ds ): conn =>
+      ZIO.attemptBlocking:
+        val feedDigest = doDigestFeed( feedUrl )
+        ???

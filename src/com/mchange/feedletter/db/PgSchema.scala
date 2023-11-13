@@ -34,6 +34,21 @@ object PgSchema:
          |  PRIMARY KEY(feed_url, guid),
          |  FOREIGN KEY(feed_url) REFERENCES feed(url)
          |)""".stripMargin
+    val TABLE_ITEM_CHECK_SELECT =
+      """|SELECT contentHash, lastChecked, stableSince, assigned
+         |FROM item
+         |WHERE feed_url = ? AND guid = ?""".stripMargin
+    val TABLE_ITEM_INSERT =
+      """|INSERT INTO item(feed_url, guid, title, author, article, publicationDate, link, contentHash, lastChecked, stableSince, assigned)
+         |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
+    val TABLE_ITEM_UPDATE_CHANGED =
+      """|UPDATE item
+         |SET title = ?, author = ?, article = ?, publicationDate = ?, link = ?, contentHash = ?, lastChecked = ?, stableSince = ?, assigned = ?
+         |WHERE feed_url = ? AND guid = ?""".stripMargin
+    val TABLE_ITEM_UPDATE_STABLE =
+      """|UPDATE item
+         |SET lastChecked = ?, assigned = ?
+         |WHERE feed_url = ? AND guid = ?""".stripMargin
     val TABLE_SUBSCRIPTION_TYPE_CREATE =
       "CREATE TABLE subscription_type( stype VARCHAR(32) PRIMARY KEY )"
     val TABLE_SUBSCRIPTION_TYPE_INSERT =
