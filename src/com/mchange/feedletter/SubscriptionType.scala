@@ -12,7 +12,7 @@ object SubscriptionType:
     private val Formatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
     override def toString(): String = "Weekly"
     override def withinTypeId( feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Option[String] = Some( Formatter.format( status.lastChecked ) ) 
-  def parse( str : String ) =
+  def parse( str : String ) : SubscriptionType =
     str match
       case "Immediate" => Immediate
       case "Weekly"    => Weekly

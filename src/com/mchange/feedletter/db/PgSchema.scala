@@ -63,7 +63,7 @@ object PgSchema:
                |  FOREIGN KEY(feed_url) REFERENCES feed(url)
                |)""".stripMargin
           val SelectCheck =
-            """|SELECT content_hash, last_checked, stable_since, assigned
+            """|SELECT content_hash, last_checked, stable_since
                |FROM item
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val Insert =
@@ -71,11 +71,15 @@ object PgSchema:
                |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
           val UpdateChanged =
             """|UPDATE item
-               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assigned = ?
+               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val UpdateStable =
             """|UPDATE item
-               |SET last_checked = ?, assigned = ?
+               |SET last_checked = ?
+               |WHERE feed_url = ? AND guid = ?""".stripMargin
+          val UpdateAssigned =
+            """|UPDATE item
+               |SET assigned = ?
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           def checkStatus( conn : Connection, feedUrl : String, guid : String ) : Option[ItemStatus] =
             Using.resource( conn.prepareStatement( SelectCheck ) ): ps =>
@@ -83,7 +87,32 @@ object PgSchema:
               ps.setString(2, guid)
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("item-check-select", rs): rs =>
-                  ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getBoolean(4) )
+                  ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant() )
+          def updateStable( conn : Connection, feedUrl : String, guid : String, lastChecked : Instant ) =
+            Using.resource( conn.prepareStatement( this.UpdateStable) ): ps =>
+              ps.setTimestamp(1, Timestamp.from(lastChecked))
+              ps.setString(2, feedUrl)
+              ps.setString(3, guid)
+              ps.executeUpdate()
+          def updateChanged( conn : Connection, feedUrl : String, guid : String, newContent : ItemContent, newStatus : ItemStatus ) =
+            Using.resource( conn.prepareStatement( this.UpdateChanged) ): ps =>
+              setStringOptional(ps, 1, Types.VARCHAR, newContent.title ) 
+              setStringOptional(ps, 2, Types.VARCHAR, newContent.author ) 
+              setStringOptional(ps, 3, Types.CLOB, newContent.article )
+              setTimestampOptional(ps, 4, newContent.pubDate.map( Timestamp.from ))
+              setStringOptional(ps, 5, Types.VARCHAR, newContent.link)
+              ps.setInt(6, newStatus.contentHash)
+              ps.setTimestamp(7, Timestamp.from(newStatus.lastChecked))
+              ps.setTimestamp(8, Timestamp.from(newStatus.stableSince))
+              ps.setString(9, feedUrl)
+              ps.setString(10, guid)
+              ps.executeUpdate()
+          def updateAssigned( conn : Connection, feedUrl : String, guid : String, assigned : Boolean ) =
+            Using.resource( conn.prepareStatement( this.UpdateAssigned) ): ps =>
+              ps.setBoolean(1, assigned)
+              ps.setString(2, feedUrl)
+              ps.setString(3, guid)
+              ps.executeUpdate()
           def insertNew( conn : Connection, feedUrl : String, guid : String, itemContent : ItemContent ) : Int =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               val now = Instant.now
@@ -173,6 +202,18 @@ object PgSchema:
                |  FOREIGN KEY( feed_url ) REFERENCES feed(url),
                |  FOREIGN KEY( stype ) REFERENCES subscription_type( stype )
                |)""".stripMargin
+          val SelectSubscriptionTypesByFeedUrl =
+            """|SELECT DISTINCT stype
+               |FROM subscription
+               |WHERE feed_url = ?""".stripMargin
+          def selectSubscriptionTypeByFeedUrl( conn : Connection, feedUrl : String ) : Set[SubscriptionType] =
+            Using.resource( conn.prepareStatement( this.SelectSubscriptionTypesByFeedUrl ) ): ps =>
+              ps.setString(1, feedUrl)
+              val builder = Set.newBuilder[SubscriptionType]
+              Using.resource( ps.executeQuery() ): rs =>
+                while rs.next() do
+                  builder += com.mchange.feedletter.SubscriptionType.parse( rs.getString(1) )
+              builder.result()    
         object Mailable extends Creatable:       
           val Create =
             """|CREATE TABLE mailable(

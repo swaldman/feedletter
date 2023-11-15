@@ -7,7 +7,7 @@ import com.mchange.feedletter.Config
 
 import scala.util.Using
 import java.sql.SQLException
-import java.time.{Instant,ZonedDateTime}
+import java.time.{Duration as JDuration,Instant,ZonedDateTime}
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
@@ -137,22 +137,33 @@ object PgDatabase extends Migratory:
       ensureOpenAssignable( conn, feedUrl, stype, wti, Some(guid) )
       LatestSchema.Table.Assignment.insert( conn, feedUrl, stype, wti, guid )
       
-  private def assign( conn : Connection, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit = ???
+  private def assign( conn : Connection, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
+    val subscriptionTypes = LatestSchema.Table.Subscription.selectSubscriptionTypeByFeedUrl( conn, feedUrl )
+    subscriptionTypes.foreach( stype => assignForSubscriptionType( conn, stype, feedUrl, guid, content, status ) )
+    LatestSchema.Table.Item.updateAssigned( conn, feedUrl, guid, true )
+    
     
   // only unassigned items
-  private def updateItem( config : Config, conn : Connection, feedUrl : String, guid : String, status : Option[ItemStatus], itemContent : ItemContent ) : Unit =
-    status match
-      case Some( ItemStatus( contentHash, lastChecked, stableSince, assigned ) ) =>
+  private def updateItem( config : Config, feed : Config.Feed, conn : Connection, feedUrl : String, guid : String, dbStatus : Option[ItemStatus], freshContent : ItemContent ) : Unit =
+    dbStatus match
+      case Some( prev @ ItemStatus( contentHash, lastChecked, stableSince ) ) =>
         val now = Instant.now
-        if itemContent.## == contentHash then
-          ???
+        val newContentHash = freshContent.##
+        if newContentHash == contentHash then
+          val newLastChecked = now
+          LatestSchema.Table.Item.updateStable( conn, feedUrl, guid, newLastChecked )
+          val stableSeconds = JDuration.between(stableSince, now).getSeconds()
+          if stableSeconds > feed.awaitStabilizationSeconds then
+            assign( conn, feedUrl, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
         else
-          ???
+          val newStableSince = now
+          val newLastChecked = now
+          LatestSchema.Table.Item.updateChanged( conn, feedUrl, guid, freshContent, ItemStatus( newContentHash, newLastChecked, newStableSince ) )
       case None =>
-        LatestSchema.Table.Item.insertNew(conn, feedUrl, guid, itemContent)
+        LatestSchema.Table.Item.insertNew(conn, feedUrl, guid, freshContent)
         
 
-  def updateFeed( config : Config, ds : DataSource, feedUrl : String ) : Task[Unit] =
+  def updateFeed( config : Config, feed : Config.Feed, ds : DataSource, feedUrl : String ) : Task[Unit] =
     withConnection( ds ): conn =>
       ZIO.attemptBlocking:
         val feedDigest = doDigestFeed( feedUrl )
