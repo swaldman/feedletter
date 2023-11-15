@@ -96,8 +96,6 @@ object PgDatabase extends Migratory:
             PgSchema.V1.Table.Subscription.create( stmt )
             PgSchema.V1.Table.Mailable.create( stmt )
             PgSchema.V1.Sequence.MailableSeq.create( stmt )
-          PgSchema.V1.Table.SubscriptionType.insert( conn, SubscriptionType.Immediate )
-          PgSchema.V1.Table.SubscriptionType.insert( conn, SubscriptionType.Weekly )
           insertMetadataKeys(
             conn,
             (MetadataKey.NextMailBatchTime, formatPubDate(ZonedDateTime.now)),
