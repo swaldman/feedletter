@@ -1,10 +1,13 @@
 package com.mchange.feedletter.db
 
 import zio.*
-import java.sql.* 
+import java.sql.*
+import java.time.Instant
 import javax.sql.DataSource
 import scala.util.control.NonFatal
 import java.lang.System
+
+final case class ItemStatus( contentHash : Int, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
 
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
 
@@ -39,3 +42,12 @@ def zeroOrOneResult[T]( queryDesc : String, rs : ResultSet )( materialize : Resu
     else
       Some(out)
 
+def setStringOptional( ps : PreparedStatement, position : Int, sqlType : Int, value : Option[String] ) =
+  value match
+    case Some( s ) => ps.setString(position, s)
+    case None      => ps.setNull( position, sqlType )
+
+def setTimestampOptional( ps : PreparedStatement, position : Int, value : Option[Timestamp] ) =
+  value match
+    case Some( ts ) => ps.setTimestamp(position, ts)
+    case None       => ps.setNull( position, Types.TIMESTAMP )

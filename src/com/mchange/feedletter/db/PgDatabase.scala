@@ -35,11 +35,8 @@ object PgDatabase extends Migratory:
     case Immediate
     case Weekly
 
-  def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] = ZIO.attemptBlocking:
-    Using.resource( conn.prepareStatement( LatestSchema.TABLE_METADATA_SELECT ) ): ps =>
-      ps.setString(1, MetadataKey.SchemaVersion.toString)
-      Using.resource( ps.executeQuery() ): rs =>
-        zeroOrOneResult( s"metadata key '$key'", rs )( _.getString(1) )
+  def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
+    ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key.toString() ) )
 
   override def dump(config : Config, ds : DataSource) : Task[os.Path] =
     def runDump( dumpFile : os.Path ) : Task[Unit] =
@@ -71,7 +68,7 @@ object PgDatabase extends Migratory:
         case sqle : SQLException =>
           val dbmd = conn.getMetaData()
           try
-            val rs = dbmd.getTables(null,null,LatestSchema.TABLE_METADATA_NAME,null)
+            val rs = dbmd.getTables(null,null,PgSchema.Unversioned.Table.Metadata.Name,null)
             if !rs.next() then // the metadata table does not exist
               ZIO.succeed( DbVersionStatus.SchemaMetadataNotFound )
             else
@@ -88,10 +85,8 @@ object PgDatabase extends Migratory:
       withConnection( ds ): conn =>
         ZIO.attemptBlocking:
           conn.setAutoCommit(false)
-          Using.resource( conn.createStatement() ): stmt =>
-            stmt.executeUpdate( PgSchema.V0.TABLE_METADATA_CREATE )
+          PgSchema.Unversioned.Table.Metadata.create( conn )
           insertMetadataKeys(
-            PgSchema.V0,
             conn,
             (MetadataKey.SchemaVersion, "0"),
             (MetadataKey.CreatorAppVersion, com.mchange.feedletter.BuildInfo.version)
@@ -104,28 +99,23 @@ object PgDatabase extends Migratory:
         ZIO.attemptBlocking:
           conn.setAutoCommit(false)
           Using.resource( conn.createStatement() ): stmt =>
-            stmt.executeUpdate( PgSchema.V1.TABLE_FEED_CREATE )
-            stmt.executeUpdate( PgSchema.V1.TABLE_ITEM_CREATE )
-            stmt.executeUpdate( PgSchema.V1.TABLE_SUBSCRIPTION_TYPE_CREATE )
-            stmt.executeUpdate( PgSchema.V1.TABLE_ASSIGNABLE_CREATE )
-            stmt.executeUpdate( PgSchema.V1.TABLE_ASSIGNMENT_CREATE )
-            stmt.executeUpdate( PgSchema.V1.TABLE_SUBSCRIPTION_CREATE )
-            stmt.executeUpdate( PgSchema.V1.SEQUENCE_MAILABLE_SEQ_CREATE )
-            stmt.executeUpdate( PgSchema.V1.TABLE_MAILABLE_CREATE )
-          Using.resource( conn.prepareStatement( PgSchema.V1.TABLE_SUBSCRIPTION_TYPE_INSERT ) ): ps =>
-            ps.setString( 1, SubscriptionType.Immediate.toString() )
-            ps.executeUpdate()
-            ps.setString( 1, SubscriptionType.Weekly.toString() )
-            ps.executeUpdate()
+            PgSchema.V1.Table.Feed.create( stmt )
+            PgSchema.V1.Table.Item.create( stmt )
+            PgSchema.V1.Table.SubscriptionType.create( stmt )
+            PgSchema.V1.Table.Assignable.create( stmt )
+            PgSchema.V1.Table.Assignment.create( stmt )
+            PgSchema.V1.Table.Subscription.create( stmt )
+            PgSchema.V1.Table.Mailable.create( stmt )
+            PgSchema.V1.Sequence.MailableSeq.create( stmt )
+          PgSchema.V1.Table.SubscriptionType.insert( conn, SubscriptionType.Immediate.toString() )
+          PgSchema.V1.Table.SubscriptionType.insert( conn, SubscriptionType.Weekly.toString() )
           insertMetadataKeys(
-            PgSchema.V1,
             conn,
             (MetadataKey.NextMailBatchTime, formatPubDate(ZonedDateTime.now)),
             (MetadataKey.MailBatchSize, DefaultMailBatchSize.toString()),
             (MetadataKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString())
           )
           updateMetadataKeys(
-            PgSchema.V1,
             conn,
             (MetadataKey.SchemaVersion, "1"),
             (MetadataKey.CreatorAppVersion, com.mchange.feedletter.BuildInfo.version)
@@ -141,29 +131,11 @@ object PgDatabase extends Migratory:
       case Some( other ) =>
         ZIO.fail( new CannotUpMigrate( s"Cannot upmigrate from unknown DB version: V${other}" ) )
 
-  private def insertMetadataKeys( schema : PgSchema.Base, conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
-    Using.resource( conn.prepareStatement(schema.TABLE_METADATA_INSERT) ): ps =>
-      pairs.foreach: ( mdkey, value ) =>
-        ps.setString(1, mdkey.toString())
-        ps.setString(2, value)
-        ps.executeUpdate()
+  private def insertMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
+    pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.insert(conn, mdkey.toString(), value) )
 
-  private def updateMetadataKeys( schema : PgSchema.Base, conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
-    Using.resource( conn.prepareStatement(schema.TABLE_METADATA_UPDATE) ): ps =>
-      pairs.foreach: ( mdkey, value ) =>
-        ps.setString(1, value)
-        ps.setString(2, mdkey.toString())
-        ps.executeUpdate()
-
-  private final case class ItemStatus( contentHash : Int, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
-
-  private def checkItem( conn : Connection, feedUrl : String, guid : String ) : Option[ItemStatus] =
-    Using.resource( conn.prepareStatement( LatestSchema.TABLE_ITEM_CHECK_SELECT ) ): ps =>
-      ps.setString(1, feedUrl)
-      ps.setString(2, guid)
-      Using.resource( ps.executeQuery() ): rs =>
-        zeroOrOneResult("item-check-select", rs): rs =>
-          ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getBoolean(4) )
+  private def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
+    pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.update(conn, mdkey.toString(), value) )
 
   private def updateItem( config : Config, conn : Connection, feedUrl : String, guid : String, status : Option[ItemStatus], itemContent : ItemContent ) : Unit =
     status match
@@ -174,20 +146,7 @@ object PgDatabase extends Migratory:
         else
           ???
       case None =>
-        Using.resource( conn.prepareStatement( LatestSchema.TABLE_ITEM_INSERT ) ): ps =>
-          val now = Instant.now
-          ps.setString( 1, feedUrl )
-          ps.setString( 2, guid )
-          ps.setString( 3, itemContent.title.getOrElse( null ) )
-          ps.setString( 4, itemContent.author.getOrElse( null ) )
-          ps.setString( 5, itemContent.article.getOrElse( null ) )
-          ps.setTimestamp( 6, itemContent.pubDate.map( Timestamp.from ).getOrElse( null ) )
-          ps.setString( 7, itemContent.link.getOrElse( null ) )
-          ps.setInt( 8, itemContent.## )
-          ps.setTimestamp( 9, Timestamp.from( now ) )
-          ps.setTimestamp( 10, Timestamp.from( now ) )
-          ps.setBoolean( 11, false )
-          ps.executeUpdate()
+        LatestSchema.Table.Item.insertNew(conn, feedUrl, guid, itemContent)
         
 
   def updateFeed( config : Config, ds : DataSource, feedUrl : String ) : Task[Unit] =
