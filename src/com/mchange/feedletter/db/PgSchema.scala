@@ -20,19 +20,19 @@ object PgSchema:
         val Insert = "INSERT INTO metadata VALUES( ?, ? )"
         val Update = "UPDATE metadata SET value = ? WHERE key = ?"
         val Select = "SELECT value FROM metadata WHERE key = ?"
-        def insert( conn : Connection, key : String, value : String ) : Int =
+        def insert( conn : Connection, key : MetadataKey, value : String ) : Int =
           Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-            ps.setString( 1, key )
+            ps.setString( 1, key.toString() )
             ps.setString( 2, value )
             ps.executeUpdate()
-        def update( conn : Connection, key : String, newValue : String ) : Int =
+        def update( conn : Connection, key : MetadataKey, newValue : String ) : Int =
           Using.resource( conn.prepareStatement(this.Update) ): ps =>
             ps.setString(1, newValue)
-            ps.setString(2, key)
+            ps.setString(2, key.toString())
             ps.executeUpdate()
-        def select( conn : Connection, key : String ) : Option[String] =
+        def select( conn : Connection, key : MetadataKey ) : Option[String] =
           Using.resource( conn.prepareStatement( this.Select ) ): ps =>
-            ps.setString(1, key)
+            ps.setString(1, key.toString())
             Using.resource( ps.executeQuery() ): rs =>
               zeroOrOneResult("select-metadata", rs)( _.getString(1) )
     
@@ -103,10 +103,10 @@ object PgSchema:
         object SubscriptionType extends Creatable:       
           val Create = "CREATE TABLE subscription_type( stype VARCHAR(32) PRIMARY KEY )"
           val Insert = "INSERT INTO subscription_type VALUES ( ? )"
-          def insert( conn : Connection, subscriptionType : String, moreSubscriptionTypes : String* ) : Unit =
+          def insert( conn : Connection, subscriptionType : SubscriptionType, moreSubscriptionTypes : SubscriptionType* ) : Unit =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
-              def insertType( stype : String ) =
-                ps.setString(1, stype)
+              def insertType( stype : SubscriptionType ) =
+                ps.setString(1, stype.toString())
                 ps.executeUpdate()
               insertType( subscriptionType )
               moreSubscriptionTypes.foreach( insertType )
@@ -121,6 +121,27 @@ object PgSchema:
                |  FOREIGN KEY(feed_url) REFERENCES feed(url),
                |  FOREIGN KEY(stype) REFERENCES subscription_type(stype)
                |)""".stripMargin
+          val SelectCompleted =
+            """|SELECT completed
+               |FROM assignable
+               |WHERE feed_url = ? AND stype = ? AND within_type_id = ?""".stripMargin
+          val Insert =
+            """|INSERT INTO assignable( feed_url, stype, within_type_id, completed )
+               |VALUES ( ?, ?, ?, ? )""".stripMargin
+          def selectCompleted( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String ) : Option[Boolean] =
+            Using.resource( conn.prepareStatement( SelectCompleted ) ): ps =>
+              ps.setString(1, feedUrl)
+              ps.setString(2, stype.toString())
+              ps.setString(3, withinTypeId)
+              Using.resource(ps.executeQuery()): rs =>
+                zeroOrOneResult("assignable-select-completed", rs)( _.getBoolean(1) )
+          def insert( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, completed : Boolean ) =
+            Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
+              ps.setString(1, feedUrl)
+              ps.setString(2, stype.toString())
+              ps.setString(3, withinTypeId)
+              ps.setBoolean(4, completed)
+              ps.executeUpdate()
         object Assignment extends Creatable:       
           val Create = // an assignment represents a membership of a post in a collection
             """|CREATE TABLE assignment(
@@ -128,9 +149,20 @@ object PgSchema:
                |  stype VARCHAR(32),
                |  within_type_id VARCHAR(1024),
                |  guid VARCHAR(1024),
+               |  PRIMARY KEY( feed_url, stype, within_type_id, guid ),
                |  FOREIGN KEY( feed_url, guid ) REFERENCES item( feed_url, guid ),
                |  FOREIGN KEY( feed_url, stype, within_type_id ) REFERENCES assignable( feed_url, stype, within_type_id )
                |)""".stripMargin
+          val Insert =
+            """|INSERT INTO assignment( feed_url, stype, within_type_id, guid )
+               |VALUES ( ?, ?, ?, ? )""".stripMargin
+          def insert( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, guid : String ) =
+            Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
+              ps.setString(1, feedUrl)
+              ps.setString(2, stype.toString())
+              ps.setString(3, withinTypeId)
+              ps.setString(4, guid)
+              ps.executeUpdate()
         object Subscription extends Creatable:       
           val Create =
             """|CREATE TABLE subscription(

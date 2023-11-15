@@ -8,6 +8,7 @@ import com.mchange.feedletter.Config
 import scala.util.Using
 import java.sql.SQLException
 import java.time.{Instant,ZonedDateTime}
+import java.time.format.DateTimeFormatter
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
@@ -24,19 +25,10 @@ object PgDatabase extends Migratory:
   val DefaultMailBatchSize = 100
   val DefaultMailBatchDelaySeconds = 15 * 60 // 15 mins
   
-  enum MetadataKey:
-    case SchemaVersion
-    case CreatorAppVersion
-    case NextMailBatchTime
-    case MailBatchSize
-    case MailBatchDelaySecs
-
-  enum SubscriptionType:
-    case Immediate
-    case Weekly
+  private val WeeklyFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
   def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
-    ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key.toString() ) )
+    ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key ) )
 
   override def dump(config : Config, ds : DataSource) : Task[os.Path] =
     def runDump( dumpFile : os.Path ) : Task[Unit] =
@@ -107,8 +99,8 @@ object PgDatabase extends Migratory:
             PgSchema.V1.Table.Subscription.create( stmt )
             PgSchema.V1.Table.Mailable.create( stmt )
             PgSchema.V1.Sequence.MailableSeq.create( stmt )
-          PgSchema.V1.Table.SubscriptionType.insert( conn, SubscriptionType.Immediate.toString() )
-          PgSchema.V1.Table.SubscriptionType.insert( conn, SubscriptionType.Weekly.toString() )
+          PgSchema.V1.Table.SubscriptionType.insert( conn, SubscriptionType.Immediate )
+          PgSchema.V1.Table.SubscriptionType.insert( conn, SubscriptionType.Weekly )
           insertMetadataKeys(
             conn,
             (MetadataKey.NextMailBatchTime, formatPubDate(ZonedDateTime.now)),
@@ -132,11 +124,32 @@ object PgDatabase extends Migratory:
         ZIO.fail( new CannotUpMigrate( s"Cannot upmigrate from unknown DB version: V${other}" ) )
 
   private def insertMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
-    pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.insert(conn, mdkey.toString(), value) )
+    pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.insert(conn, mdkey, value) )
 
   private def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
-    pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.update(conn, mdkey.toString(), value) )
+    pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.update(conn, mdkey, value) )
 
+  private def withinTypeIdFor( stype : SubscriptionType, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
+    stype match
+      case SubscriptionType.Immediate => Some( guid )
+      case SubscriptionType.Weekly    => Some( WeeklyFormatter.format( status.lastChecked ) )
+
+  private def ensureOpenAssignable( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, forGuid : Option[String]) : Unit =
+    LatestSchema.Table.Assignable.selectCompleted( conn, feedUrl, stype, withinTypeId) match
+      case Some( false ) =>                                                               /* okay, ignore */
+      case Some( true )  => throw new AssignableCompleted( feedUrl, stype, withinTypeId, forGuid ) /* uh oh! */
+      case None =>
+        LatestSchema.Table.Assignable.insert( conn, feedUrl, stype, withinTypeId, false )
+  
+
+  private def assignForSubscriptionType( conn : Connection, stype : SubscriptionType, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
+    withinTypeIdFor( stype, feedUrl, guid, content, status ).foreach: wti =>
+      ensureOpenAssignable( conn, feedUrl, stype, wti, Some(guid) )
+      LatestSchema.Table.Assignment.insert( conn, feedUrl, stype, wti, guid )
+      
+  private def assign( conn : Connection, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit = ???
+    
+  // only unassigned items
   private def updateItem( config : Config, conn : Connection, feedUrl : String, guid : String, status : Option[ItemStatus], itemContent : ItemContent ) : Unit =
     status match
       case Some( ItemStatus( contentHash, lastChecked, stableSince, assigned ) ) =>
