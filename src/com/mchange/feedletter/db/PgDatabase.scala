@@ -8,13 +8,12 @@ import com.mchange.feedletter.Config
 import scala.util.Using
 import java.sql.SQLException
 import java.time.{Instant,ZonedDateTime}
-import java.time.format.DateTimeFormatter
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.{doDigestFeed, ItemContent}
+import com.mchange.feedletter.{doDigestFeed, ItemContent, SubscriptionType}
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -25,8 +24,6 @@ object PgDatabase extends Migratory:
   val DefaultMailBatchSize = 100
   val DefaultMailBatchDelaySeconds = 15 * 60 // 15 mins
   
-  private val WeeklyFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
-
   def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
     ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key ) )
 
@@ -129,11 +126,6 @@ object PgDatabase extends Migratory:
   private def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
     pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.update(conn, mdkey, value) )
 
-  private def withinTypeIdFor( stype : SubscriptionType, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
-    stype match
-      case SubscriptionType.Immediate => Some( guid )
-      case SubscriptionType.Weekly    => Some( WeeklyFormatter.format( status.lastChecked ) )
-
   private def ensureOpenAssignable( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, forGuid : Option[String]) : Unit =
     LatestSchema.Table.Assignable.selectCompleted( conn, feedUrl, stype, withinTypeId) match
       case Some( false ) =>                                                               /* okay, ignore */
@@ -143,7 +135,7 @@ object PgDatabase extends Migratory:
   
 
   private def assignForSubscriptionType( conn : Connection, stype : SubscriptionType, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
-    withinTypeIdFor( stype, feedUrl, guid, content, status ).foreach: wti =>
+    stype.withinTypeId( feedUrl, guid, content, status ).foreach: wti =>
       ensureOpenAssignable( conn, feedUrl, stype, wti, Some(guid) )
       LatestSchema.Table.Assignment.insert( conn, feedUrl, stype, wti, guid )
       

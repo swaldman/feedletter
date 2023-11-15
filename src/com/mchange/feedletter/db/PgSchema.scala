@@ -4,7 +4,7 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.ItemContent
+import com.mchange.feedletter.{ItemContent,SubscriptionType}
 
 object PgSchema:
   trait Creatable:

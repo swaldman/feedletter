@@ -16,10 +16,6 @@ enum MetadataKey:
   case MailBatchSize
   case MailBatchDelaySecs
 
-enum SubscriptionType:
-  case Immediate
-  case Weekly
-
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
 
 def releaseConnection( conn : Connection ) : UIO[Unit] = ZIO.succeed:
