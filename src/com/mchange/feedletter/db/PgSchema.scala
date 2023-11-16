@@ -63,7 +63,7 @@ object PgSchema:
                |  FOREIGN KEY(feed_url) REFERENCES feed(url)
                |)""".stripMargin
           val SelectCheck =
-            """|SELECT content_hash, last_checked, stable_since
+            """|SELECT content_hash, last_checked, stable_since, assigned
                |FROM item
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val Insert =
@@ -71,7 +71,7 @@ object PgSchema:
                |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
           val UpdateChanged =
             """|UPDATE item
-               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?
+               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assigned = ?
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val UpdateStable =
             """|UPDATE item
@@ -87,7 +87,7 @@ object PgSchema:
               ps.setString(2, guid)
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("item-check-select", rs): rs =>
-                  ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant() )
+                  ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getBoolean(4) )
           def updateStable( conn : Connection, feedUrl : String, guid : String, lastChecked : Instant ) =
             Using.resource( conn.prepareStatement( this.UpdateStable) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastChecked))
@@ -104,8 +104,9 @@ object PgSchema:
               ps.setInt(6, newStatus.contentHash)
               ps.setTimestamp(7, Timestamp.from(newStatus.lastChecked))
               ps.setTimestamp(8, Timestamp.from(newStatus.stableSince))
-              ps.setString(9, feedUrl)
-              ps.setString(10, guid)
+              ps.setBoolean(9, newStatus.assigned)
+              ps.setString(10, feedUrl)
+              ps.setString(11, guid)
               ps.executeUpdate()
           def updateAssigned( conn : Connection, feedUrl : String, guid : String, assigned : Boolean ) =
             Using.resource( conn.prepareStatement( this.UpdateAssigned) ): ps =>

@@ -14,6 +14,7 @@ import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
 import com.mchange.feedletter.{doDigestFeed, ItemContent, SubscriptionType}
+import com.mchange.feedletter.FeedDigest
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -142,29 +143,31 @@ object PgDatabase extends Migratory:
     subscriptionTypes.foreach( stype => assignForSubscriptionType( conn, stype, feedUrl, guid, content, status ) )
     LatestSchema.Table.Item.updateAssigned( conn, feedUrl, guid, true )
     
-    
-  // only unassigned items
-  private def updateItem( config : Config, feed : Config.Feed, conn : Connection, feedUrl : String, guid : String, dbStatus : Option[ItemStatus], freshContent : ItemContent ) : Unit =
+  private def updateAssignItem( config : Config, feed : Config.Feed, conn : Connection, guid : String, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     dbStatus match
-      case Some( prev @ ItemStatus( contentHash, lastChecked, stableSince ) ) =>
-        val now = Instant.now
+      case Some( prev @ ItemStatus( contentHash, lastChecked, stableSince, false ) ) =>
         val newContentHash = freshContent.##
         if newContentHash == contentHash then
           val newLastChecked = now
-          LatestSchema.Table.Item.updateStable( conn, feedUrl, guid, newLastChecked )
+          LatestSchema.Table.Item.updateStable( conn, feed.feedUrl, guid, newLastChecked )
           val stableSeconds = JDuration.between(stableSince, now).getSeconds()
           if stableSeconds > feed.awaitStabilizationSeconds then
-            assign( conn, feedUrl, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
+            assign( conn, feed.feedUrl, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
         else
           val newStableSince = now
           val newLastChecked = now
-          LatestSchema.Table.Item.updateChanged( conn, feedUrl, guid, freshContent, ItemStatus( newContentHash, newLastChecked, newStableSince ) )
+          LatestSchema.Table.Item.updateChanged( conn, feed.feedUrl, guid, freshContent, ItemStatus( newContentHash, newLastChecked, newStableSince, false ) )
+      case Some( ItemStatus( _, _, _, true ) ) => /* ignore, already assigned */
       case None =>
-        LatestSchema.Table.Item.insertNew(conn, feedUrl, guid, freshContent)
-        
+        LatestSchema.Table.Item.insertNew(conn, feed.feedUrl, guid, freshContent)
 
-  def updateFeed( config : Config, feed : Config.Feed, ds : DataSource, feedUrl : String ) : Task[Unit] =
+  def updateAssignItems( config : Config, feed : Config.Feed, ds : DataSource ) : Task[Unit] =
     withConnection( ds ): conn =>
       ZIO.attemptBlocking:
-        val feedDigest = doDigestFeed( feedUrl )
-        ???
+        conn.setAutoCommit( false )
+        val FeedDigest( guidToItemContent, timestamp )= doDigestFeed( feed.feedUrl )
+        guidToItemContent.foreach: ( guid, freshContent ) =>
+          val dbStatus = LatestSchema.Table.Item.checkStatus( conn, feed.feedUrl, guid )
+          updateAssignItem( config, feed, conn, guid, dbStatus, freshContent, timestamp )
+        conn.commit()  
+

@@ -7,7 +7,7 @@ import javax.sql.DataSource
 import scala.util.control.NonFatal
 import java.lang.System
 
-final case class ItemStatus( contentHash : Int, lastChecked : Instant, stableSince : Instant )
+final case class ItemStatus( contentHash : Int, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
 
 enum MetadataKey:
   case SchemaVersion
