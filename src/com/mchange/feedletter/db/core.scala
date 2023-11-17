@@ -7,7 +7,11 @@ import javax.sql.DataSource
 import scala.util.control.NonFatal
 import java.lang.System
 
+import com.mchange.feedletter.SubscriptionType
+
 final case class ItemStatus( contentHash : Int, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
+final case class AssignableWithinTypeInfo( withinTypeId : String, count : Int )
+final case class AssignableKey( feedUrl : String, stype : SubscriptionType, withinTypeId : String )
 
 enum MetadataKey:
   case SchemaVersion

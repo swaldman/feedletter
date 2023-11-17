@@ -24,7 +24,7 @@ object PgDatabase extends Migratory:
 
   val DefaultMailBatchSize = 100
   val DefaultMailBatchDelaySeconds = 15 * 60 // 15 mins
-  
+
   def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
     ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key ) )
 
@@ -68,7 +68,7 @@ object PgDatabase extends Migratory:
               WARNING.log("Exception while connecting to database.", t)
               ZIO.succeed( DbVersionStatus.ConnectionFailed )
   end dbVersionStatus
-  
+
   override def upMigrate(config : Config, ds : DataSource, from : Option[Int]) : Task[Unit] =
     def upMigrateFrom_New() : Task[Unit] =
       TRACE.log( "upMigrateFrom_New()" )
@@ -80,9 +80,9 @@ object PgDatabase extends Migratory:
             conn,
             (MetadataKey.SchemaVersion, "0"),
             (MetadataKey.CreatorAppVersion, com.mchange.feedletter.BuildInfo.version)
-          )  
+          )
           conn.commit()
-    
+
     def upMigrateFrom_0() : Task[Unit] =
       TRACE.log( "upMigrateFrom_0()" )
       withConnection( ds ): conn =>
@@ -96,7 +96,7 @@ object PgDatabase extends Migratory:
             PgSchema.V1.Table.Assignment.create( stmt )
             PgSchema.V1.Table.Subscription.create( stmt )
             PgSchema.V1.Table.Mailable.create( stmt )
-            PgSchema.V1.Sequence.MailableSeq.create( stmt )
+            PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
           insertMetadataKeys(
             conn,
             (MetadataKey.NextMailBatchTime, formatPubDate(ZonedDateTime.now)),
@@ -109,7 +109,7 @@ object PgDatabase extends Migratory:
             (MetadataKey.CreatorAppVersion, com.mchange.feedletter.BuildInfo.version)
           )
           conn.commit()
-          
+
     TRACE.log( s"upMigrate( from=${from} )" )
     from match
       case None      => upMigrateFrom_New()
@@ -125,24 +125,37 @@ object PgDatabase extends Migratory:
   private def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
     pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.update(conn, mdkey, value) )
 
+  private def lastCompletedAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[AssignableWithinTypeInfo] =
+    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, stype )
+    withinTypeId.map: wti =>
+      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, wti )
+      AssignableWithinTypeInfo( wti, count )
+
+  private def mostRecentOpenAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[AssignableWithinTypeInfo] =
+    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdMostRecentOpen( conn, feedUrl, stype )
+    withinTypeId.map: wti =>
+      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, wti )
+      AssignableWithinTypeInfo( wti, count )
+
   private def ensureOpenAssignable( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, forGuid : Option[String]) : Unit =
-    LatestSchema.Table.Assignable.selectCompleted( conn, feedUrl, stype, withinTypeId) match
-      case Some( false ) =>                                                               /* okay, ignore */
+    LatestSchema.Table.Assignable.selectIsCompleted( conn, feedUrl, stype, withinTypeId) match
+      case Some( false ) => /* okay, ignore */
       case Some( true )  => throw new AssignableCompleted( feedUrl, stype, withinTypeId, forGuid ) /* uh oh! */
       case None =>
-        LatestSchema.Table.Assignable.insert( conn, feedUrl, stype, withinTypeId, false )
-  
+        LatestSchema.Table.Assignable.insert( conn, feedUrl, stype, withinTypeId, Instant.now, None )
 
   private def assignForSubscriptionType( conn : Connection, stype : SubscriptionType, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
-    stype.withinTypeId( feedUrl, guid, content, status ).foreach: wti =>
+    val lastCompleted = lastCompletedAssignableWithinTypeInfo( conn, feedUrl, stype )
+    val mostRecentOpen = mostRecentOpenAssignableWithinTypeInfo( conn, feedUrl, stype )
+    stype.withinTypeId( feedUrl, lastCompleted, mostRecentOpen, guid, content, status ).foreach: wti =>
       ensureOpenAssignable( conn, feedUrl, stype, wti, Some(guid) )
       LatestSchema.Table.Assignment.insert( conn, feedUrl, stype, wti, guid )
-      
+
   private def assign( conn : Connection, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
     val subscriptionTypes = LatestSchema.Table.Subscription.selectSubscriptionTypeByFeedUrl( conn, feedUrl )
     subscriptionTypes.foreach( stype => assignForSubscriptionType( conn, stype, feedUrl, guid, content, status ) )
     LatestSchema.Table.Item.updateAssigned( conn, feedUrl, guid, true )
-    
+
   private def updateAssignItem( config : Config, feed : Config.Feed, conn : Connection, guid : String, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     dbStatus match
       case Some( prev @ ItemStatus( contentHash, lastChecked, stableSince, false ) ) =>
@@ -161,6 +174,8 @@ object PgDatabase extends Migratory:
       case None =>
         LatestSchema.Table.Item.insertNew(conn, feed.feedUrl, guid, freshContent)
 
+  private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit = ???
+
   def updateAssignItems( config : Config, feed : Config.Feed, ds : DataSource ) : Task[Unit] =
     withConnection( ds ): conn =>
       ZIO.attemptBlocking:
@@ -169,5 +184,18 @@ object PgDatabase extends Migratory:
         guidToItemContent.foreach: ( guid, freshContent ) =>
           val dbStatus = LatestSchema.Table.Item.checkStatus( conn, feed.feedUrl, guid )
           updateAssignItem( config, feed, conn, guid, dbStatus, freshContent, timestamp )
-        conn.commit()  
+        conn.commit()
+
+  def completeAssignables( config : Config, ds : DataSource ) : Task[Unit] =
+    withConnection( ds ): conn =>
+      ZIO.attemptBlocking:
+        conn.setAutoCommit(false)
+        LatestSchema.Table.Assignable.selectOpen( conn ).foreach: ak =>
+          val AssignableKey( feedUrl, stype, withinTypeId ) = ak
+          val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, withinTypeId )
+          if stype.isComplete( withinTypeId, count, Instant.now ) then
+            populateMailable( conn, ak )
+            LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stype, withinTypeId, true )
+
+
 
