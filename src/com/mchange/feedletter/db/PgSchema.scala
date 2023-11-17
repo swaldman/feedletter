@@ -270,6 +270,10 @@ object PgSchema:
             """|SELECT DISTINCT stype
                |FROM subscription
                |WHERE feed_url = ?""".stripMargin
+          val SelectEmail =
+            """|SELECT email
+               |FROM subscription
+               |WHERE feed_url = ? AND stype = ?""".stripMargin
           def selectSubscriptionTypeByFeedUrl( conn : Connection, feedUrl : String ) : Set[SubscriptionType] =
             Using.resource( conn.prepareStatement( this.SelectSubscriptionTypesByFeedUrl ) ): ps =>
               ps.setString(1, feedUrl)
@@ -278,6 +282,15 @@ object PgSchema:
                 while rs.next() do
                   builder += com.mchange.feedletter.SubscriptionType.parse( rs.getString(1) )
               builder.result()
+          def selectEmail( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Set[String] =
+            Using.resource( conn.prepareStatement( this.SelectEmail ) ): ps =>
+              ps.setString(1, feedUrl)
+              ps.setString(2, stype.toString())
+              Using.resource( ps.executeQuery() ): rs =>
+                val builder = Set.newBuilder[String]
+                while rs.next() do
+                  builder += rs.getString(1)
+                builder.result()
         object Mailable extends Creatable:
           val Create =
             """|CREATE TABLE mailable(

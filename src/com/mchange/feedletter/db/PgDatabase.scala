@@ -40,7 +40,7 @@ object PgDatabase extends Migratory:
 
   override def dbVersionStatus(config : Config, ds : DataSource) : Task[DbVersionStatus] =
     withConnection( ds ): conn =>
-      val okeyDokeyIsh = 
+      val okeyDokeyIsh =
         for
           mbDbVersion <- fetchMetadataValue(conn, MetadataKey.SchemaVersion)
           mbCreatorAppVersion <- fetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
@@ -174,7 +174,10 @@ object PgDatabase extends Migratory:
       case None =>
         LatestSchema.Table.Item.insertNew(conn, feed.feedUrl, guid, freshContent)
 
-  private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit = ???
+  private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit =
+    val AssignableKey( feedUrl, stype, withinTypeId ) = assignableKey
+    LatestSchema.Table.Subscription.selectEmail( conn, feedUrl, stype ).foreach: email =>
+      LatestSchema.Table.Mailable.insert( conn, email, feedUrl, stype, withinTypeId, false )
 
   def updateAssignItems( config : Config, feed : Config.Feed, ds : DataSource ) : Task[Unit] =
     withConnection( ds ): conn =>
