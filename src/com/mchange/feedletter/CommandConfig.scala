@@ -46,6 +46,24 @@ object CommandConfig:
         _ <- doMigrate( config, ds )
       yield ()
     end zcommand
+  case object CrankAssign extends CommandConfig:
+    override def zcommand: ZCommand =
+      def doAssign( config : Config, ds : DataSource ) = ZIO.collectAllParDiscard( config.feeds.map( PgDatabase.updateAssignItems( config, _, ds) ) )
+      for
+        config <- ZIO.service[Config]
+        ds <- ZIO.service[DataSource]
+        _ <- doAssign( config, ds )
+      yield ()
+    end zcommand
+  case object CrankComplete extends CommandConfig:
+    override def zcommand: ZCommand =
+      def doComplete( config : Config, ds : DataSource ) = PgDatabase.completeAssignables( config, ds )
+      for
+        config <- ZIO.service[Config]
+        ds <- ZIO.service[DataSource]
+        _ <- doComplete( config, ds )
+      yield ()
+    end zcommand
   case object Update extends CommandConfig
   case object Sendmail extends CommandConfig
   case object Daemon extends CommandConfig

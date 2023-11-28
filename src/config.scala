@@ -9,7 +9,7 @@ def config : Config =
   Config(
     dbName = "feedletter",
     dumpDir = os.Path("/Users/swaldman/tmp/feedletter-db-dumps"),
-    feeds = Set.empty
+    feeds = Set(Config.Feed("https://stallman.org/rss/rss.xml", minDelaySeconds=0, awaitStabilizationSeconds=0))
   )
 
 def dataSource : DataSource =
