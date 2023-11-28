@@ -13,8 +13,7 @@ import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.{doDigestFeed, ItemContent, SubscriptionType}
-import com.mchange.feedletter.FeedDigest
+import com.mchange.feedletter.{doDigestFeed, BuildInfo, FeedDigest, ItemContent, SubscriptionType}
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -49,11 +48,11 @@ object PgDatabase extends Migratory:
             mbDbVersion.map( _.toInt ) match
               case Some( version ) if version == LatestSchema.Version => DbVersionStatus.Current( version )
               case Some( version ) if version < LatestSchema.Version => DbVersionStatus.OutOfDate( version, LatestSchema.Version )
-              case Some( version ) => DbVersionStatus.UnexpectedVersion( Some(version.toString), mbCreatorAppVersion, Some( com.mchange.feedletter.BuildInfo.version ), Some(LatestSchema.Version.toString()) )
+              case Some( version ) => DbVersionStatus.UnexpectedVersion( Some(version.toString), mbCreatorAppVersion, Some( BuildInfo.version ), Some(LatestSchema.Version.toString()) )
               case None => DbVersionStatus.SchemaMetadataDisordered( s"Expected key '${MetadataKey.SchemaVersion}' was not found in schema metadata!" )
           catch
             case nfe : NumberFormatException =>
-              DbVersionStatus.UnexpectedVersion( mbDbVersion, mbCreatorAppVersion, Some( com.mchange.feedletter.BuildInfo.version ), Some(LatestSchema.Version.toString()) )
+              DbVersionStatus.UnexpectedVersion( mbDbVersion, mbCreatorAppVersion, Some( BuildInfo.version ), Some(LatestSchema.Version.toString()) )
       okeyDokeyIsh.catchSome:
         case sqle : SQLException =>
           val dbmd = conn.getMetaData()
@@ -79,7 +78,7 @@ object PgDatabase extends Migratory:
           insertMetadataKeys(
             conn,
             (MetadataKey.SchemaVersion, "0"),
-            (MetadataKey.CreatorAppVersion, com.mchange.feedletter.BuildInfo.version)
+            (MetadataKey.CreatorAppVersion, BuildInfo.version)
           )
           conn.commit()
 
@@ -89,6 +88,7 @@ object PgDatabase extends Migratory:
         ZIO.attemptBlocking:
           conn.setAutoCommit(false)
           Using.resource( conn.createStatement() ): stmt =>
+            PgSchema.V1.Table.Config.create( stmt )
             PgSchema.V1.Table.Feed.create( stmt )
             PgSchema.V1.Table.Item.create( stmt )
             PgSchema.V1.Table.SubscriptionType.create( stmt )
@@ -97,16 +97,16 @@ object PgDatabase extends Migratory:
             PgSchema.V1.Table.Subscription.create( stmt )
             PgSchema.V1.Table.Mailable.create( stmt )
             PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
-          insertMetadataKeys(
+          insertConfigKeys(
             conn,
-            (MetadataKey.NextMailBatchTime, formatPubDate(ZonedDateTime.now)),
-            (MetadataKey.MailBatchSize, DefaultMailBatchSize.toString()),
-            (MetadataKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString())
+            (ConfigKey.NextMailBatchTime, formatPubDate(ZonedDateTime.now)),
+            (ConfigKey.MailBatchSize, DefaultMailBatchSize.toString()),
+            (ConfigKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString())
           )
           updateMetadataKeys(
             conn,
             (MetadataKey.SchemaVersion, "1"),
-            (MetadataKey.CreatorAppVersion, com.mchange.feedletter.BuildInfo.version)
+            (MetadataKey.CreatorAppVersion, BuildInfo.version)
           )
           conn.commit()
 
@@ -124,6 +124,12 @@ object PgDatabase extends Migratory:
 
   private def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
     pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.update(conn, mdkey, value) )
+
+  private def insertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
+    pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.insert(conn, cfgkey, value) )
+
+  private def updateConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
+    pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.update(conn, cfgkey, value) )
 
   private def lastCompletedAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[AssignableWithinTypeInfo] =
     val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, stype )
@@ -179,6 +185,33 @@ object PgDatabase extends Migratory:
     LatestSchema.Table.Subscription.selectEmail( conn, feedUrl, stype ).foreach: email =>
       LatestSchema.Table.Mailable.insert( conn, email, feedUrl, stype, withinTypeId, false )
 
+  def ensureDb( ds : DataSource ) : Task[Unit] =
+    withConnection( ds ): conn =>
+      for
+        mbSchemaVersion <- fetchMetadataValue(conn, MetadataKey.SchemaVersion).map( option => option.map( _.toInt ) )
+        mbAppVersion <- fetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
+      yield
+        mbSchemaVersion match
+          case Some( schemaVersion ) =>
+            if schemaVersion > LatestSchema.Version then
+              throw new MoreRecentFeedletterVersionRequired(
+                s"The database schema version is ${schemaVersion}. " +
+                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
+                s"The latest version known by this version of the app is ${LatestSchema.Version}. " +
+                s"You are running app version '${BuildInfo.version}'."
+              )
+            else if schemaVersion < LatestSchema.Version then
+              throw new SchemaMigrationRequired(
+                s"The database schema version is ${schemaVersion}. " +
+                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
+                s"The current schema this version of the app (${BuildInfo.version}) is ${LatestSchema.Version}. " +
+                "Please migrate."
+              )
+            // else schemaVersion == LatestSchema.version and we're good  
+          case None =>
+            throw new DbNotInitialized("Please initialize the database.")
+  end ensureDb
+  
   def updateAssignItems( config : Config, feed : Config.Feed, ds : DataSource ) : Task[Unit] =
     withConnection( ds ): conn =>
       ZIO.attemptBlocking:

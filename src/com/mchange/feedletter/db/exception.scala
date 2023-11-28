@@ -4,11 +4,13 @@ import com.mchange.feedletter.{FeedletterException,SubscriptionType}
 
 class FeedletterDbException(msg : String, cause : Throwable = null ) extends FeedletterException(msg, cause)
 
-class UnexpectedlyEmptyResultSet(msg : String, cause : Throwable = null ) extends FeedletterDbException(msg, cause)
-class NonUniqueRow(msg : String, cause : Throwable = null )               extends FeedletterDbException(msg, cause)
-class CannotUpMigrate(msg : String, cause : Throwable = null )            extends FeedletterDbException(msg, cause)
-class NoRecentDump( msg : String, cause : Throwable = null )              extends FeedletterDbException(msg, cause)
-
+class UnexpectedlyEmptyResultSet(msg : String, cause : Throwable = null )           extends FeedletterDbException(msg, cause)
+class NonUniqueRow(msg : String, cause : Throwable = null )                         extends FeedletterDbException(msg, cause)
+class CannotUpMigrate(msg : String, cause : Throwable = null )                      extends FeedletterDbException(msg, cause)
+class NoRecentDump( msg : String, cause : Throwable = null )                        extends FeedletterDbException(msg, cause)
+class DbNotInitialized( msg : String, cause : Throwable = null )                    extends FeedletterDbException(msg, cause)
+class SchemaMigrationRequired( msg : String, cause : Throwable = null )             extends FeedletterDbException(msg, cause)
+class MoreRecentFeedletterVersionRequired( msg : String, cause : Throwable = null ) extends FeedletterDbException(msg, cause)
 
 class AssignableCompleted(
   val feedUrl      : String,

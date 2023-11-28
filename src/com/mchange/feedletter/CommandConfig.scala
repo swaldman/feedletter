@@ -52,6 +52,7 @@ object CommandConfig:
       for
         config <- ZIO.service[Config]
         ds <- ZIO.service[DataSource]
+        _ <- PgDatabase.ensureDb( ds )
         _ <- doAssign( config, ds )
       yield ()
     end zcommand
@@ -61,6 +62,7 @@ object CommandConfig:
       for
         config <- ZIO.service[Config]
         ds <- ZIO.service[DataSource]
+        _ <- PgDatabase.ensureDb( ds )
         _ <- doComplete( config, ds )
       yield ()
     end zcommand
@@ -68,4 +70,4 @@ object CommandConfig:
   case object Sendmail extends CommandConfig
   case object Daemon extends CommandConfig
 sealed trait CommandConfig:
-  def zcommand : ZCommand = ZIO.fail( new NotImplementedError("No zcommand has been implemented for this command") ) // tempory, make abstract when we stabilize
+  def zcommand : ZCommand = ZIO.fail( new NotImplementedError("No zcommand has been implemented for this command") ) // XXX: tempory, make abstract when we stabilize

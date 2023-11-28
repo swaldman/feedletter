@@ -16,6 +16,8 @@ final case class AssignableKey( feedUrl : String, stype : SubscriptionType, with
 enum MetadataKey:
   case SchemaVersion
   case CreatorAppVersion
+
+enum ConfigKey:
   case NextMailBatchTime
   case MailBatchSize
   case MailBatchDelaySecs

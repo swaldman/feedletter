@@ -43,8 +43,45 @@ object PgSchema:
   object V1 extends Base:
     override val Version = 1
       object Table:
+        object Config extends Creatable:
+          val Create = "CREATE TABLE config( key VARCHAR(1024) PRIMARY KEY, value VARCHAR(1024) NOT NULL )"
+          val Insert = "INSERT INTO config VALUES( ?, ? )"
+          val Update = "UPDATE config SET value = ? WHERE key = ?"
+          val Select = "SELECT value FROM config WHERE key = ?"
+          def insert( conn : Connection, key : ConfigKey, value : String ) : Int =
+            Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
+              ps.setString( 1, key.toString() )
+              ps.setString( 2, value )
+              ps.executeUpdate()
+          def update( conn : Connection, key : ConfigKey, newValue : String ) : Int =
+            Using.resource( conn.prepareStatement(this.Update) ): ps =>
+              ps.setString(1, newValue)
+              ps.setString(2, key.toString())
+              ps.executeUpdate()
+          def select( conn : Connection, key : ConfigKey ) : Option[String] =
+            Using.resource( conn.prepareStatement( this.Select ) ): ps =>
+              ps.setString(1, key.toString())
+              Using.resource( ps.executeQuery() ): rs =>
+                zeroOrOneResult("select-config-item", rs)( _.getString(1) )
         object Feed extends Creatable:
-          val Create = "CREATE TABLE feed( url VARCHAR(1024) PRIMARY KEY )"
+          val Create =
+            """|CREATE TABLE feed(
+               |  url VARCHAR(1024),
+               |  min_delay_seconds INTEGER,
+               |  await_stabilization_seconds INTEGER,
+               |  paused BOOLEAN,
+               |  PRIMARY KEY(url)
+               |)""".stripMargin
+          val Insert =
+            """|INSERT INTO feed(url, min_delay_seconds, await_stabilization_seconds, paused)
+               |VALUES( ?, ?, ?, ? )""".stripMargin
+          def insert( conn : Connection, url : String, minDelaySeconds : Int, awaitStabilizationSeconds : Int, paused : Boolean ) =
+            Using.resource(conn.prepareStatement(this.Insert)): ps =>
+              ps.setString(1, url)
+              ps.setInt(2, minDelaySeconds )
+              ps.setInt(3, awaitStabilizationSeconds)
+              ps.setBoolean(4, paused)
+              ps.executeUpdate()
         object Item extends Creatable:
           val Create =
             """|CREATE TABLE item(
