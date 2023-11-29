@@ -9,9 +9,10 @@ import java.lang.System
 
 import com.mchange.feedletter.SubscriptionType
 
-final case class ItemStatus( contentHash : Int, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
+final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
 final case class AssignableWithinTypeInfo( withinTypeId : String, count : Int )
 final case class AssignableKey( feedUrl : String, stype : SubscriptionType, withinTypeId : String )
+final case class FeedInfo( feedUrl : String, minDelaySeconds : Int, awaitStabilizationSeconds : Int, paused : Boolean )
 
 enum MetadataKey:
   case SchemaVersion
@@ -21,6 +22,7 @@ enum ConfigKey:
   case NextMailBatchTime
   case MailBatchSize
   case MailBatchDelaySecs
+  case DumpDirectory
 
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
 

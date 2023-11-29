@@ -3,7 +3,6 @@ package com.mchange.feedletter.db
 import zio.*
 import java.sql.{Connection,Timestamp}
 import javax.sql.DataSource
-import com.mchange.feedletter.Config
 
 import scala.util.Using
 import java.sql.SQLException
@@ -24,20 +23,41 @@ object PgDatabase extends Migratory:
   val DefaultMailBatchSize = 100
   val DefaultMailBatchDelaySeconds = 15 * 60 // 15 mins
 
-  def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
+  private def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
     ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key ) )
 
-  override def dump(config : Config, ds : DataSource) : Task[os.Path] =
-    def runDump( dumpFile : os.Path ) : Task[Unit] =
-      ZIO.attemptBlocking:
-        val parsedCommand = List("pg_dump", config.dbName)
-        os.proc( parsedCommand ).call( stdout = dumpFile )
-    for
-      dumpFile <- Migratory.prepareDumpFileForInstant(config, java.time.Instant.now)
-      _        <- runDump( dumpFile )
-    yield dumpFile
+  private def fetchConfigValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] =
+    ZIO.attemptBlocking( LatestSchema.Table.Config.select( conn, key ) )
 
-  override def dbVersionStatus(config : Config, ds : DataSource) : Task[DbVersionStatus] =
+  private def fetchDbName(conn : Connection) : Task[String] =
+    ZIO.attemptBlocking:
+      Using.resource(conn.createStatement()): stmt =>
+        Using.resource(stmt.executeQuery("SELECT current_database()")): rs =>
+          uniqueResult("select-current-database-name", rs)( _.getString(1) )
+
+  private def fetchDumpDir(conn : Connection) : Task[os.Path] =
+    for
+      mbDumpDir <- fetchConfigValue(conn, ConfigKey.DumpDirectory)
+    yield
+      os.Path( mbDumpDir.getOrElse( throw new ConfigurationMissing(ConfigKey.DumpDirectory) ) )
+
+  override def fetchDumpDir( ds : DataSource ) : Task[os.Path] =
+    withConnection(ds)( fetchDumpDir )
+
+  override def dump(ds : DataSource) : Task[os.Path] =
+    def runDump( dbName : String, dumpFile : os.Path ) : Task[Unit] =
+      ZIO.attemptBlocking:
+        val parsedCommand = List("pg_dump", dbName)
+        os.proc( parsedCommand ).call( stdout = dumpFile )
+    withConnection( ds ): conn =>    
+      for
+        dbName   <- fetchDbName(conn)
+        dumpDir  <- fetchDumpDir(conn)
+        dumpFile <- Migratory.prepareDumpFileForInstant(dumpDir, java.time.Instant.now)
+        _        <- runDump( dbName, dumpFile )
+      yield dumpFile
+
+  override def dbVersionStatus(ds : DataSource) : Task[DbVersionStatus] =
     withConnection( ds ): conn =>
       val okeyDokeyIsh =
         for
@@ -68,7 +88,7 @@ object PgDatabase extends Migratory:
               ZIO.succeed( DbVersionStatus.ConnectionFailed )
   end dbVersionStatus
 
-  override def upMigrate(config : Config, ds : DataSource, from : Option[Int]) : Task[Unit] =
+  override def upMigrate(ds : DataSource, from : Option[Int]) : Task[Unit] =
     def upMigrateFrom_New() : Task[Unit] =
       TRACE.log( "upMigrateFrom_New()" )
       withConnection( ds ): conn =>
@@ -162,23 +182,33 @@ object PgDatabase extends Migratory:
     subscriptionTypes.foreach( stype => assignForSubscriptionType( conn, stype, feedUrl, guid, content, status ) )
     LatestSchema.Table.Item.updateAssigned( conn, feedUrl, guid, true )
 
-  private def updateAssignItem( config : Config, feed : Config.Feed, conn : Connection, guid : String, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
+  private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : String, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     dbStatus match
-      case Some( prev @ ItemStatus( contentHash, lastChecked, stableSince, false ) ) =>
+      case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, false ) ) =>
         val newContentHash = freshContent.##
         if newContentHash == contentHash then
           val newLastChecked = now
-          LatestSchema.Table.Item.updateStable( conn, feed.feedUrl, guid, newLastChecked )
+          LatestSchema.Table.Item.updateStable( conn, fi.feedUrl, guid, newLastChecked )
+          val seenSeconds = JDuration.between(firstSeen, now).getSeconds()
           val stableSeconds = JDuration.between(stableSince, now).getSeconds()
-          if stableSeconds > feed.awaitStabilizationSeconds then
-            assign( conn, feed.feedUrl, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
+          if seenSeconds > fi.minDelaySeconds && stableSeconds > fi.awaitStabilizationSeconds then
+            assign( conn, fi.feedUrl, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
         else
           val newStableSince = now
           val newLastChecked = now
-          LatestSchema.Table.Item.updateChanged( conn, feed.feedUrl, guid, freshContent, ItemStatus( newContentHash, newLastChecked, newStableSince, false ) )
-      case Some( ItemStatus( _, _, _, true ) ) => /* ignore, already assigned */
+          LatestSchema.Table.Item.updateChanged( conn, fi.feedUrl, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, false ) )
+      case Some( ItemStatus( _, _, _, _, true ) ) => /* ignore, already assigned */
       case None =>
-        LatestSchema.Table.Item.insertNew(conn, feed.feedUrl, guid, freshContent)
+        LatestSchema.Table.Item.insertNew(conn, fi.feedUrl, guid, freshContent)
+
+  private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Task[Unit] =
+    ZIO.attemptBlocking:
+      conn.setAutoCommit( false )
+      val FeedDigest( guidToItemContent, timestamp ) = doDigestFeed( fi.feedUrl )
+      guidToItemContent.foreach: ( guid, freshContent ) =>
+        val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedUrl, guid )
+        updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
+      conn.commit()
 
   private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit =
     val AssignableKey( feedUrl, stype, withinTypeId ) = assignableKey
@@ -207,22 +237,18 @@ object PgDatabase extends Migratory:
                 s"The current schema this version of the app (${BuildInfo.version}) is ${LatestSchema.Version}. " +
                 "Please migrate."
               )
-            // else schemaVersion == LatestSchema.version and we're good  
+            // else schemaVersion == LatestSchema.version and we're good
           case None =>
             throw new DbNotInitialized("Please initialize the database.")
   end ensureDb
-  
-  def updateAssignItems( config : Config, feed : Config.Feed, ds : DataSource ) : Task[Unit] =
-    withConnection( ds ): conn =>
-      ZIO.attemptBlocking:
-        conn.setAutoCommit( false )
-        val FeedDigest( guidToItemContent, timestamp )= doDigestFeed( feed.feedUrl )
-        guidToItemContent.foreach: ( guid, freshContent ) =>
-          val dbStatus = LatestSchema.Table.Item.checkStatus( conn, feed.feedUrl, guid )
-          updateAssignItem( config, feed, conn, guid, dbStatus, freshContent, timestamp )
-        conn.commit()
 
-  def completeAssignables( config : Config, ds : DataSource ) : Task[Unit] =
+  def updateAssignItems( ds : DataSource ) : Task[Unit] =
+    Using.resource( ds.getConnection() ): conn =>
+      conn.setAutoCommit(false)
+      val tasks = LatestSchema.Table.Feed.select( conn ).map( updateAssignItems( conn, _ ) )
+      ZIO.collectAllDiscard( tasks )
+
+  def completeAssignables( ds : DataSource ) : Task[Unit] =
     withConnection( ds ): conn =>
       ZIO.attemptBlocking:
         conn.setAutoCommit(false)

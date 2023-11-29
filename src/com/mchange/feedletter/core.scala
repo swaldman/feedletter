@@ -5,14 +5,13 @@ import zio.*
 import java.io.InputStream
 import java.time.Instant
 import javax.sql.DataSource
-import com.mchange.feedletter.Config
 
 import scala.util.Using
 import scala.xml.{Elem,XML}
 
 import scala.collection.immutable
 
-type ZCommand = ZIO[AppSetup & Config & DataSource, Throwable, Any]
+type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
 
 case class FeedDigest( guidToItemContent : immutable.Map[String,ItemContent], timestamp : Instant )
 

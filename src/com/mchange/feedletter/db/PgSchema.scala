@@ -75,6 +75,8 @@ object PgSchema:
           val Insert =
             """|INSERT INTO feed(url, min_delay_seconds, await_stabilization_seconds, paused)
                |VALUES( ?, ?, ?, ? )""".stripMargin
+          val Select =
+            "SELECT url, min_delay_seconds, await_stabilization_seconds, paused FROM feed"
           def insert( conn : Connection, url : String, minDelaySeconds : Int, awaitStabilizationSeconds : Int, paused : Boolean ) =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
               ps.setString(1, url)
@@ -82,6 +84,14 @@ object PgSchema:
               ps.setInt(3, awaitStabilizationSeconds)
               ps.setBoolean(4, paused)
               ps.executeUpdate()
+          def select( conn : Connection ) : Set[FeedInfo] =
+            val builder = Set.newBuilder[FeedInfo]
+            Using.resource( conn.prepareStatement( this.Select ) ): ps =>
+              Using.resource( ps.executeQuery() ): rs =>
+                while rs.next do
+                  builder += FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getBoolean(4) )
+            builder.result()
+
         object Item extends Creatable:
           val Create =
             """|CREATE TABLE item(
@@ -93,6 +103,7 @@ object PgSchema:
                |  publication_date TIMESTAMP,
                |  link VARCHAR(1024),
                |  content_hash INTEGER NOT NULL, -- ItemContent.## (hashCode)
+               |  first_seen TIMESTAMP NOT NULL,
                |  last_checked TIMESTAMP NOT NULL,
                |  stable_since TIMESTAMP NOT NULL,
                |  assigned BOOLEAN NOT NULL,
@@ -100,12 +111,12 @@ object PgSchema:
                |  FOREIGN KEY(feed_url) REFERENCES feed(url)
                |)""".stripMargin
           val SelectCheck =
-            """|SELECT content_hash, last_checked, stable_since, assigned
+            """|SELECT content_hash, first_seen, last_checked, stable_since, assigned
                |FROM item
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val Insert =
-            """|INSERT INTO item(feed_url, guid, title, author, article, publication_date, link, content_hash, last_checked, stable_since, assigned)
-               |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
+            """|INSERT INTO item(feed_url, guid, title, author, article, publication_date, link, content_hash, first_seen, last_checked, stable_since, assigned)
+               |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
           val UpdateChanged =
             """|UPDATE item
                |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assigned = ?
@@ -124,7 +135,7 @@ object PgSchema:
               ps.setString(2, guid)
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("item-check-select", rs): rs =>
-                  ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getBoolean(4) )
+                  ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), rs.getBoolean(5) )
           def updateStable( conn : Connection, feedUrl : String, guid : String, lastChecked : Instant ) =
             Using.resource( conn.prepareStatement( this.UpdateStable) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastChecked))
@@ -164,7 +175,8 @@ object PgSchema:
               ps.setInt( 8, itemContent.## )
               ps.setTimestamp( 9, Timestamp.from( now ) )
               ps.setTimestamp( 10, Timestamp.from( now ) )
-              ps.setBoolean( 11, false )
+              ps.setTimestamp( 11, Timestamp.from( now ) )
+              ps.setBoolean( 12, false )
               ps.executeUpdate()
         object SubscriptionType extends Creatable:
           val Create = "CREATE TABLE subscription_type( stype VARCHAR(32) PRIMARY KEY )"

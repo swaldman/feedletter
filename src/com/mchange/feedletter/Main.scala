@@ -4,7 +4,6 @@ import zio.*
 import zio.cli.{CliApp,Command,Options,ZIOCliDefault}
 import zio.cli.HelpDoc.Span.text
 import com.mchange.feedletter.db.PgDatabase
-import com.mchange.feedletter.Config
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
@@ -13,8 +12,6 @@ import com.mchange.feedletter.db.DbVersionStatus
 
 object Main extends ZIOCliDefault:
   private lazy given logger : MLogger = mlogger( this )
-
-  val LayerConfig : ZLayer[AppSetup, Throwable, Config] = ZLayer.fromZIO( ZIO.attempt( config.config ) )
 
   val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] = ZLayer.fromZIO( ZIO.attempt( config.dataSource ) )
 
@@ -45,5 +42,5 @@ object Main extends ZIOCliDefault:
     command = mainCommand
   ){
     case cc : CommandConfig =>
-      cc.zcommand.provide( AppSetup.live, LayerDataSource, LayerConfig )
+      cc.zcommand.provide( AppSetup.live, LayerDataSource )
   }

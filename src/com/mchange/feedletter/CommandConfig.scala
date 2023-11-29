@@ -2,7 +2,6 @@ package com.mchange.feedletter
 
 import zio.*
 import com.mchange.feedletter.db.{DbVersionStatus,PgDatabase}
-import com.mchange.feedletter.Config
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
@@ -15,55 +14,50 @@ object CommandConfig:
   case object DbDump extends CommandConfig:
     override def zcommand : ZCommand =
       for
-        config <- ZIO.service[Config]
         ds     <- ZIO.service[DataSource]
-        out    <- PgDatabase.dump(config, ds)
+        out    <- PgDatabase.dump(ds)
       yield
         INFO.log(s"The database was successfully dumped to '${out}'.")
     end zcommand  
   case object DbInit extends CommandConfig:
     override def zcommand : ZCommand =
-      def doInit( config : Config, ds : DataSource, status : DbVersionStatus ) : Task[Unit] =
-        if status == DbVersionStatus.SchemaMetadataNotFound then PgDatabase.migrate(config, ds)
+      def doInit( ds : DataSource, status : DbVersionStatus ) : Task[Unit] =
+        if status == DbVersionStatus.SchemaMetadataNotFound then PgDatabase.migrate(ds)
         else
           status match
             case DbVersionStatus.Current(_) => ZIO.succeed( INFO.log("The database is already initialized and up-to-date." ) )
             case DbVersionStatus.OutOfDate( _, _) => ZIO.succeed( INFO.log("The database is already initialized, but out-of-date. Please migrate.") )
             case other => throw new FeedletterException(s"""${other}: ${other.errMessage.getOrElse("<no message available>")}""")
       for
-        config <- ZIO.service[Config]
         ds     <- ZIO.service[DataSource]
-        status <- PgDatabase.dbVersionStatus(config, ds)
-        _      <- doInit( config, ds, status )
+        status <- PgDatabase.dbVersionStatus(ds)
+        _      <- doInit( ds, status )
       yield ()
     end zcommand  
   case class DbMigrate( force : Boolean ) extends CommandConfig:
     override def zcommand: ZCommand =
-      def doMigrate( config : Config, ds : DataSource ) = if force then PgDatabase.migrate(config, ds) else PgDatabase.cautiousMigrate(config, ds)
+      def doMigrate( ds : DataSource ) = if force then PgDatabase.migrate(ds) else PgDatabase.cautiousMigrate(ds)
       for
-        config <- ZIO.service[Config]
         ds <- ZIO.service[DataSource]
-        _ <- doMigrate( config, ds )
+        _ <- doMigrate( ds )
       yield ()
     end zcommand
   case object CrankAssign extends CommandConfig:
     override def zcommand: ZCommand =
-      def doAssign( config : Config, ds : DataSource ) = ZIO.collectAllParDiscard( config.feeds.map( PgDatabase.updateAssignItems( config, _, ds) ) )
+      def doAssign( ds : DataSource ) = PgDatabase.updateAssignItems(ds)
       for
-        config <- ZIO.service[Config]
         ds <- ZIO.service[DataSource]
         _ <- PgDatabase.ensureDb( ds )
-        _ <- doAssign( config, ds )
+        _ <- doAssign( ds )
       yield ()
     end zcommand
   case object CrankComplete extends CommandConfig:
     override def zcommand: ZCommand =
-      def doComplete( config : Config, ds : DataSource ) = PgDatabase.completeAssignables( config, ds )
+      def doComplete( ds : DataSource ) = PgDatabase.completeAssignables( ds )
       for
-        config <- ZIO.service[Config]
         ds <- ZIO.service[DataSource]
         _ <- PgDatabase.ensureDb( ds )
-        _ <- doComplete( config, ds )
+        _ <- doComplete( ds )
       yield ()
     end zcommand
   case object Update extends CommandConfig
