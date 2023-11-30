@@ -28,7 +28,10 @@ def releaseConnection( conn : Connection ) : UIO[Unit] = ZIO.succeed:
       System.err.println("Best-attempt close() of Connection yielded a throwable!")
       t.printStackTrace()
 
-def withConnection[T]( ds : DataSource )( operation : Connection => Task[T]) : Task[T] =
+def withConnection[T]( ds : DataSource )( operation : Connection => T ) : Task[T] =
+  withConnectionZIO( ds )( conn => ZIO.attemptBlocking( operation(conn) ) )
+
+def withConnectionZIO[T]( ds : DataSource )( operation : Connection => Task[T]) : Task[T] =
   ZIO.acquireReleaseWith(acquireConnection(ds))( releaseConnection )( operation )
 
 private def _inTransactionZIO[T]( conn : Connection )( transactioningHappyPath : Connection => Task[T]) : Task[T] =
@@ -47,7 +50,7 @@ def inTransaction[T]( conn : Connection )( op : Connection => T) : Task[T] =
   _inTransactionZIO(conn)(transactioningHappyPath)
 
 def withConnectionTransactional[T]( ds : DataSource )( op : Connection => T) : Task[T] =
-  withConnection(ds)( conn => inTransaction(conn)( op ) )
+  withConnectionZIO(ds)( conn => inTransaction(conn)( op ) )
 
 def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task[T] =
   val transactioningHappyPath = (cxn : Connection ) =>
@@ -59,7 +62,7 @@ def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task
   _inTransactionZIO(conn)(transactioningHappyPath)
 
 def withConnectionTransactionalZIO[T]( ds : DataSource )( op : Connection => Task[T] ) : Task[T] =
-  withConnection(ds)( conn => inTransactionZIO(conn)( op ) )
+  withConnectionZIO(ds)( conn => inTransactionZIO(conn)( op ) )
 
 def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : T =
   if !rs.next() then

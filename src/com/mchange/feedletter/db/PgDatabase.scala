@@ -43,14 +43,14 @@ object PgDatabase extends Migratory:
       os.Path( mbDumpDir.getOrElse( throw new ConfigurationMissing(ConfigKey.DumpDbDir) ) )
 
   override def fetchDumpDir( ds : DataSource ) : Task[os.Path] =
-    withConnection(ds)( fetchDumpDir )
+    withConnectionZIO(ds)( fetchDumpDir )
 
   override def dump(ds : DataSource) : Task[os.Path] =
     def runDump( dbName : String, dumpFile : os.Path ) : Task[Unit] =
       ZIO.attemptBlocking:
         val parsedCommand = List("pg_dump", dbName)
         os.proc( parsedCommand ).call( stdout = dumpFile )
-    withConnection( ds ): conn =>    
+    withConnectionZIO( ds ): conn =>    
       for
         dbName   <- fetchDbName(conn)
         dumpDir  <- fetchDumpDir(conn)
@@ -59,7 +59,7 @@ object PgDatabase extends Migratory:
       yield dumpFile
 
   override def dbVersionStatus(ds : DataSource) : Task[DbVersionStatus] =
-    withConnection( ds ): conn =>
+    withConnectionZIO( ds ): conn =>
       val okeyDokeyIsh =
         for
           mbDbVersion <- fetchMetadataValue(conn, MetadataKey.SchemaVersion)
@@ -222,7 +222,7 @@ object PgDatabase extends Migratory:
       LatestSchema.Table.Mailable.insert( conn, email, feedUrl, stype, withinTypeId, false )
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
-    withConnection( ds ): conn =>
+    withConnectionZIO( ds ): conn =>
       for
         mbSchemaVersion <- fetchMetadataValue(conn, MetadataKey.SchemaVersion).map( option => option.map( _.toInt ) )
         mbAppVersion <- fetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
