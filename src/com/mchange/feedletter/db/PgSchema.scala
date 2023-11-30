@@ -4,7 +4,7 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.{ConfigKey,ItemContent,SubscriptionType}
+import com.mchange.feedletter.{ConfigKey,FeedInfo,ItemContent,SubscriptionType}
 
 object PgSchema:
   trait Creatable:
@@ -97,7 +97,14 @@ object PgSchema:
                |VALUES( ?, ?, ?, ? )""".stripMargin
           val Select =
             "SELECT url, min_delay_seconds, await_stabilization_seconds, paused FROM feed"
-          def insert( conn : Connection, url : String, minDelaySeconds : Int, awaitStabilizationSeconds : Int, paused : Boolean ) =
+          val Upsert =
+            """|INSERT INTO feed(url, min_delay_seconds, await_stabilization_seconds, paused)
+               |VALUES ( ?, ?, ?, ? )
+               |ON CONFLICT(url) DO UPDATE
+               |SET min_delay_seconds = ?, await_stabilization_seconds = ?, paused = ?""".stripMargin
+          def insert( conn : Connection, fi : FeedInfo ) : Int =
+            insert(conn, fi.feedUrl, fi.minDelaySeconds, fi.awaitStabilizationSeconds, fi.paused)
+          def insert( conn : Connection, url : String, minDelaySeconds : Int, awaitStabilizationSeconds : Int, paused : Boolean ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
               ps.setString(1, url)
               ps.setInt(2, minDelaySeconds )
@@ -111,6 +118,16 @@ object PgSchema:
                 while rs.next do
                   builder += FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getBoolean(4) )
             builder.result()
+          def upsert( conn : Connection, fi : FeedInfo ) =
+            Using.resource( conn.prepareStatement(this.Upsert) ): ps =>
+              ps.setString(1, fi.feedUrl)
+              ps.setInt(2, fi.minDelaySeconds )
+              ps.setInt(3, fi.awaitStabilizationSeconds)
+              ps.setBoolean(4, fi.paused)
+              ps.setInt(5, fi.minDelaySeconds )
+              ps.setInt(6, fi.awaitStabilizationSeconds)
+              ps.setBoolean(7, fi.paused)
+              ps.executeUpdate()
 
         object Item extends Creatable:
           val Create =

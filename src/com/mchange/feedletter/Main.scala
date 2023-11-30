@@ -34,16 +34,24 @@ object Main extends ZIOCliDefault:
     (dumpDbDirOption ++ mailBatchSizeOption ++ mailBatchDelaySecs).map( _.toList.collect { case Some(tup) => tup }.toMap )
   val configSetCommand = Command("set", configSetOptions).map( settings => CommandConfig.ConfigSet(settings) )
 
+  val configListCommand = Command("list").map( _ => CommandConfig.ConfigList )
+
   val configAddFeedOptions =
     val minDelaySecsOption = Options.integer("min-delay-secs").map( _.toInt).withDefault(1800)
     val awaitStabilizationSecsOption = Options.integer("await-stabilization-secs").map( _.toInt ).withDefault(900)
-    (minDelaySecsOption ++ awaitStabilizationSecsOption)
+    val pausedOption = Options.boolean("paused")
+    (minDelaySecsOption ++ awaitStabilizationSecsOption ++ pausedOption)
 
   val configAddFeedArgs = Args.text("feed-url")
 
-  val configAddFeedCommand = Command("add-feed", configAddFeedOptions, configAddFeedArgs).map( println )
+  val configAddFeedCommand = Command("add-feed", configAddFeedOptions, configAddFeedArgs).map { case ((minDelaySecs, awaitStabilizationSecs, paused), feedUrl) =>
+    val fi = FeedInfo(feedUrl, minDelaySecs, awaitStabilizationSecs, paused )
+    CommandConfig.ConfigAddFeed( fi )
+  }
 
-  val configCommand = Command("config").subcommands( configAddFeedCommand, configSetCommand )
+  val configListFeedsCommand = Command("list-feeds").map( _ => CommandConfig.ConfigListFeeds )
+
+  val configCommand = Command("config").subcommands( configListCommand, configListFeedsCommand, configAddFeedCommand, configSetCommand )
 
   val sendmailCommand = Command("sendmail").map( _ => CommandConfig.Sendmail )
 

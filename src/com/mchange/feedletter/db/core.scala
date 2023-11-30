@@ -12,7 +12,6 @@ import com.mchange.feedletter.SubscriptionType
 final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
 final case class AssignableWithinTypeInfo( withinTypeId : String, count : Int )
 final case class AssignableKey( feedUrl : String, stype : SubscriptionType, withinTypeId : String )
-final case class FeedInfo( feedUrl : String, minDelaySeconds : Int, awaitStabilizationSeconds : Int, paused : Boolean )
 
 enum MetadataKey:
   case SchemaVersion
@@ -38,12 +37,12 @@ private def _inTransactionZIO[T]( conn : Connection )( transactioningHappyPath :
   val rollback : PartialFunction[Throwable,Task[T]] =
     case NonFatal(t) =>
       ZIO.attemptBlocking( conn.rollback() ) *> ZIO.fail(t)
-  val unsetAutocommit = ZIO.attemptBlocking( conn.setAutoCommit(false) ).logError.catchAll( _ => ZIO.unit )
-  transactioningHappyPath(conn).catchSome( rollback ).ensuring( unsetAutocommit )
+  val resetAutocommit = ZIO.attemptBlocking( conn.setAutoCommit(true) ).logError.catchAll( _ => ZIO.unit )
+  transactioningHappyPath(conn).catchSome( rollback ).ensuring( resetAutocommit )
 
 def inTransaction[T]( conn : Connection )( op : Connection => T) : Task[T] =
   val transactioningHappyPath = (cxn : Connection) => ZIO.attemptBlocking:
-    cxn.setAutoCommit(true)
+    cxn.setAutoCommit(false)
     val out = op(cxn)
     cxn.commit()
     out
@@ -55,7 +54,7 @@ def withConnectionTransactional[T]( ds : DataSource )( op : Connection => T) : T
 def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task[T] =
   val transactioningHappyPath = (cxn : Connection ) =>
     for
-      _ <- ZIO.attemptBlocking( cxn.setAutoCommit(true) )
+      _ <- ZIO.attemptBlocking( cxn.setAutoCommit(false) )
       out <- op(cxn)
       _ <- ZIO.attemptBlocking( cxn.commit() )
     yield out

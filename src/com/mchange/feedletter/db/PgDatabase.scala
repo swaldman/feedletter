@@ -13,7 +13,7 @@ import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, FeedDigest, ItemContent, SubscriptionType}
+import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -149,13 +149,19 @@ object PgDatabase extends Migratory:
   private def upsertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.upsert(conn, cfgkey, value) )
 
+  private def sort( tups : Set[Tuple2[ConfigKey,String]] ) : immutable.SortedSet[Tuple2[ConfigKey,String]] =
+    immutable.SortedSet.from( tups )( using Ordering.by( tup => (tup(0).toString().toUpperCase, tup(1) ) ) )
+
   private def upsertConfigKeyMapAndReport( conn : Connection, map : Map[ConfigKey,String] ) : immutable.SortedSet[Tuple2[ConfigKey,String]] =
     upsertConfigKeys( conn, map.toList* )
-    val tups = LatestSchema.Table.Config.selectTuples(conn)
-    immutable.SortedSet.from( tups )( using Ordering.by( tup => (tup(0).toString().toUpperCase, tup(1) ) ) )
+    sort( LatestSchema.Table.Config.selectTuples(conn) )
+
 
   def upsertConfigKeyMapAndReport( ds : DataSource, map : Map[ConfigKey,String] ) : Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
     withConnectionTransactional( ds )( conn => upsertConfigKeyMapAndReport( conn, map ) )
+
+  def reportConfigKeys( ds : DataSource ): Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
+    withConnection( ds )( conn => sort( LatestSchema.Table.Config.selectTuples( conn ) ) )
 
   private def lastCompletedAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[AssignableWithinTypeInfo] =
     val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, stype )
@@ -262,5 +268,14 @@ object PgDatabase extends Migratory:
         if stype.isComplete( withinTypeId, count, Instant.now ) then
           populateMailable( conn, ak )
           LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stype, withinTypeId, true )
+
+  def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.Feed.upsert(conn, fi)
+      LatestSchema.Table.Feed.select(conn)
+
+  def listFeeds( ds : DataSource ) : Task[Set[FeedInfo]] =
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.Feed.select(conn)
 
 
