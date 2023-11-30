@@ -106,6 +106,7 @@ object PgDatabase extends Migratory:
         Using.resource( conn.createStatement() ): stmt =>
           PgSchema.V1.Table.Config.create( stmt )
           PgSchema.V1.Table.Feed.create( stmt )
+          PgSchema.V1.Table.Item.Type.ItemAssignability.create( stmt )
           PgSchema.V1.Table.Item.create( stmt )
           PgSchema.V1.Table.SubscriptionType.create( stmt )
           PgSchema.V1.Table.Assignable.create( stmt )
@@ -192,11 +193,11 @@ object PgDatabase extends Migratory:
   private def assign( conn : Connection, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
     val subscriptionTypes = LatestSchema.Table.Subscription.selectSubscriptionTypeByFeedUrl( conn, feedUrl )
     subscriptionTypes.foreach( stype => assignForSubscriptionType( conn, stype, feedUrl, guid, content, status ) )
-    LatestSchema.Table.Item.updateAssigned( conn, feedUrl, guid, true )
+    LatestSchema.Table.Item.updateAssignability( conn, feedUrl, guid, ItemAssignability.Assigned )
 
   private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : String, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     dbStatus match
-      case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, false ) ) =>
+      case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Unassigned ) ) =>
         val newContentHash = freshContent.##
         if newContentHash == contentHash then
           val newLastChecked = now
@@ -208,10 +209,11 @@ object PgDatabase extends Migratory:
         else
           val newStableSince = now
           val newLastChecked = now
-          LatestSchema.Table.Item.updateChanged( conn, fi.feedUrl, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, false ) )
-      case Some( ItemStatus( _, _, _, _, true ) ) => /* ignore, already assigned */
+          LatestSchema.Table.Item.updateChanged( conn, fi.feedUrl, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
+      case Some( ItemStatus( _, _, _, _, ItemAssignability.Assigned ) ) => /* ignore, already assigned */
+      case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
-        LatestSchema.Table.Item.insertNew(conn, fi.feedUrl, guid, freshContent)
+        LatestSchema.Table.Item.insertNew(conn, fi.feedUrl, guid, freshContent, ItemAssignability.Unassigned)
 
   private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Task[Unit] =
     ZIO.attemptBlocking:

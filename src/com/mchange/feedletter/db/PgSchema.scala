@@ -130,6 +130,9 @@ object PgSchema:
               ps.executeUpdate()
 
         object Item extends Creatable:
+          object Type:
+            object ItemAssignability extends Creatable:
+              val Create = "CREATE TYPE ItemAssignability AS ENUM ('Unassigned', 'Assigned', 'Excluded')"
           val Create =
             """|CREATE TABLE item(
                |  feed_url VARCHAR(1024),
@@ -143,28 +146,28 @@ object PgSchema:
                |  first_seen TIMESTAMP NOT NULL,
                |  last_checked TIMESTAMP NOT NULL,
                |  stable_since TIMESTAMP NOT NULL,
-               |  assigned BOOLEAN NOT NULL,
+               |  assignability ItemAssignability NOT NULL,
                |  PRIMARY KEY(feed_url, guid),
                |  FOREIGN KEY(feed_url) REFERENCES feed(url)
                |)""".stripMargin
           val SelectCheck =
-            """|SELECT content_hash, first_seen, last_checked, stable_since, assigned
+            """|SELECT content_hash, first_seen, last_checked, stable_since, assignability
                |FROM item
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val Insert =
-            """|INSERT INTO item(feed_url, guid, title, author, article, publication_date, link, content_hash, first_seen, last_checked, stable_since, assigned)
+            """|INSERT INTO item(feed_url, guid, title, author, article, publication_date, link, content_hash, first_seen, last_checked, stable_since, assignability)
                |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
           val UpdateChanged =
             """|UPDATE item
-               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assigned = ?
+               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assignability = ?
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val UpdateStable =
             """|UPDATE item
                |SET last_checked = ?
                |WHERE feed_url = ? AND guid = ?""".stripMargin
-          val UpdateAssigned =
+          val UpdateAssignability =
             """|UPDATE item
-               |SET assigned = ?
+               |SET assignability = ?
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           def checkStatus( conn : Connection, feedUrl : String, guid : String ) : Option[ItemStatus] =
             Using.resource( conn.prepareStatement( SelectCheck ) ): ps =>
@@ -172,7 +175,7 @@ object PgSchema:
               ps.setString(2, guid)
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("item-check-select", rs): rs =>
-                  ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), rs.getBoolean(5) )
+                  ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), ItemAssignability.valueOf(rs.getString(5)) )
           def updateStable( conn : Connection, feedUrl : String, guid : String, lastChecked : Instant ) =
             Using.resource( conn.prepareStatement( this.UpdateStable) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastChecked))
@@ -189,17 +192,17 @@ object PgSchema:
               ps.setInt(6, newStatus.contentHash)
               ps.setTimestamp(7, Timestamp.from(newStatus.lastChecked))
               ps.setTimestamp(8, Timestamp.from(newStatus.stableSince))
-              ps.setBoolean(9, newStatus.assigned)
+              ps.setString(9, newStatus.assignability.toString())
               ps.setString(10, feedUrl)
               ps.setString(11, guid)
               ps.executeUpdate()
-          def updateAssigned( conn : Connection, feedUrl : String, guid : String, assigned : Boolean ) =
-            Using.resource( conn.prepareStatement( this.UpdateAssigned) ): ps =>
-              ps.setBoolean(1, assigned)
+          def updateAssignability( conn : Connection, feedUrl : String, guid : String, assignability : ItemAssignability ) =
+            Using.resource( conn.prepareStatement( this.UpdateAssignability) ): ps =>
+              ps.setString(1, assignability.toString())
               ps.setString(2, feedUrl)
               ps.setString(3, guid)
               ps.executeUpdate()
-          def insertNew( conn : Connection, feedUrl : String, guid : String, itemContent : ItemContent ) : Int =
+          def insertNew( conn : Connection, feedUrl : String, guid : String, itemContent : ItemContent, assignability : ItemAssignability ) : Int =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               val now = Instant.now
               ps.setString( 1, feedUrl )
@@ -213,7 +216,7 @@ object PgSchema:
               ps.setTimestamp( 9, Timestamp.from( now ) )
               ps.setTimestamp( 10, Timestamp.from( now ) )
               ps.setTimestamp( 11, Timestamp.from( now ) )
-              ps.setBoolean( 12, false )
+              ps.setString( 12, assignability.toString() )
               ps.executeUpdate()
         object SubscriptionType extends Creatable:
           val Create = "CREATE TABLE subscription_type( stype VARCHAR(32) PRIMARY KEY )"

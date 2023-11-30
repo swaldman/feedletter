@@ -8,14 +8,20 @@ import scala.util.control.NonFatal
 import java.lang.System
 
 import com.mchange.feedletter.SubscriptionType
+import javax.print.attribute.standard.OutputDeviceAssigned
 
-final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assigned : Boolean )
+final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assignability : ItemAssignability )
 final case class AssignableWithinTypeInfo( withinTypeId : String, count : Int )
 final case class AssignableKey( feedUrl : String, stype : SubscriptionType, withinTypeId : String )
 
 enum MetadataKey:
   case SchemaVersion
   case CreatorAppVersion
+
+enum ItemAssignability:
+  case Unassigned
+  case Assigned
+  case Excluded
 
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
 
