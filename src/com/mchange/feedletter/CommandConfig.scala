@@ -6,7 +6,10 @@ import com.mchange.feedletter.db.{DbVersionStatus,PgDatabase}
 import com.mchange.sc.v1.log.*
 import MLevel.*
 
+import com.mchange.sc.v1.texttable
+
 import javax.sql.DataSource
+import com.mchange.feedletter.Main.forceOption
 
 object CommandConfig:
   private lazy given logger : MLogger = mlogger( this )
@@ -60,8 +63,17 @@ object CommandConfig:
         _ <- doComplete( ds )
       yield ()
     end zcommand
+  case class ConfigSet( settings : Map[ConfigKey,String] ) extends CommandConfig:
+    val Columns = Seq( texttable.Column("Configuration Key"), texttable.Column("Value") )
+    override def zcommand : ZCommand =
+      for
+        ds <- ZIO.service[DataSource]
+        ss <- PgDatabase.upsertConfigKeyMapAndReport( ds, settings )
+        _  <- ZIO.attempt( texttable.printProductTable( Columns )( ss.toList.map( texttable.Row.apply ) ) )
+      yield ()
+    end zcommand  
   case object Update extends CommandConfig
   case object Sendmail extends CommandConfig
   case object Daemon extends CommandConfig
 sealed trait CommandConfig:
-  def zcommand : ZCommand = ZIO.fail( new NotImplementedError("No zcommand has been implemented for this command") ) // XXX: tempory, make abstract when we stabilize
+  def zcommand : ZCommand = ZIO.fail( new NotImplementedError("No zcommand has been implemented for this command") ) // XXX: temporary, make abstract when we stabilize

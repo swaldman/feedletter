@@ -1,6 +1,10 @@
 package com.mchange.feedletter.db
 
-import com.mchange.feedletter.{FeedletterException,SubscriptionType}
+import com.mchange.feedletter.{
+  ConfigKey,
+  FeedletterException,
+  SubscriptionType
+}
 
 class FeedletterDbException(msg : String, cause : Throwable = null ) extends FeedletterException(msg, cause)
 

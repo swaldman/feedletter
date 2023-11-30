@@ -15,10 +15,10 @@ object ItemContent:
 
   private def lenientRdfContentNamespace(node : Node ) : Boolean =
     node.namespace.contains("://purl.org/rss/1.0/modules/content")
-  
+
   private def lenientDublinCoreNamespace(node : Node ) : Boolean =
     node.namespace.contains("://purl.org/dc/elements/1.1")
-  
+
   def fromItemElem( itemElem : Elem ) : ItemContent =
     def extractCreatorAuthor : Option[String] =
       def mbCreator = (itemElem \ "creator").filter(lenientDublinCoreNamespace).headOption.map( _.text.trim )
@@ -41,6 +41,9 @@ object ItemContent:
       def straightLink = (itemElem \ "link").headOption
       (guidLink orElse origLink orElse straightLink).map( _.text.trim )
     ItemContent( extractTitle, extractCreatorAuthor, extractContent, extractPubDate, extractLink )
-    
+
+  val Empty = ItemContent( None, None, None, None, None )
+  val EmptyHashCode = Empty.##
+
 case class ItemContent( title : Option[String], author : Option[String], article : Option[String], pubDate : Option[Instant], link : Option[String] )
 

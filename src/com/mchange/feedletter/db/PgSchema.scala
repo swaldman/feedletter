@@ -4,7 +4,7 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.{ItemContent,SubscriptionType}
+import com.mchange.feedletter.{ConfigKey,ItemContent,SubscriptionType}
 
 object PgSchema:
   trait Creatable:
@@ -17,7 +17,7 @@ object PgSchema:
       object Metadata extends Creatable:
         val Name = "metadata"
         val Create = "CREATE TABLE metadata( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
-        val Insert = "INSERT INTO metadata VALUES( ?, ? )"
+        val Insert = "INSERT INTO metadata(key, value) VALUES( ?, ? )"
         val Update = "UPDATE metadata SET value = ? WHERE key = ?"
         val Select = "SELECT value FROM metadata WHERE key = ?"
         def insert( conn : Connection, key : MetadataKey, value : String ) : Int =
@@ -45,9 +45,15 @@ object PgSchema:
       object Table:
         object Config extends Creatable:
           val Create = "CREATE TABLE config( key VARCHAR(1024) PRIMARY KEY, value VARCHAR(1024) NOT NULL )"
-          val Insert = "INSERT INTO config VALUES( ?, ? )"
+          val Insert = "INSERT INTO config(key, value) VALUES( ?, ? )"
           val Update = "UPDATE config SET value = ? WHERE key = ?"
           val Select = "SELECT value FROM config WHERE key = ?"
+          val SelectTuples = "SELECT key, value FROM config"
+          val Upsert =
+            """|INSERT INTO config(key, value)
+               |VALUES ( ?, ? )
+               |ON CONFLICT(key) DO UPDATE
+               |SET value = ?""".stripMargin
           def insert( conn : Connection, key : ConfigKey, value : String ) : Int =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString( 1, key.toString() )
@@ -63,6 +69,20 @@ object PgSchema:
               ps.setString(1, key.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("select-config-item", rs)( _.getString(1) )
+          def upsert( conn : Connection, key : ConfigKey, value : String ) =
+            Using.resource( conn.prepareStatement( this.Upsert ) ): ps =>
+              ps.setString(1, key.toString())
+              ps.setString(2, value )
+              ps.setString(3, value )
+              ps.executeUpdate()
+          def selectTuples( conn : Connection ) : Set[Tuple2[ConfigKey,String]] =
+            Using.resource( conn.prepareStatement( this.SelectTuples ) ): ps =>
+              Using.resource( ps.executeQuery() ): rs =>
+                val builder = Set.newBuilder[Tuple2[ConfigKey,String]]
+                while rs.next() do
+                  builder += Tuple2( ConfigKey.valueOf( rs.getString(1) ), rs.getString(2) )
+                builder.result()
+
         object Feed extends Creatable:
           val Create =
             """|CREATE TABLE feed(

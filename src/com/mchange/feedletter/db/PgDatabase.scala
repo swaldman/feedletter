@@ -4,6 +4,7 @@ import zio.*
 import java.sql.{Connection,Timestamp}
 import javax.sql.DataSource
 
+import scala.collection.immutable
 import scala.util.Using
 import java.sql.SQLException
 import java.time.{Duration as JDuration,Instant,ZonedDateTime}
@@ -12,7 +13,7 @@ import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.{doDigestFeed, BuildInfo, FeedDigest, ItemContent, SubscriptionType}
+import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, FeedDigest, ItemContent, SubscriptionType}
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -37,9 +38,9 @@ object PgDatabase extends Migratory:
 
   private def fetchDumpDir(conn : Connection) : Task[os.Path] =
     for
-      mbDumpDir <- fetchConfigValue(conn, ConfigKey.DumpDirectory)
+      mbDumpDir <- fetchConfigValue(conn, ConfigKey.DumpDbDir)
     yield
-      os.Path( mbDumpDir.getOrElse( throw new ConfigurationMissing(ConfigKey.DumpDirectory) ) )
+      os.Path( mbDumpDir.getOrElse( throw new ConfigurationMissing(ConfigKey.DumpDbDir) ) )
 
   override def fetchDumpDir( ds : DataSource ) : Task[os.Path] =
     withConnection(ds)( fetchDumpDir )
@@ -91,44 +92,38 @@ object PgDatabase extends Migratory:
   override def upMigrate(ds : DataSource, from : Option[Int]) : Task[Unit] =
     def upMigrateFrom_New() : Task[Unit] =
       TRACE.log( "upMigrateFrom_New()" )
-      withConnection( ds ): conn =>
-        ZIO.attemptBlocking:
-          conn.setAutoCommit(false)
-          PgSchema.Unversioned.Table.Metadata.create( conn )
-          insertMetadataKeys(
-            conn,
-            (MetadataKey.SchemaVersion, "0"),
-            (MetadataKey.CreatorAppVersion, BuildInfo.version)
-          )
-          conn.commit()
+      withConnectionTransactional( ds ): conn =>
+        PgSchema.Unversioned.Table.Metadata.create( conn )
+        insertMetadataKeys(
+          conn,
+          (MetadataKey.SchemaVersion, "0"),
+          (MetadataKey.CreatorAppVersion, BuildInfo.version)
+        )
 
     def upMigrateFrom_0() : Task[Unit] =
       TRACE.log( "upMigrateFrom_0()" )
-      withConnection( ds ): conn =>
-        ZIO.attemptBlocking:
-          conn.setAutoCommit(false)
-          Using.resource( conn.createStatement() ): stmt =>
-            PgSchema.V1.Table.Config.create( stmt )
-            PgSchema.V1.Table.Feed.create( stmt )
-            PgSchema.V1.Table.Item.create( stmt )
-            PgSchema.V1.Table.SubscriptionType.create( stmt )
-            PgSchema.V1.Table.Assignable.create( stmt )
-            PgSchema.V1.Table.Assignment.create( stmt )
-            PgSchema.V1.Table.Subscription.create( stmt )
-            PgSchema.V1.Table.Mailable.create( stmt )
-            PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
-          insertConfigKeys(
-            conn,
-            (ConfigKey.NextMailBatchTime, formatPubDate(ZonedDateTime.now)),
-            (ConfigKey.MailBatchSize, DefaultMailBatchSize.toString()),
-            (ConfigKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString())
-          )
-          updateMetadataKeys(
-            conn,
-            (MetadataKey.SchemaVersion, "1"),
-            (MetadataKey.CreatorAppVersion, BuildInfo.version)
-          )
-          conn.commit()
+      withConnectionTransactional( ds ): conn =>
+        Using.resource( conn.createStatement() ): stmt =>
+          PgSchema.V1.Table.Config.create( stmt )
+          PgSchema.V1.Table.Feed.create( stmt )
+          PgSchema.V1.Table.Item.create( stmt )
+          PgSchema.V1.Table.SubscriptionType.create( stmt )
+          PgSchema.V1.Table.Assignable.create( stmt )
+          PgSchema.V1.Table.Assignment.create( stmt )
+          PgSchema.V1.Table.Subscription.create( stmt )
+          PgSchema.V1.Table.Mailable.create( stmt )
+          PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
+        insertConfigKeys(
+          conn,
+          (ConfigKey.MailNextBatchTime, formatPubDate(ZonedDateTime.now)),
+          (ConfigKey.MailBatchSize, DefaultMailBatchSize.toString()),
+          (ConfigKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString())
+        )
+        updateMetadataKeys(
+          conn,
+          (MetadataKey.SchemaVersion, "1"),
+          (MetadataKey.CreatorAppVersion, BuildInfo.version)
+        )
 
     TRACE.log( s"upMigrate( from=${from} )" )
     from match
@@ -150,6 +145,17 @@ object PgDatabase extends Migratory:
 
   private def updateConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.update(conn, cfgkey, value) )
+
+  private def upsertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
+    pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.upsert(conn, cfgkey, value) )
+
+  private def upsertConfigKeyMapAndReport( conn : Connection, map : Map[ConfigKey,String] ) : immutable.SortedSet[Tuple2[ConfigKey,String]] =
+    upsertConfigKeys( conn, map.toList* )
+    val tups = LatestSchema.Table.Config.selectTuples(conn)
+    immutable.SortedSet.from( tups )( using Ordering.by( tup => (tup(0).toString().toUpperCase, tup(1) ) ) )
+
+  def upsertConfigKeyMapAndReport( ds : DataSource, map : Map[ConfigKey,String] ) : Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
+    withConnectionTransactional( ds )( conn => upsertConfigKeyMapAndReport( conn, map ) )
 
   private def lastCompletedAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[AssignableWithinTypeInfo] =
     val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, stype )
@@ -243,21 +249,18 @@ object PgDatabase extends Migratory:
   end ensureDb
 
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
-    Using.resource( ds.getConnection() ): conn =>
-      conn.setAutoCommit(false)
-      val tasks = LatestSchema.Table.Feed.select( conn ).map( updateAssignItems( conn, _ ) )
-      ZIO.collectAllDiscard( tasks )
+    withConnectionTransactionalZIO( ds ): conn =>
+      for
+        _ <-  ZIO.collectAllDiscard( LatestSchema.Table.Feed.select( conn ).map( updateAssignItems( conn, _ ) ) )
+      yield ()
 
   def completeAssignables( ds : DataSource ) : Task[Unit] =
-    withConnection( ds ): conn =>
-      ZIO.attemptBlocking:
-        conn.setAutoCommit(false)
-        LatestSchema.Table.Assignable.selectOpen( conn ).foreach: ak =>
-          val AssignableKey( feedUrl, stype, withinTypeId ) = ak
-          val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, withinTypeId )
-          if stype.isComplete( withinTypeId, count, Instant.now ) then
-            populateMailable( conn, ak )
-            LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stype, withinTypeId, true )
-
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.Assignable.selectOpen( conn ).foreach: ak =>
+        val AssignableKey( feedUrl, stype, withinTypeId ) = ak
+        val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, withinTypeId )
+        if stype.isComplete( withinTypeId, count, Instant.now ) then
+          populateMailable( conn, ak )
+          LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stype, withinTypeId, true )
 
 

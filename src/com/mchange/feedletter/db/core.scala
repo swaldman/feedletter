@@ -18,12 +18,6 @@ enum MetadataKey:
   case SchemaVersion
   case CreatorAppVersion
 
-enum ConfigKey:
-  case NextMailBatchTime
-  case MailBatchSize
-  case MailBatchDelaySecs
-  case DumpDirectory
-
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
 
 def releaseConnection( conn : Connection ) : UIO[Unit] = ZIO.succeed:
@@ -33,9 +27,39 @@ def releaseConnection( conn : Connection ) : UIO[Unit] = ZIO.succeed:
     case NonFatal(t) =>
       System.err.println("Best-attempt close() of Connection yielded a throwable!")
       t.printStackTrace()
-      
+
 def withConnection[T]( ds : DataSource )( operation : Connection => Task[T]) : Task[T] =
   ZIO.acquireReleaseWith(acquireConnection(ds))( releaseConnection )( operation )
+
+private def _inTransactionZIO[T]( conn : Connection )( transactioningHappyPath : Connection => Task[T]) : Task[T] =
+  val rollback : PartialFunction[Throwable,Task[T]] =
+    case NonFatal(t) =>
+      ZIO.attemptBlocking( conn.rollback() ) *> ZIO.fail(t)
+  val unsetAutocommit = ZIO.attemptBlocking( conn.setAutoCommit(false) ).logError.catchAll( _ => ZIO.unit )
+  transactioningHappyPath(conn).catchSome( rollback ).ensuring( unsetAutocommit )
+
+def inTransaction[T]( conn : Connection )( op : Connection => T) : Task[T] =
+  val transactioningHappyPath = (cxn : Connection) => ZIO.attemptBlocking:
+    cxn.setAutoCommit(true)
+    val out = op(cxn)
+    cxn.commit()
+    out
+  _inTransactionZIO(conn)(transactioningHappyPath)
+
+def withConnectionTransactional[T]( ds : DataSource )( op : Connection => T) : Task[T] =
+  withConnection(ds)( conn => inTransaction(conn)( op ) )
+
+def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task[T] =
+  val transactioningHappyPath = (cxn : Connection ) =>
+    for
+      _ <- ZIO.attemptBlocking( cxn.setAutoCommit(true) )
+      out <- op(cxn)
+      _ <- ZIO.attemptBlocking( cxn.commit() )
+    yield out
+  _inTransactionZIO(conn)(transactioningHappyPath)
+
+def withConnectionTransactionalZIO[T]( ds : DataSource )( op : Connection => Task[T] ) : Task[T] =
+  withConnection(ds)( conn => inTransactionZIO(conn)( op ) )
 
 def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : T =
   if !rs.next() then
