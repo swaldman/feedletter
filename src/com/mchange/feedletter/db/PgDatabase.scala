@@ -6,6 +6,8 @@ import javax.sql.DataSource
 
 import scala.collection.immutable
 import scala.util.Using
+import scala.util.control.NonFatal
+
 import java.sql.SQLException
 import java.time.{Duration as JDuration,Instant,ZonedDateTime}
 
@@ -13,7 +15,7 @@ import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
+import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, ExcludedItem, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -50,7 +52,7 @@ object PgDatabase extends Migratory:
       ZIO.attemptBlocking:
         val parsedCommand = List("pg_dump", dbName)
         os.proc( parsedCommand ).call( stdout = dumpFile )
-    withConnectionZIO( ds ): conn =>    
+    withConnectionZIO( ds ): conn =>
       for
         dbName   <- fetchDbName(conn)
         dumpDir  <- fetchDumpDir(conn)
@@ -156,7 +158,6 @@ object PgDatabase extends Migratory:
   private def upsertConfigKeyMapAndReport( conn : Connection, map : Map[ConfigKey,String] ) : immutable.SortedSet[Tuple2[ConfigKey,String]] =
     upsertConfigKeys( conn, map.toList* )
     sort( LatestSchema.Table.Config.selectTuples(conn) )
-
 
   def upsertConfigKeyMapAndReport( ds : DataSource, map : Map[ConfigKey,String] ) : Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
     withConnectionTransactional( ds )( conn => upsertConfigKeyMapAndReport( conn, map ) )
@@ -274,10 +275,20 @@ object PgDatabase extends Migratory:
   def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Feed.upsert(conn, fi)
+      try
+        val fd = doDigestFeed( fi.feedUrl )
+        fd.guidToItemContent.foreach: (guid, itemContent) =>
+          LatestSchema.Table.Item.insertNew( conn, fi.feedUrl, guid, itemContent, ItemAssignability.Excluded )
+      catch
+        case NonFatal(t) =>
+          WARNING.log(s"Failed to exclude existing content from assignment when adding feed '${fi.feedUrl}'. Existing content may be distributed.", t)
       LatestSchema.Table.Feed.select(conn)
 
   def listFeeds( ds : DataSource ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Feed.select(conn)
 
+  def fetchExcluded( ds : DataSource ) : Task[Set[ExcludedItem]] =
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.Item.selectExcluded(conn)
 

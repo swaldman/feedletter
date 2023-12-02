@@ -24,6 +24,8 @@ final case class FeedDigest( guidToItemContent : immutable.Map[String,ItemConten
 
 final case class FeedInfo( feedUrl : String, minDelaySeconds : Int, awaitStabilizationSeconds : Int, paused : Boolean )
 
+final case class ExcludedItem( feedUrl : String, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
+
 def doDigestFeed( is : InputStream ) : FeedDigest =
   val rootElem = XML.load( is )
   val rssElem =
@@ -66,19 +68,6 @@ def checkExpandTildeHomeDirPath( path : JPath ) : JPath =
     else
       path
 
-
-import com.mchange.sc.v1.texttable
-import zio.*
-
-val FeedInfoColumns = Seq( texttable.Column("Feed URL"), texttable.Column("Min Delay Secs"), texttable.Column("Await Stabilization Secs"), texttable.Column("Paused") )
-
-def printFeedInfoTable( fis: Set[FeedInfo] ) : Task[Unit] =
-  ZIO.attempt( texttable.printProductTable( FeedInfoColumns )( fis.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
-
-val ConfigKeyColumns = Seq( texttable.Column("Configuration Key"), texttable.Column("Value") )
-
-def printConfigurationTuplesTable( tups : Set[Tuple2[ConfigKey,String]] ) : Task[Unit] =
-  ZIO.attempt( texttable.printProductTable( ConfigKeyColumns )( tups.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
 
 
 

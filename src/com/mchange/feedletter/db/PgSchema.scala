@@ -4,7 +4,7 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.{ConfigKey,FeedInfo,ItemContent,SubscriptionType}
+import com.mchange.feedletter.{ConfigKey,ExcludedItem,FeedInfo,ItemContent,SubscriptionType}
 
 object PgSchema:
   trait Creatable:
@@ -154,6 +154,10 @@ object PgSchema:
             """|SELECT content_hash, first_seen, last_checked, stable_since, assignability
                |FROM item
                |WHERE feed_url = ? AND guid = ?""".stripMargin
+          val SelectExcluded =
+            s"""|SELECT feed_url, guid, title, author, publication_date, link
+                |FROM item
+                |WHERE assignability = '${ItemAssignability.Excluded}'""".stripMargin
           val Insert =
             """|INSERT INTO item(feed_url, guid, title, author, article, publication_date, link, content_hash, first_seen, last_checked, stable_since, assignability)
                |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
@@ -176,6 +180,13 @@ object PgSchema:
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("item-check-select", rs): rs =>
                   ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), ItemAssignability.valueOf(rs.getString(5)) )
+          def selectExcluded( conn : Connection ) : Set[ExcludedItem] =
+            Using.resource( conn.prepareStatement(SelectExcluded) ): ps =>
+              Using.resource( ps.executeQuery() ): rs =>
+                val out = Set.newBuilder[ExcludedItem]
+                while rs.next() do
+                  out += ExcludedItem( rs.getString(1), rs.getString(2), Option( rs.getString(3) ), Option( rs.getString(4) ), Option( rs.getTimestamp(5) ).map( _.toInstant ), Option( rs.getString(6) ) )
+                out.result()  
           def updateStable( conn : Connection, feedUrl : String, guid : String, lastChecked : Instant ) =
             Using.resource( conn.prepareStatement( this.UpdateStable) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastChecked))

@@ -61,7 +61,7 @@ object CommandConfig:
         _ <- doComplete( ds )
       yield ()
     end zcommand
-  case object ConfigList extends CommandConfig:
+  case object AdminListConfig extends CommandConfig:
     override def zcommand : ZCommand =
       for
         ds   <- ZIO.service[DataSource]
@@ -69,7 +69,15 @@ object CommandConfig:
         _    <- printConfigurationTuplesTable(tups)
       yield ()
     end zcommand
-  case class ConfigSet( settings : Map[ConfigKey,String] ) extends CommandConfig:
+  case object AdminListExcludedItems extends CommandConfig:
+    override def zcommand : ZCommand =
+      for
+        ds  <- ZIO.service[DataSource]
+        eis <- PgDatabase.fetchExcluded(ds)
+        _   <- printExcludedItemsTable(eis)
+      yield ()
+    end zcommand
+  case class AdminSetConfig( settings : Map[ConfigKey,String] ) extends CommandConfig:
     override def zcommand : ZCommand =
       for
         ds <- ZIO.service[DataSource]
@@ -77,7 +85,7 @@ object CommandConfig:
         _  <- printConfigurationTuplesTable(ss)
       yield ()
     end zcommand
-  case class ConfigAddFeed( fi : FeedInfo ) extends CommandConfig:
+  case class AdminAddFeed( fi : FeedInfo ) extends CommandConfig:
     override def zcommand : ZCommand =
       for
         ds  <- ZIO.service[DataSource]
@@ -85,7 +93,7 @@ object CommandConfig:
         _   <- printFeedInfoTable(fis)
       yield ()
     end zcommand
-  case object ConfigListFeeds extends CommandConfig:
+  case object AdminListFeeds extends CommandConfig:
     override def zcommand : ZCommand =
       for
         ds  <- ZIO.service[DataSource]

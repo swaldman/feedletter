@@ -27,37 +27,39 @@ object Main extends ZIOCliDefault:
   val dbCommand = Command("db").subcommands(dbInitCommand, dbMigrateCommand, dbDumpCommand)
   val crankCommand = Command("crank").subcommands(crankAssign, crankComplete)
 
-  val configSetOptions =
+  val adminSetOptions =
     val dumpDbDirOption = Options.directory("dump-db-dir").map( checkExpandTildeHomeDirPath ).map( _.toAbsolutePath ).optional.map( opt => opt.map( v => Tuple2(ConfigKey.DumpDbDir, v.toString ) ) )
     val mailBatchSizeOption =  Options.integer("mail-batch-size").optional.map( opt => opt.map( v => Tuple2(ConfigKey.MailBatchSize, v.toString ) ) )
     val mailBatchDelaySecs = Options.integer("mail-batch-delay-secs").optional.map( opt => opt.map( v => Tuple2(ConfigKey.MailBatchDelaySecs, v.toString ) ) )
     (dumpDbDirOption ++ mailBatchSizeOption ++ mailBatchDelaySecs).map( _.toList.collect { case Some(tup) => tup }.toMap )
-  val configSetCommand = Command("set", configSetOptions).map( settings => CommandConfig.ConfigSet(settings) )
+  val adminSetCommand = Command("set-config", adminSetOptions).map( settings => CommandConfig.AdminSetConfig(settings) )
 
-  val configListCommand = Command("list").map( _ => CommandConfig.ConfigList )
+  val adminListCommand = Command("list-config").map( _ => CommandConfig.AdminListConfig )
 
-  val configAddFeedOptions =
+  val adminAddFeedOptions =
     val minDelaySecsOption = Options.integer("min-delay-secs").map( _.toInt).withDefault(1800)
     val awaitStabilizationSecsOption = Options.integer("await-stabilization-secs").map( _.toInt ).withDefault(900)
     val pausedOption = Options.boolean("paused")
     (minDelaySecsOption ++ awaitStabilizationSecsOption ++ pausedOption)
 
-  val configAddFeedArgs = Args.text("feed-url")
+  val adminAddFeedArgs = Args.text("feed-url")
 
-  val configAddFeedCommand = Command("add-feed", configAddFeedOptions, configAddFeedArgs).map { case ((minDelaySecs, awaitStabilizationSecs, paused), feedUrl) =>
+  val adminAddFeedCommand = Command("add-feed", adminAddFeedOptions, adminAddFeedArgs).map { case ((minDelaySecs, awaitStabilizationSecs, paused), feedUrl) =>
     val fi = FeedInfo(feedUrl, minDelaySecs, awaitStabilizationSecs, paused )
-    CommandConfig.ConfigAddFeed( fi )
+    CommandConfig.AdminAddFeed( fi )
   }
 
-  val configListFeedsCommand = Command("list-feeds").map( _ => CommandConfig.ConfigListFeeds )
+  val adminListFeedsCommand = Command("list-feeds").map( _ => CommandConfig.AdminListFeeds )
 
-  val configCommand = Command("config").subcommands( configListCommand, configListFeedsCommand, configAddFeedCommand, configSetCommand )
+  val adminListExcludedItems = Command("list-excluded-items").map( _ => CommandConfig.AdminListExcludedItems )
+
+  val adminCommand = Command("admin").subcommands( adminAddFeedCommand, adminListCommand, adminListFeedsCommand, adminSetCommand )
 
   val sendmailCommand = Command("sendmail").map( _ => CommandConfig.Sendmail )
 
   val daemonCommand = Command("daemon").map( _ => CommandConfig.Daemon )
 
-  val mainCommand = Command("feedletter").subcommands( dbCommand, configCommand, crankCommand, sendmailCommand, daemonCommand )
+  val mainCommand = Command("feedletter").subcommands( adminCommand, crankCommand, daemonCommand, dbCommand, sendmailCommand )
 
   val cliApp = CliApp.make(
     name = "feedletter",
