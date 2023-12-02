@@ -160,7 +160,7 @@ object PgSchema:
                 |WHERE assignability = '${ItemAssignability.Excluded}'""".stripMargin
           val Insert =
             """|INSERT INTO item(feed_url, guid, title, author, article, publication_date, link, content_hash, first_seen, last_checked, stable_since, assignability)
-               |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
+               |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST( ? AS ItemAssignability ) )""".stripMargin
           val UpdateChanged =
             """|UPDATE item
                |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assignability = ?
@@ -171,7 +171,7 @@ object PgSchema:
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val UpdateAssignability =
             """|UPDATE item
-               |SET assignability = ?
+               |SET assignability = CAST( ? AS ItemAssignability )
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           def checkStatus( conn : Connection, feedUrl : String, guid : String ) : Option[ItemStatus] =
             Using.resource( conn.prepareStatement( SelectCheck ) ): ps =>
@@ -232,6 +232,7 @@ object PgSchema:
         object SubscriptionType extends Creatable:
           val Create = "CREATE TABLE subscription_type( stype VARCHAR(32) PRIMARY KEY )"
           val Insert = "INSERT INTO subscription_type VALUES ( ? )"
+          val Ensure = "INSERT INTO subscription_type VALUES ( ? ) ON CONFLICT(stype) DO NOTHING"
           def insert( conn : Connection, subscriptionType : SubscriptionType, moreSubscriptionTypes : SubscriptionType* ) : Unit =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               def insertType( stype : SubscriptionType ) =
@@ -239,6 +240,13 @@ object PgSchema:
                 ps.executeUpdate()
               insertType( subscriptionType )
               moreSubscriptionTypes.foreach( insertType )
+          def ensure( conn : Connection, subscriptionType : SubscriptionType, moreSubscriptionTypes : SubscriptionType* ) : Unit =
+            Using.resource( conn.prepareStatement( Ensure ) ): ps =>
+              def ensureType( stype : SubscriptionType ) =
+                ps.setString(1, stype.toString())
+                ps.executeUpdate()
+              ensureType( subscriptionType )
+              moreSubscriptionTypes.foreach( ensureType )
         object Assignable extends Creatable:
           val Create = // an assignable represents a collection of posts for a single mail
             """|CREATE TABLE assignable(
@@ -258,7 +266,7 @@ object PgSchema:
           val SelectOpen =
             """|SELECT feed_url, stype, within_type_id
                |FROM assignable
-               |WHERE completed IS NOT NULL""".stripMargin
+               |WHERE completed IS NULL""".stripMargin
           // should I make indexes for these next two? should I try some more clever/efficient form of query?
           // see
           //   https://stackoverflow.com/questions/3800551/select-first-row-in-each-group-by-group/7630564#7630564
@@ -317,9 +325,9 @@ object PgSchema:
               ps.setTimestamp(4, Timestamp.from(opened))
               setTimestampOptional(ps, 5, completed.map( Timestamp.from ))
               ps.executeUpdate()
-          def updateCompleted( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, completed : Boolean ) =
+          def updateCompleted( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, completed : Option[Instant] ) =
             Using.resource( conn.prepareStatement( this.UpdateCompleted ) ): ps =>
-              ps.setBoolean(1, completed)
+              completed.fold( ps.setNull(1, Types.TIMESTAMP) )( instant => ps.setTimestamp(1, Timestamp.from(instant)) )
               ps.setString(2, feedUrl)
               ps.setString(3, stype.toString())
               ps.setString(4, withinTypeId)
@@ -338,7 +346,7 @@ object PgSchema:
           val SelectCountWithinAssignable =
             """|SELECT COUNT(*)
                |FROM assignment
-               |WHERE feed_url = ?, stype = ?, within_type_id = ?""".stripMargin
+               |WHERE feed_url = ? AND stype = ? AND within_type_id = ?""".stripMargin
           val Insert =
             """|INSERT INTO assignment( feed_url, stype, within_type_id, guid )
                |VALUES ( ?, ?, ?, ? )""".stripMargin
@@ -374,6 +382,9 @@ object PgSchema:
             """|SELECT email
                |FROM subscription
                |WHERE feed_url = ? AND stype = ?""".stripMargin
+          val Insert =
+            """|INSERT INTO subscription(email, feed_url, stype)
+               |VALUES ( ?, ?, ? )""".stripMargin
           def selectSubscriptionTypeByFeedUrl( conn : Connection, feedUrl : String ) : Set[SubscriptionType] =
             Using.resource( conn.prepareStatement( this.SelectSubscriptionTypesByFeedUrl ) ): ps =>
               ps.setString(1, feedUrl)
@@ -391,6 +402,12 @@ object PgSchema:
                 while rs.next() do
                   builder += rs.getString(1)
                 builder.result()
+          def insert( conn : Connection, email : String, feedUrl : String, stype : SubscriptionType ) =
+            Using.resource( conn.prepareStatement( Insert ) ): ps =>
+              ps.setString(1, email)
+              ps.setString(2, feedUrl)
+              ps.setString(3, stype.toString())
+              ps.executeUpdate()
         object Mailable extends Creatable:
           val Create =
             """|CREATE TABLE mailable(
@@ -413,6 +430,7 @@ object PgSchema:
               ps.setString(3, stype.toString())
               ps.setString(4, withinTypeId)
               ps.setBoolean(5, mailed)
+              ps.executeUpdate()
           object Sequence:
             object MailableSeq extends Creatable:
               val Create = "CREATE SEQUENCE mailable_seq AS INTEGER"

@@ -163,7 +163,7 @@ object PgDatabase extends Migratory:
     withConnectionTransactional( ds )( conn => upsertConfigKeyMapAndReport( conn, map ) )
 
   def reportConfigKeys( ds : DataSource ): Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
-    withConnection( ds )( conn => sort( LatestSchema.Table.Config.selectTuples( conn ) ) )
+    withConnectionTransactional( ds )( conn => sort( LatestSchema.Table.Config.selectTuples( conn ) ) )
 
   private def lastCompletedAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[AssignableWithinTypeInfo] =
     val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, stype )
@@ -226,8 +226,10 @@ object PgDatabase extends Migratory:
       conn.commit()
 
   private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit =
+    println("populate mailable")
     val AssignableKey( feedUrl, stype, withinTypeId ) = assignableKey
     LatestSchema.Table.Subscription.selectEmail( conn, feedUrl, stype ).foreach: email =>
+      println(s"email: $email")
       LatestSchema.Table.Mailable.insert( conn, email, feedUrl, stype, withinTypeId, false )
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
@@ -268,9 +270,10 @@ object PgDatabase extends Migratory:
       LatestSchema.Table.Assignable.selectOpen( conn ).foreach: ak =>
         val AssignableKey( feedUrl, stype, withinTypeId ) = ak
         val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, withinTypeId )
-        if stype.isComplete( withinTypeId, count, Instant.now ) then
+        val now = Instant.now
+        if stype.isComplete( withinTypeId, count, now ) then
           populateMailable( conn, ak )
-          LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stype, withinTypeId, true )
+          LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stype, withinTypeId, Some(now) )
 
   def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
@@ -292,3 +295,7 @@ object PgDatabase extends Migratory:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Item.selectExcluded(conn)
 
+  def addSubscription( ds : DataSource, stype : SubscriptionType, email : String, feedUrl : String ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.SubscriptionType.ensure( conn, stype )
+      LatestSchema.Table.Subscription.insert( conn, email, feedUrl, stype )

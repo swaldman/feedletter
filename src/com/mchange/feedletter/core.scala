@@ -26,6 +26,8 @@ final case class FeedInfo( feedUrl : String, minDelaySeconds : Int, awaitStabili
 
 final case class ExcludedItem( feedUrl : String, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 
+final case class AdminSubscribeOptions( stype : SubscriptionType, email : String, feedUrl : String )
+
 def doDigestFeed( is : InputStream ) : FeedDigest =
   val rootElem = XML.load( is )
   val rssElem =

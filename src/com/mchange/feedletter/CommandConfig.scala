@@ -65,6 +65,7 @@ object CommandConfig:
     override def zcommand : ZCommand =
       for
         ds   <- ZIO.service[DataSource]
+        _    <- PgDatabase.ensureDb( ds )
         tups <- PgDatabase.reportConfigKeys(ds)
         _    <- printConfigurationTuplesTable(tups)
       yield ()
@@ -73,6 +74,7 @@ object CommandConfig:
     override def zcommand : ZCommand =
       for
         ds  <- ZIO.service[DataSource]
+        _   <- PgDatabase.ensureDb( ds )
         eis <- PgDatabase.fetchExcluded(ds)
         _   <- printExcludedItemsTable(eis)
       yield ()
@@ -81,6 +83,7 @@ object CommandConfig:
     override def zcommand : ZCommand =
       for
         ds <- ZIO.service[DataSource]
+        _  <- PgDatabase.ensureDb( ds )
         ss <- PgDatabase.upsertConfigKeyMapAndReport( ds, settings )
         _  <- printConfigurationTuplesTable(ss)
       yield ()
@@ -89,6 +92,7 @@ object CommandConfig:
     override def zcommand : ZCommand =
       for
         ds  <- ZIO.service[DataSource]
+        _   <- PgDatabase.ensureDb( ds )
         fis <- PgDatabase.addFeed( ds, fi )
         _   <- printFeedInfoTable(fis)
       yield ()
@@ -97,8 +101,17 @@ object CommandConfig:
     override def zcommand : ZCommand =
       for
         ds  <- ZIO.service[DataSource]
+        _   <- PgDatabase.ensureDb( ds )
         fis <- PgDatabase.listFeeds( ds )
         _   <- printFeedInfoTable(fis)
+      yield ()
+    end zcommand
+  case class AdminSubscribe( aso : AdminSubscribeOptions ) extends CommandConfig:
+    override def zcommand : ZCommand =
+      for
+        ds <- ZIO.service[DataSource]
+        _  <- PgDatabase.ensureDb( ds )
+        _  <- PgDatabase.addSubscription( ds, aso.stype, aso.email, aso.feedUrl )
       yield ()
     end zcommand
   case object Update extends CommandConfig
