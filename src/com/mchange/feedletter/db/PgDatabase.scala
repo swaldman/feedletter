@@ -226,10 +226,8 @@ object PgDatabase extends Migratory:
       conn.commit()
 
   private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit =
-    println("populate mailable")
     val AssignableKey( feedUrl, stype, withinTypeId ) = assignableKey
     LatestSchema.Table.Subscription.selectEmail( conn, feedUrl, stype ).foreach: email =>
-      println(s"email: $email")
       LatestSchema.Table.Mailable.insert( conn, email, feedUrl, stype, withinTypeId, false )
 
   def ensureDb( ds : DataSource ) : Task[Unit] =

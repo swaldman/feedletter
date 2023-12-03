@@ -163,7 +163,7 @@ object PgSchema:
                |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST( ? AS ItemAssignability ) )""".stripMargin
           val UpdateChanged =
             """|UPDATE item
-               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assignability = ?
+               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assignability = CAST( ? AS ItemAssignability )
                |WHERE feed_url = ? AND guid = ?""".stripMargin
           val UpdateStable =
             """|UPDATE item
@@ -194,7 +194,7 @@ object PgSchema:
               ps.setString(3, guid)
               ps.executeUpdate()
           def updateChanged( conn : Connection, feedUrl : String, guid : String, newContent : ItemContent, newStatus : ItemStatus ) =
-            Using.resource( conn.prepareStatement( this.UpdateChanged) ): ps =>
+            Using.resource( conn.prepareStatement( this.UpdateChanged ) ): ps =>
               setStringOptional(ps, 1, Types.VARCHAR, newContent.title )
               setStringOptional(ps, 2, Types.VARCHAR, newContent.author )
               setStringOptional(ps, 3, Types.CLOB, newContent.article )
