@@ -22,7 +22,7 @@ enum ConfigKey:
 
 final case class FeedDigest( guidToItemContent : immutable.Map[String,ItemContent], timestamp : Instant )
 
-final case class FeedInfo( feedUrl : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, paused : Boolean )
+final case class FeedInfo( feedUrl : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, paused : Boolean, subscribed : Instant )
 
 final case class ExcludedItem( feedUrl : String, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 

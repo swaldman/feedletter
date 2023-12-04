@@ -10,7 +10,8 @@ val FeedInfoColumns = Seq(
   texttable.Column("Min Delay Minutes"),
   texttable.Column("Await Stabilization Minutes"),
   texttable.Column("Max Delay Minutes"),
-  texttable.Column("Paused")
+  texttable.Column("Paused"),
+  texttable.Column("Subscribed")
 )
 
 def printFeedInfoTable( fis: Set[FeedInfo] ) : Task[Unit] =

@@ -88,32 +88,34 @@ object PgSchema:
                |  await_stabilization_minutes INTEGER,
                |  max_delay_minutes INTEGER,
                |  paused BOOLEAN,
+               |  subscribed TIMESTAMP,
                |  PRIMARY KEY(url)
                |)""".stripMargin
           val Insert =
-            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused)
-               |VALUES( ?, ?, ?, ?, ? )""".stripMargin
+            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed)
+               |VALUES( ?, ?, ?, ?, ?, ? )""".stripMargin
           val Select =
-            "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused FROM feed"
+            "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed FROM feed"
           val Upsert =
-            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused)
-               |VALUES ( ?, ?, ?, ?, ? )
+            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed)
+               |VALUES ( ?, ?, ?, ?, ?, ? )
                |ON CONFLICT(url) DO UPDATE
-               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ?, paused = ?""".stripMargin
+               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ?, paused = ?""".stripMargin // leave subscribed as first set
           def insert( conn : Connection, fi : FeedInfo ) : Int =
-            insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.paused)
-          def insert( conn : Connection, url : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, paused : Boolean ) : Int =
+            insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.paused, fi.subscribed)
+          def insert( conn : Connection, url : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, paused : Boolean, subscribed : Instant ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
               ps.setString(1, url)
               ps.setInt(2, minDelayMinutes )
               ps.setInt(3, awaitStabilizationMinutes)
               ps.setInt(4, maxDelayMinutes )
               ps.setBoolean(5, paused)
+              ps.setTimestamp( 6, Timestamp.from(subscribed) )
               ps.executeUpdate()
           def select( conn : Connection ) : Set[FeedInfo] =
             Using.resource( conn.prepareStatement( this.Select ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getBoolean(5) ) )
+                toSet(rs)( rs => FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getBoolean(5), rs.getTimestamp(6).toInstant ) )
           def upsert( conn : Connection, fi : FeedInfo ) =
             Using.resource( conn.prepareStatement(this.Upsert) ): ps =>
               ps.setString(1, fi.feedUrl)
@@ -121,10 +123,11 @@ object PgSchema:
               ps.setInt(3, fi.awaitStabilizationMinutes)
               ps.setInt(4, fi.maxDelayMinutes )
               ps.setBoolean(5, fi.paused)
-              ps.setInt(6, fi.minDelayMinutes )
-              ps.setInt(7, fi.awaitStabilizationMinutes)
-              ps.setInt(8, fi.maxDelayMinutes )
-              ps.setBoolean(9, fi.paused)
+              ps.setTimestamp(6, Timestamp.from(fi.subscribed))
+              ps.setInt(7, fi.minDelayMinutes )
+              ps.setInt(8, fi.awaitStabilizationMinutes)
+              ps.setInt(9, fi.maxDelayMinutes )
+              ps.setBoolean(10, fi.paused)
               ps.executeUpdate()
 
         object Item extends Creatable:

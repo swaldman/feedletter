@@ -221,7 +221,12 @@ object PgDatabase extends Migratory:
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Assigned ) ) => /* ignore, already assigned */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
-        LatestSchema.Table.Item.insertNew(conn, fi.feedUrl, guid, freshContent, ItemAssignability.Unassigned)
+        def doInsert() = LatestSchema.Table.Item.insertNew(conn, fi.feedUrl, guid, freshContent, ItemAssignability.Unassigned)
+        freshContent.pubDate match
+          case Some( pd ) =>
+            if fi.subscribed.compareTo(pd) <= 0 then doInsert() // skip items known to be published prior to subscription
+          case None =>
+            doInsert()
 
   private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Unit =
     val FeedDigest( guidToItemContent, timestamp ) = doDigestFeed( fi.feedUrl )

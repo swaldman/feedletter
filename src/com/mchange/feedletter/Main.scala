@@ -3,11 +3,13 @@ package com.mchange.feedletter
 import zio.*
 import zio.cli.{CliApp,Command,Options,Args,ZIOCliDefault}
 import zio.cli.HelpDoc.Span.text
-import com.mchange.feedletter.db.PgDatabase
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
+
+import java.time.Instant
 import javax.sql.DataSource
+
 import com.mchange.feedletter.db.DbVersionStatus
 
 object Main extends ZIOCliDefault:
@@ -46,7 +48,7 @@ object Main extends ZIOCliDefault:
   val adminAddFeedArgs = Args.text("feed-url")
 
   val adminAddFeedCommand = Command("add-feed", adminAddFeedOptions, adminAddFeedArgs).map { case ((minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused), feedUrl) =>
-    val fi = FeedInfo(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused )
+    val fi = FeedInfo(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused, Instant.now )
     CommandConfig.AdminAddFeed( fi )
   }
 
