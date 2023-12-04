@@ -37,15 +37,16 @@ object Main extends ZIOCliDefault:
   val adminListCommand = Command("list-config").map( _ => CommandConfig.AdminListConfig )
 
   val adminAddFeedOptions =
-    val minDelaySecsOption = Options.integer("min-delay-secs").map( _.toInt).withDefault(1800)
-    val awaitStabilizationSecsOption = Options.integer("await-stabilization-secs").map( _.toInt ).withDefault(900)
+    val minDelayMinutesOption = Options.integer("min-delay-mins").map( _.toInt).withDefault(30)
+    val awaitStabilizationMinutesOption = Options.integer("await-stabilization-minutes").map( _.toInt ).withDefault(15)
+    val maxDelayMinutesOption = Options.integer("max-delay-minutes").map( _.toInt).withDefault(180)
     val pausedOption = Options.boolean("paused")
-    (minDelaySecsOption ++ awaitStabilizationSecsOption ++ pausedOption)
+    (minDelayMinutesOption ++ awaitStabilizationMinutesOption ++ maxDelayMinutesOption ++ pausedOption)
 
   val adminAddFeedArgs = Args.text("feed-url")
 
-  val adminAddFeedCommand = Command("add-feed", adminAddFeedOptions, adminAddFeedArgs).map { case ((minDelaySecs, awaitStabilizationSecs, paused), feedUrl) =>
-    val fi = FeedInfo(feedUrl, minDelaySecs, awaitStabilizationSecs, paused )
+  val adminAddFeedCommand = Command("add-feed", adminAddFeedOptions, adminAddFeedArgs).map { case ((minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused), feedUrl) =>
+    val fi = FeedInfo(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused )
     CommandConfig.AdminAddFeed( fi )
   }
 

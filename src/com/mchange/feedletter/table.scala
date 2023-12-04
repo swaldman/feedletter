@@ -5,7 +5,13 @@ import zio.*
 
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 
-val FeedInfoColumns = Seq( texttable.Column("Feed URL"), texttable.Column("Min Delay Secs"), texttable.Column("Await Stabilization Secs"), texttable.Column("Paused") )
+val FeedInfoColumns = Seq(
+  texttable.Column("Feed URL"),
+  texttable.Column("Min Delay Minutes"),
+  texttable.Column("Await Stabilization Minutes"),
+  texttable.Column("Max Delay Minutes"),
+  texttable.Column("Paused")
+)
 
 def printFeedInfoTable( fis: Set[FeedInfo] ) : Task[Unit] =
   ZIO.attempt( texttable.printProductTable( FeedInfoColumns )( fis.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted

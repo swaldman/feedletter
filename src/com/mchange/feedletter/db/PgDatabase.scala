@@ -16,6 +16,7 @@ import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
 import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, ExcludedItem, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
+import java.time.temporal.ChronoUnit
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -206,9 +207,12 @@ object PgDatabase extends Migratory:
         if newContentHash == contentHash || newContentHash == ItemContent.EmptyHashCode then
           val newLastChecked = now
           LatestSchema.Table.Item.updateStable( conn, fi.feedUrl, guid, newLastChecked )
-          val seenSeconds = JDuration.between(firstSeen, now).getSeconds()
-          val stableSeconds = JDuration.between(stableSince, now).getSeconds()
-          if seenSeconds > fi.minDelaySeconds && stableSeconds > fi.awaitStabilizationSeconds then
+          val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.MINUTES )
+          val stableMinutes = JDuration.between(stableSince, now).get( ChronoUnit.MINUTES )
+          def afterMinDelay = seenMinutes > fi.minDelayMinutes
+          def sufficientlyStable = stableMinutes > fi.awaitStabilizationMinutes
+          def pastMaxDelay = seenMinutes > fi.maxDelayMinutes
+          if (afterMinDelay && sufficientlyStable) || pastMaxDelay then
             assign( conn, fi.feedUrl, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
         else
           val newStableSince = now
