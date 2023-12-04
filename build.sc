@@ -19,7 +19,8 @@ object feedletter extends RootModule with ScalaModule with BuildInfo {
     ivy"org.postgresql:postgresql:42.6.0",
     ivy"com.mchange:c3p0:0.9.5.5",
     ivy"com.mchange::mlog-scala:0.3.14",
-    ivy"com.mchange::texttable:0.0.3"
+    ivy"com.mchange::texttable:0.0.3",
+    ivy"com.mchange::cryptoutil:0.0.1"
   )
 
   def buildInfoMembers = Seq(
