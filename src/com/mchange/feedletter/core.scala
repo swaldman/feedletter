@@ -26,7 +26,11 @@ final case class FeedInfo( feedUrl : String, minDelaySeconds : Int, awaitStabili
 
 final case class ExcludedItem( feedUrl : String, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 
-final case class AdminSubscribeOptions( stype : SubscriptionType, email : String, feedUrl : String )
+final case class AdminSubscribeOptions( stype : SubscriptionType, destination : String, feedUrl : String )
+
+def composeMultipleItemHtmlMailContent( contents : Set[ItemContent] ) : String = ???
+
+def composeSingleItemHtmlMailContent( content : ItemContent ) : String = ???
 
 def doDigestFeed( is : InputStream ) : FeedDigest =
   val rootElem = XML.load( is )

@@ -111,7 +111,7 @@ object CommandConfig:
       for
         ds <- ZIO.service[DataSource]
         _  <- PgDatabase.ensureDb( ds )
-        _  <- PgDatabase.addSubscription( ds, aso.stype, aso.email, aso.feedUrl )
+        _  <- PgDatabase.addSubscription( ds, aso.stype, aso.destination, aso.feedUrl )
       yield ()
     end zcommand
   case object Update extends CommandConfig

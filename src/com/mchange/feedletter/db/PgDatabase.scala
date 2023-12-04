@@ -114,6 +114,8 @@ object PgDatabase extends Migratory:
           PgSchema.V1.Table.Assignable.create( stmt )
           PgSchema.V1.Table.Assignment.create( stmt )
           PgSchema.V1.Table.Subscription.create( stmt )
+          PgSchema.V1.Table.MailableContents.create( stmt )
+          PgSchema.V1.Table.MailableContents.Sequence.MailableContentsSeq.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
         insertConfigKeys(
@@ -200,7 +202,8 @@ object PgDatabase extends Migratory:
     dbStatus match
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Unassigned ) ) =>
         val newContentHash = freshContent.##
-        if newContentHash == contentHash then
+        /* don't update empty over actual content, treat empty content (rare, since guid would still have been found) as just stability */
+        if newContentHash == contentHash || newContentHash == ItemContent.EmptyHashCode then
           val newLastChecked = now
           LatestSchema.Table.Item.updateStable( conn, fi.feedUrl, guid, newLastChecked )
           val seenSeconds = JDuration.between(firstSeen, now).getSeconds()
@@ -216,19 +219,29 @@ object PgDatabase extends Migratory:
       case None =>
         LatestSchema.Table.Item.insertNew(conn, fi.feedUrl, guid, freshContent, ItemAssignability.Unassigned)
 
-  private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Task[Unit] =
-    ZIO.attemptBlocking:
-      conn.setAutoCommit( false )
-      val FeedDigest( guidToItemContent, timestamp ) = doDigestFeed( fi.feedUrl )
-      guidToItemContent.foreach: ( guid, freshContent ) =>
-        val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedUrl, guid )
-        updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
-      conn.commit()
+  private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Unit =
+    val FeedDigest( guidToItemContent, timestamp ) = doDigestFeed( fi.feedUrl )
+    guidToItemContent.foreach: ( guid, freshContent ) =>
+      val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedUrl, guid )
+      updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
 
+  private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Set[ItemContent] =
+    LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.feedUrl, assignableKey.stype, assignableKey.withinTypeId )
+
+  private def route( conn : Connection, stype : SubscriptionType, assignableKey : AssignableKey ) : Unit =
+    val AssignableKey( feedUrl, stype, withinTypeId ) = assignableKey
+    val contents = materializeAssignable(conn, assignableKey)
+    val destinations = LatestSchema.Table.Subscription.selectDestination( conn, feedUrl, stype )
+    stype.route(conn, assignableKey.feedUrl, assignableKey.withinTypeId, contents, destinations )
+
+  private def queueContentsForMailing( conn : Connection, contents : String, destinations : Set[String] ) : Unit = ???
+
+/*
   private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit =
     val AssignableKey( feedUrl, stype, withinTypeId ) = assignableKey
-    LatestSchema.Table.Subscription.selectEmail( conn, feedUrl, stype ).foreach: email =>
+    LatestSchema.Table.Subscription.selectDestination( conn, feedUrl, stype ).foreach: email =>
       LatestSchema.Table.Mailable.insert( conn, email, feedUrl, stype, withinTypeId, false )
+*/
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
     withConnectionZIO( ds ): conn =>
@@ -258,10 +271,8 @@ object PgDatabase extends Migratory:
   end ensureDb
 
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
-    withConnectionTransactionalZIO( ds ): conn =>
-      for
-        _ <-  ZIO.collectAllDiscard( LatestSchema.Table.Feed.select( conn ).map( updateAssignItems( conn, _ ) ) )
-      yield ()
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.Feed.select( conn ).foreach( updateAssignItems( conn, _ ) )
 
   def completeAssignables( ds : DataSource ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
@@ -270,7 +281,7 @@ object PgDatabase extends Migratory:
         val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, withinTypeId )
         val now = Instant.now
         if stype.isComplete( withinTypeId, count, now ) then
-          populateMailable( conn, ak )
+          route( conn, stype, ak )
           LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stype, withinTypeId, Some(now) )
 
   def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
@@ -293,7 +304,7 @@ object PgDatabase extends Migratory:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Item.selectExcluded(conn)
 
-  def addSubscription( ds : DataSource, stype : SubscriptionType, email : String, feedUrl : String ) : Task[Unit] =
+  def addSubscription( ds : DataSource, stype : SubscriptionType, destination : String, feedUrl : String ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.SubscriptionType.ensure( conn, stype )
-      LatestSchema.Table.Subscription.insert( conn, email, feedUrl, stype )
+      LatestSchema.Table.Subscription.insert( conn, destination, feedUrl, stype )

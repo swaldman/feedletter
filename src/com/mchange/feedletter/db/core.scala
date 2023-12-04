@@ -18,6 +18,10 @@ enum MetadataKey:
   case SchemaVersion
   case CreatorAppVersion
 
+/*
+ * Maps directly to a postgres enum,
+ * if this is changed, keep that in sync
+ */
 enum ItemAssignability:
   case Unassigned
   case Assigned
@@ -68,6 +72,12 @@ def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task
 
 def withConnectionTransactionalZIO[T]( ds : DataSource )( op : Connection => Task[T] ) : Task[T] =
   withConnectionZIO(ds)( conn => inTransactionZIO(conn)( op ) )
+
+def toSet[T]( rs : ResultSet )( extract : ResultSet => T ) : Set[T] =
+  val builder = Set.newBuilder[T]
+  while rs.next() do
+    builder += extract(rs)
+  builder.result()
 
 def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : T =
   if !rs.next() then
