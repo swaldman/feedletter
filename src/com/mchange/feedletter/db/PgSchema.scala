@@ -10,7 +10,7 @@ import com.mchange.cryptoutil.{Hash, given}
 
 object PgSchema:
   trait Creatable:
-    def Create : String
+    protected def Create : String
     def create( stmt : Statement ) : Int = stmt.executeUpdate( this.Create )
     def create( conn : Connection ) : Int = Using.resource( conn.createStatement() )( stmt => create(stmt) )
 
@@ -18,10 +18,10 @@ object PgSchema:
     object Table:
       object Metadata extends Creatable:
         val Name = "metadata"
-        val Create = "CREATE TABLE metadata( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
-        val Insert = "INSERT INTO metadata(key, value) VALUES( ?, ? )"
-        val Update = "UPDATE metadata SET value = ? WHERE key = ?"
-        val Select = "SELECT value FROM metadata WHERE key = ?"
+        protected val Create = "CREATE TABLE metadata( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
+        private val Insert = "INSERT INTO metadata(key, value) VALUES( ?, ? )"
+        private val Update = "UPDATE metadata SET value = ? WHERE key = ?"
+        private val Select = "SELECT value FROM metadata WHERE key = ?"
         def insert( conn : Connection, key : MetadataKey, value : String ) : Int =
           Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
             ps.setString( 1, key.toString() )
@@ -46,12 +46,12 @@ object PgSchema:
     override val Version = 1
       object Table:
         object Config extends Creatable:
-          val Create = "CREATE TABLE config( key VARCHAR(1024) PRIMARY KEY, value VARCHAR(1024) NOT NULL )"
-          val Insert = "INSERT INTO config(key, value) VALUES( ?, ? )"
-          val Update = "UPDATE config SET value = ? WHERE key = ?"
-          val Select = "SELECT value FROM config WHERE key = ?"
-          val SelectTuples = "SELECT key, value FROM config"
-          val Upsert =
+          protected val Create = "CREATE TABLE config( key VARCHAR(1024) PRIMARY KEY, value VARCHAR(1024) NOT NULL )"
+          private val Insert = "INSERT INTO config(key, value) VALUES( ?, ? )"
+          private val Update = "UPDATE config SET value = ? WHERE key = ?"
+          private val Select = "SELECT value FROM config WHERE key = ?"
+          private val SelectTuples = "SELECT key, value FROM config"
+          private val Upsert =
             """|INSERT INTO config(key, value)
                |VALUES ( ?, ? )
                |ON CONFLICT(key) DO UPDATE
@@ -83,7 +83,7 @@ object PgSchema:
                 toSet(rs)( rs => Tuple2( ConfigKey.valueOf( rs.getString(1) ), rs.getString(2) ) )
 
         object Feed extends Creatable:
-          val Create =
+          protected val Create =
             """|CREATE TABLE feed(
                |  url VARCHAR(1024),
                |  min_delay_minutes INTEGER,
@@ -93,12 +93,12 @@ object PgSchema:
                |  subscribed TIMESTAMP,
                |  PRIMARY KEY(url)
                |)""".stripMargin
-          val Insert =
+          private val Insert =
             """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed)
                |VALUES( ?, ?, ?, ?, ?, ? )""".stripMargin
-          val Select =
+          private val Select =
             "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed FROM feed"
-          val Upsert =
+          private val Upsert =
             """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed)
                |VALUES ( ?, ?, ?, ?, ?, ? )
                |ON CONFLICT(url) DO UPDATE
@@ -135,8 +135,8 @@ object PgSchema:
         object Item extends Creatable:
           object Type:
             object ItemAssignability extends Creatable:
-              val Create = "CREATE TYPE ItemAssignability AS ENUM ('Unassigned', 'Assigned', 'Excluded')"
-          val Create =
+              protected val Create = "CREATE TYPE ItemAssignability AS ENUM ('Unassigned', 'Assigned', 'Excluded')"
+          protected val Create =
             """|CREATE TABLE item(
                |  feed_url VARCHAR(1024),
                |  guid VARCHAR(1024),
@@ -153,26 +153,26 @@ object PgSchema:
                |  PRIMARY KEY(feed_url, guid),
                |  FOREIGN KEY(feed_url) REFERENCES feed(url)
                |)""".stripMargin
-          val SelectCheck =
+          private val SelectCheck =
             """|SELECT content_hash, first_seen, last_checked, stable_since, assignability
                |FROM item
                |WHERE feed_url = ? AND guid = ?""".stripMargin
-          val SelectExcluded =
+          private val SelectExcluded =
             s"""|SELECT feed_url, guid, title, author, publication_date, link
                 |FROM item
                 |WHERE assignability = '${ItemAssignability.Excluded}'""".stripMargin
-          val Insert =
+          private val Insert =
             """|INSERT INTO item(feed_url, guid, title, author, article, publication_date, link, content_hash, first_seen, last_checked, stable_since, assignability)
                |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST( ? AS ItemAssignability ) )""".stripMargin
-          val UpdateChanged =
+          private val UpdateChanged =
             """|UPDATE item
                |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assignability = CAST( ? AS ItemAssignability )
                |WHERE feed_url = ? AND guid = ?""".stripMargin
-          val UpdateStable =
+          private val UpdateStable =
             """|UPDATE item
                |SET last_checked = ?
                |WHERE feed_url = ? AND guid = ?""".stripMargin
-          val UpdateAssignability =
+          private val UpdateAssignability =
             """|UPDATE item
                |SET assignability = CAST( ? AS ItemAssignability )
                |WHERE feed_url = ? AND guid = ?""".stripMargin
@@ -231,17 +231,17 @@ object PgSchema:
               ps.executeUpdate()
         object SubscriptionType extends Creatable:
           import com.mchange.feedletter.{SubscriptionType as SubscriptionTypeNotTable}
-          val Create =
+          protected val Create =
             """|CREATE TABLE subscription_type(
                |  stype_name VARCHAR(64),
                |  stype      VARCHAR(1024),
                |  PRIMARY KEY (stype_name)
                |)""".stripMargin
-          val SelectByName =
+          private val SelectByName =
             """|SELECT stype
                |FROM subscription_type
                |WHERE stype_name = ?""".stripMargin
-          val Insert = "INSERT INTO subscription_type VALUES ( ?, ? )"
+          private val Insert = "INSERT INTO subscription_type VALUES ( ?, ? )"
           def selectByName( conn : Connection, stypeName : String ) : SubscriptionTypeNotTable =
             Using.resource( conn.prepareStatement( SelectByName ) ): ps =>
               ps.setString(1, stypeName)
@@ -253,7 +253,7 @@ object PgSchema:
               ps.setString(2, stype.toString())
               ps.executeUpdate()
           /*
-          val Ensure = "INSERT INTO subscription_type VALUES ( ?, ? ) ON CONFLICT(stype) DO NOTHING"
+          private val Ensure = "INSERT INTO subscription_type VALUES ( ?, ? ) ON CONFLICT(stype) DO NOTHING"
           def insert( conn : Connection, subscriptionType : SubscriptionType, moreSubscriptionTypes : SubscriptionType* ) : Unit =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               def insertType( stype : SubscriptionType ) =
@@ -270,7 +270,7 @@ object PgSchema:
               moreSubscriptionTypes.foreach( ensureType )
           */    
         object Assignable extends Creatable:
-          val Create = // an assignable represents a collection of posts for a single mail
+          protected val Create = // an assignable represents a collection of posts for a single mail
             """|CREATE TABLE assignable(
                |  feed_url VARCHAR(1024),
                |  stype_name VARCHAR(64),
@@ -281,11 +281,11 @@ object PgSchema:
                |  FOREIGN KEY(feed_url) REFERENCES feed(url),
                |  FOREIGN KEY(stype_name) REFERENCES subscription_type(stype_name)
                |)""".stripMargin
-          val SelectIsCompleted =
+          private val SelectIsCompleted =
             """|SELECT completed IS NOT NULL
                |FROM assignable
                |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
-          val SelectOpen =
+          private val SelectOpen =
             """|SELECT feed_url, stype_name, within_type_id
                |FROM assignable
                |WHERE completed IS NULL""".stripMargin
@@ -294,22 +294,22 @@ object PgSchema:
           //   https://stackoverflow.com/questions/3800551/select-first-row-in-each-group-by-group/7630564#7630564
           //   https://stackoverflow.com/questions/1684244/efficient-latest-record-query-with-postgresql
           //   https://www.timescale.com/blog/select-the-most-recent-record-of-many-items-with-postgresql/
-          val SelectWithinTypeIdMostRecentOpen =
+          private val SelectWithinTypeIdMostRecentOpen =
             """|SELECT within_type_id
                |FROM assignable
                |WHERE feed_url = ? AND stype_name = ?
                |ORDER BY opened DESC
                |LIMIT 1""".stripMargin
-          val SelectWithinTypeIdLastCompleted =
+          private val SelectWithinTypeIdLastCompleted =
             """|SELECT within_type_id
                |FROM assignable
                |WHERE feed_url = ? AND stype_name = ?
                |ORDER BY completed DESC NULLS LAST
                |LIMIT 1""".stripMargin
-          val Insert =
+          private val Insert =
             """|INSERT INTO assignable( feed_url, stype_name, within_type_id, opened, completed )
                |VALUES ( ?, ?, ?, ?, ? )""".stripMargin
-          val UpdateCompleted =
+          private val UpdateCompleted =
             """|UPDATE assignable
                |SET completed = ?
                |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
@@ -352,7 +352,7 @@ object PgSchema:
               ps.setString(4, withinTypeId)
               ps.executeUpdate()
         object Assignment extends Creatable:
-          val Create = // an assignment represents a membership of a post in a collection
+          protected val Create = // an assignment represents a membership of a post in a collection
             """|CREATE TABLE assignment(
                |  feed_url VARCHAR(1024),
                |  stype_name VARCHAR(64),
@@ -362,11 +362,11 @@ object PgSchema:
                |  FOREIGN KEY( feed_url, guid ) REFERENCES item( feed_url, guid ),
                |  FOREIGN KEY( feed_url, stype_name, within_type_id ) REFERENCES assignable( feed_url, stype_name, within_type_id )
                |)""".stripMargin
-          val SelectCountWithinAssignable =
+          private val SelectCountWithinAssignable =
             """|SELECT COUNT(*)
                |FROM assignment
                |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
-          val Insert =
+          private val Insert =
             """|INSERT INTO assignment( feed_url, stype_name, within_type_id, guid )
                |VALUES ( ?, ?, ?, ? )""".stripMargin
           def selectCountWithinAssignable( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String ) : Int =
@@ -384,7 +384,7 @@ object PgSchema:
               ps.setString(4, guid)
               ps.executeUpdate()
         object Subscription extends Creatable:
-          val Create =
+          protected val Create =
             """|CREATE TABLE subscription(
                |  destination VARCHAR(1024),
                |  feed_url VARCHAR(1024),
@@ -393,15 +393,15 @@ object PgSchema:
                |  FOREIGN KEY( feed_url ) REFERENCES feed(url),
                |  FOREIGN KEY( stype_name ) REFERENCES subscription_type( stype_name )
                |)""".stripMargin
-          val SelectSubscriptionTypesByFeedUrl =
+          private val SelectSubscriptionTypesByFeedUrl =
             """|SELECT DISTINCT stype_name
                |FROM subscription
                |WHERE feed_url = ?""".stripMargin
-          val SelectDestination =
+          private val SelectDestination =
             """|SELECT destination
                |FROM subscription
                |WHERE feed_url = ? AND stype_name = ?""".stripMargin
-          val Insert =
+          private val Insert =
             """|INSERT INTO subscription(destination, feed_url, stype_name)
                |VALUES ( ?, ?, ? )""".stripMargin
           def selectSubscriptionTypeNamesByFeedUrl( conn : Connection, feedUrl : String ) : Set[String] =
@@ -427,17 +427,17 @@ object PgSchema:
         // as a kind of event, which would trigger SubscriptionType route potentially
         // in a distinct process with a distinct database
         object MailableContents extends Creatable:
-          val Create =
+          protected val Create =
             """|CREATE TABLE mailable_contents(
                |  sha3_256 CHAR(64),
                |  contents TEXT,
                |  PRIMARY KEY(sha3_256)
                |)""".stripMargin
-          val Insert =
+          private val Insert =
             """|INSERT INTO mailable_contents(sha3_256, contents)
                |VALUES ( ?, ? )""".stripMargin
         object Mailable extends Creatable:
-          val Create =
+          protected val Create =
             """|CREATE TABLE mailable(
                |  seqnum INTEGER,
                |  sha3_256 CHAR(64),
@@ -446,7 +446,7 @@ object PgSchema:
                |  PRIMARY KEY(seqnum),
                |  FOREIGN KEY(sha3_256) REFERENCES mailable_contents(sha3_256)
                |)""".stripMargin
-          val Insert =
+          private val Insert =
             """|INSERT INTO mailable(seqnum, sha3_256, email, mailed)
                |VALUES ( nextval('mailable_seq'), ?, ?, ? )""".stripMargin
           def insert( conn : Connection, sha3_256 : Hash.SHA3_256, email : String, mailed : Boolean ) =
@@ -457,11 +457,11 @@ object PgSchema:
               ps.executeUpdate()
           object Sequence:
             object MailableSeq extends Creatable:
-              val Create = "CREATE SEQUENCE mailable_seq AS INTEGER"
+              protected val Create = "CREATE SEQUENCE mailable_seq AS INTEGER"
       end Table
       object Join:
         object ItemAssignment:
-          val SelectItemContentsForAssignable =
+          private val SelectItemContentsForAssignable =
             """|SELECT title, author, article, publication_date, link
                |FROM item
                |INNER JOIN assignment

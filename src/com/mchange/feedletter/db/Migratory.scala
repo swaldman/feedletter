@@ -16,7 +16,7 @@ object Migratory:
 
   private def dumpFileName( timestamp : String ) : String =
     "feedletter-pg-dump." + timestamp + ".sql"
-    
+
   private def extractTimestampFromDumpFileName( dfn : String ) : Option[Instant] =
     DumpFileNameRegex.findFirstMatchIn(dfn)
       .map( m => m.group(1) )
