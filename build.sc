@@ -10,17 +10,18 @@ import de.tobiasroeser.mill.vcs.version.VcsVersion
 object feedletter extends RootModule with ScalaModule with BuildInfo {
   def scalaVersion = "3.3.1"
   def ivyDeps = Agg(
+    ivy"dev.zio::zio:2.0.18",
+    ivy"dev.zio::zio-cli:0.5.0",
+    ivy"org.postgresql:postgresql:42.6.0",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
     ivy"com.lihaoyi::os-lib:0.9.1",
     ivy"com.lihaoyi::requests:0.8.0",
-    ivy"dev.zio::zio:2.0.18",
-    ivy"dev.zio::zio-cli:0.5.0",
-    ivy"com.mchange::audiofluidity-rss:0.0.3",
-    ivy"org.postgresql:postgresql:42.6.0",
     ivy"com.mchange:c3p0:0.9.5.5",
+    ivy"com.mchange::audiofluidity-rss:0.0.3",
     ivy"com.mchange::mlog-scala:0.3.14",
     ivy"com.mchange::texttable:0.0.3",
-    ivy"com.mchange::cryptoutil:0.0.1"
+    ivy"com.mchange::cryptoutil:0.0.1",
+    ivy"com.mchange::conveniences:0.0.2-SNAPSHOT",
   )
 
   def buildInfoMembers = Seq(

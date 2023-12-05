@@ -228,7 +228,7 @@ object PgSchema:
               ps.setString( 12, assignability.toString() )
               ps.executeUpdate()
         object SubscriptionType extends Creatable:
-          val Create = "CREATE TABLE subscription_type( stype VARCHAR(32) PRIMARY KEY )"
+          val Create = "CREATE TABLE subscription_type( stype VARCHAR(1024) PRIMARY KEY )"
           val Insert = "INSERT INTO subscription_type VALUES ( ? )"
           val Ensure = "INSERT INTO subscription_type VALUES ( ? ) ON CONFLICT(stype) DO NOTHING"
           def insert( conn : Connection, subscriptionType : SubscriptionType, moreSubscriptionTypes : SubscriptionType* ) : Unit =
@@ -249,7 +249,7 @@ object PgSchema:
           val Create = // an assignable represents a collection of posts for a single mail
             """|CREATE TABLE assignable(
                |  feed_url VARCHAR(1024),
-               |  stype VARCHAR(32),
+               |  stype VARCHAR(1024),
                |  within_type_id VARCHAR(1024),
                |  opened TIMESTAMP NOT NULL,
                |  completed TIMESTAMP,
@@ -331,7 +331,7 @@ object PgSchema:
           val Create = // an assignment represents a membership of a post in a collection
             """|CREATE TABLE assignment(
                |  feed_url VARCHAR(1024),
-               |  stype VARCHAR(32),
+               |  stype VARCHAR(1024),
                |  within_type_id VARCHAR(1024),
                |  guid VARCHAR(1024),
                |  PRIMARY KEY( feed_url, stype, within_type_id, guid ),
@@ -364,7 +364,7 @@ object PgSchema:
             """|CREATE TABLE subscription(
                |  destination VARCHAR(1024),
                |  feed_url VARCHAR(1024),
-               |  stype VARCHAR(64),
+               |  stype VARCHAR(1024),
                |  PRIMARY KEY( destination, feed_url ),
                |  FOREIGN KEY( feed_url ) REFERENCES feed(url),
                |  FOREIGN KEY( stype ) REFERENCES subscription_type( stype )

@@ -56,6 +56,7 @@ object Main extends ZIOCliDefault:
 
   val adminListExcludedItems = Command("list-excluded-items").map( _ => CommandConfig.AdminListExcludedItems )
 
+/*
   val adminSubscribeOptions =
     val subscriptionTypeOption = Options.text("subscription-type").withDefault("Immediate").map( SubscriptionType.parse )
     val emailTypeOption = Options.text("e-mail")
@@ -63,8 +64,9 @@ object Main extends ZIOCliDefault:
     (subscriptionTypeOption ++ emailTypeOption ++ feedUrlOption)
 
   val adminSubscribeCommand = Command("subscribe", adminSubscribeOptions).map( tup => CommandConfig.AdminSubscribe( AdminSubscribeOptions.apply.tupled(tup) ) )
+*/  
 
-  val adminCommand = Command("admin").subcommands( adminAddFeedCommand, adminListCommand, adminListFeedsCommand, adminSetCommand, adminSubscribeCommand )
+  val adminCommand = Command("admin").subcommands( adminAddFeedCommand, adminListCommand, adminListFeedsCommand, adminSetCommand )
 
   val sendmailCommand = Command("sendmail").map( _ => CommandConfig.Sendmail )
 
