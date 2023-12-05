@@ -6,6 +6,8 @@ import scala.util.Using
 
 import com.mchange.feedletter.{ConfigKey,ExcludedItem,FeedInfo,ItemContent,SubscriptionType}
 
+import com.mchange.cryptoutil.{Hash, given}
+
 object PgSchema:
   trait Creatable:
     def Create : String
@@ -405,37 +407,29 @@ object PgSchema:
         object MailableContents extends Creatable:
           val Create =
             """|CREATE TABLE mailable_contents(
-               |  seqnum INTEGER,
+               |  sha3_256 CHAR(64),
                |  contents TEXT
                |  PRIMARY KEY(seqnum)
                |)""".stripMargin
           val Insert =
-            """|INSERT INTO mailable_contents(seqnum, contents)
+            """|INSERT INTO mailable_contents(sha3_256, contents)
                |VALUES ( ?, ? )""".stripMargin
-          object Sequence:
-            object MailableContentsSeq extends Creatable:
-              val Create = "CREATE SEQUENCE mailable_contents_seq AS INTEGER"
-              val Select = "SELECT nextval('mailable_contents_seq')"
-              def select( conn : Connection ) : Int =
-                Using.resource( conn.prepareStatement( Select ) ): ps =>
-                  Using.resource( ps.executeQuery() ): rs =>
-                    uniqueResult("select-next-mailable-contents-seq-value", rs)( _.getInt(1) )
         object Mailable extends Creatable:
           val Create =
             """|CREATE TABLE mailable(
                |  seqnum INTEGER,
-               |  contents_seqnum INTEGER,
+               |  sha3_256 CHAR(64),
                |  email VARCHAR(256),
                |  mailed BOOLEAN,
                |  PRIMARY KEY(seqnum),
                |  FOREIGN KEY(contents_seqnum) REFERENCES mailable_contents(seqnum)
                |)""".stripMargin
           val Insert =
-            """|INSERT INTO mailable(seqnum, contents_seqnum, email, mailed)
+            """|INSERT INTO mailable(seqnum, sha3_256, email, mailed)
                |VALUES ( nextval('mailable_seq'), ?, ?, ? )""".stripMargin
-          def insert( conn : Connection, contentsSeqnum : Int, email : String, mailed : Boolean ) =
+          def insert( conn : Connection, sha3_256 : Hash.SHA3_256, email : String, mailed : Boolean ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-              ps.setInt(1, contentsSeqnum)
+              ps.setString(1, sha3_256.hex)
               ps.setString(2, email)
               ps.setBoolean(3, mailed)
               ps.executeUpdate()

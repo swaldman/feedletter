@@ -116,7 +116,6 @@ object PgDatabase extends Migratory:
           PgSchema.V1.Table.Assignment.create( stmt )
           PgSchema.V1.Table.Subscription.create( stmt )
           PgSchema.V1.Table.MailableContents.create( stmt )
-          PgSchema.V1.Table.MailableContents.Sequence.MailableContentsSeq.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
         insertConfigKeys(
