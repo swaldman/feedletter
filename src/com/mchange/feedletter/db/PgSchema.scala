@@ -430,8 +430,8 @@ object PgSchema:
           val Create =
             """|CREATE TABLE mailable_contents(
                |  sha3_256 CHAR(64),
-               |  contents TEXT
-               |  PRIMARY KEY(seqnum)
+               |  contents TEXT,
+               |  PRIMARY KEY(sha3_256)
                |)""".stripMargin
           val Insert =
             """|INSERT INTO mailable_contents(sha3_256, contents)
@@ -444,7 +444,7 @@ object PgSchema:
                |  email VARCHAR(256),
                |  mailed BOOLEAN,
                |  PRIMARY KEY(seqnum),
-               |  FOREIGN KEY(contents_seqnum) REFERENCES mailable_contents(seqnum)
+               |  FOREIGN KEY(sha3_256) REFERENCES mailable_contents(sha3_256)
                |)""".stripMargin
           val Insert =
             """|INSERT INTO mailable(seqnum, sha3_256, email, mailed)
