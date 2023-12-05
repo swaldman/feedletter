@@ -16,28 +16,22 @@ object SubscriptionType:
 
   private def preparse( s : String ) : Option[Tuple3[String,String,Seq[Tuple2[String,String]]]] =
     s match
-      case GeneralRegex( _type, _subtype, _fields ) => Some( Tuple3( _type, _subtype, wwwFormDecodeUTF8( _fields ) ) )
+      case GeneralRegex( category, subtype, params ) => Some( Tuple3( category, subtype, wwwFormDecodeUTF8( params ) ) )
       case _ => None
 
   object Email:
-    private def createBySubtype( subtype : String, tuples : Seq[Tuple2[String,String]] ) : Option[SubscriptionType.Email] =
-      val tupMap = tuples.toMap
-      tupMap.get("from").flatMap: from =>
-        val replyTo = tupMap.get("replyTo")
-        subtype match
-          case Immediate.Subtype => Some( Immediate( from, replyTo ) )
-          case Weekly.Subtype    => Some( Weekly( from, replyTo ) )
-          case _                 => None
+    private def createBySubtype( subtype : String, params : Seq[Tuple2[String,String]] ) : Option[SubscriptionType.Email] =
+      subtype match
+        case "Immediate" => Some( Immediate( params ) )
+        case "Weekly"    => Some( Weekly( params ) )
+        case _                 => None
 
     def parse( s : String ) : Option[SubscriptionType.Email] =
       preparse(s) match
         case Some( Tuple3("Email", subtype, params) ) => createBySubtype( subtype, params )
         case _ => None
 
-    object Immediate:
-      val Subtype = "Immediate"
-    case class Immediate( from : String, replyTo : Option[String] ) extends Email:
-      override def subtype : String = Immediate.Subtype
+    class Immediate( params : Seq[Tuple2[String,String]] ) extends Email("Immediate", params):
       override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid )
       override def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean = true
@@ -48,11 +42,8 @@ object SubscriptionType:
         ???
       */
 
-    object Weekly:
-      val Subtype = "Weekly"
-    case class Weekly( from : String, replyTo : Option[String] ) extends Email:
+    class Weekly( params : Seq[Tuple2[String,String]] ) extends Email( "Weekly", params ):
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
-      override def subtype : String = Weekly.Subtype
       override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( WtiFormatter.format( status.lastChecked ) ) 
       override def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean =
@@ -61,24 +52,38 @@ object SubscriptionType:
         val woy = ta.get( ChronoField.ALIGNED_WEEK_OF_YEAR )
         val nowYear = now.get( ChronoField.YEAR )
         nowYear > year || (nowYear == year && now.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
-  trait Email extends SubscriptionType:
-    def subtype : String
-    def from : String
-    def replyTo : Option[String]
-    def params : immutable.SortedSet[Tuple2[String,String]] = immutable.SortedSet( ("from",from) ) ++ replyTo.map( Tuple2("replyTo",_) )
-    override def toString() : String = s"Email.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
+  abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params):
+    val from    : Seq[String] = params.filter( _(0) == "from" ).map( _(1) )
+    val replyTo : Seq[String] = params.filter( _(0) == "replyTo" ).map( _(1) )
+
+    if from.isEmpty then
+      throw new InvalidSubscriptionType(
+        "An Email subscription type must include at least one 'from' paramm. Params given: " +
+        params.map( (k,v) => k + " -> " + v ).mkString(", ")
+      )
   end Email
 
   def parse( str : String ) : SubscriptionType =
     val parsed =
-      Email.parse( str ) // orElse ... whatever else we come up with
+      Email.parse( str ) // orElse ... whatever other categories we come up with
     parsed match
       case Some( stype ) => stype
       case other => throw new InvalidSubscriptionType(s"'${other}' could not be parsed into a valid subscription type.")
-sealed trait SubscriptionType:
+sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[Tuple2[String,String]] ):
   def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean
-  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // temporary
+  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
+  override def toString() : String = s"${category}.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
+  override def equals( other : Any ) : Boolean =
+    other match
+      case stype : SubscriptionType =>
+        category == category && subtype == subtype && params == params
+      case _ =>
+        false
+  override def hashCode(): Int =
+    category.## ^ subtype.## ^ params.##
+
+        
 
 
 
