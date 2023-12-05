@@ -7,8 +7,7 @@ import java.time.temporal.ChronoField
 
 import scala.collection.immutable
 
-import com.mchange.feedletter.db.ItemStatus
-import com.mchange.feedletter.db.AssignableWithinTypeInfo
+import com.mchange.feedletter.db.{AssignableKey, AssignableWithinTypeInfo, ItemStatus}
 
 import com.mchange.conveniences.www.*
 
@@ -79,7 +78,7 @@ object SubscriptionType:
 sealed trait SubscriptionType:
   def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean
-  def route( conn : Connection, feedUrl : String, withinTypeId : String, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // temporary
+  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // temporary
 
 
 

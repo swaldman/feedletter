@@ -21,11 +21,11 @@ class ConfigurationMissing( key : ConfigKey, cause : Throwable = null ) extends 
 
 class AssignableCompleted(
   val feedUrl      : String,
-  val stype        : SubscriptionType,
+  val stypeName    : String,
   val withinTypeId : String,
   val forGuid      : Option[String]
 ) extends FeedletterDbException(
   msg =
-    s"Assignable ('${feedUrl}', '${stype}', '${withinTypeId}') has already been completed and cannot be further assigned to." +
+    s"Assignable ('${feedUrl}', '${stypeName}', '${withinTypeId}') has already been completed and cannot be further assigned to." +
     forGuid.fold("")(guid => s" (Item '${guid}' could not be included in this assignable.)")
 )

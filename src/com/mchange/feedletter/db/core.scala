@@ -12,7 +12,7 @@ import javax.print.attribute.standard.OutputDeviceAssigned
 
 final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assignability : ItemAssignability )
 final case class AssignableWithinTypeInfo( withinTypeId : String, count : Int )
-final case class AssignableKey( feedUrl : String, stype : SubscriptionType, withinTypeId : String )
+final case class AssignableKey( feedUrl : String, stypeName : String, withinTypeId : String )
 
 enum MetadataKey:
   case SchemaVersion

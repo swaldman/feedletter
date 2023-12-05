@@ -167,35 +167,36 @@ object PgDatabase extends Migratory:
   def reportConfigKeys( ds : DataSource ): Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
     withConnectionTransactional( ds )( conn => sort( LatestSchema.Table.Config.selectTuples( conn ) ) )
 
-  private def lastCompletedAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[AssignableWithinTypeInfo] =
-    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, stype )
+  private def lastCompletedAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stypeName : String ) : Option[AssignableWithinTypeInfo] =
+    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, stypeName )
     withinTypeId.map: wti =>
-      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, wti )
+      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stypeName, wti )
       AssignableWithinTypeInfo( wti, count )
 
-  private def mostRecentOpenAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[AssignableWithinTypeInfo] =
-    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdMostRecentOpen( conn, feedUrl, stype )
+  private def mostRecentOpenAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stypeName : String ) : Option[AssignableWithinTypeInfo] =
+    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdMostRecentOpen( conn, feedUrl, stypeName )
     withinTypeId.map: wti =>
-      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, wti )
+      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stypeName, wti )
       AssignableWithinTypeInfo( wti, count )
 
-  private def ensureOpenAssignable( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, forGuid : Option[String]) : Unit =
-    LatestSchema.Table.Assignable.selectIsCompleted( conn, feedUrl, stype, withinTypeId) match
+  private def ensureOpenAssignable( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String, forGuid : Option[String]) : Unit =
+    LatestSchema.Table.Assignable.selectIsCompleted( conn, feedUrl, stypeName, withinTypeId) match
       case Some( false ) => /* okay, ignore */
-      case Some( true )  => throw new AssignableCompleted( feedUrl, stype, withinTypeId, forGuid ) /* uh oh! */
+      case Some( true )  => throw new AssignableCompleted( feedUrl, stypeName, withinTypeId, forGuid ) /* uh oh! */
       case None =>
-        LatestSchema.Table.Assignable.insert( conn, feedUrl, stype, withinTypeId, Instant.now, None )
+        LatestSchema.Table.Assignable.insert( conn, feedUrl, stypeName, withinTypeId, Instant.now, None )
 
-  private def assignForSubscriptionType( conn : Connection, stype : SubscriptionType, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
-    val lastCompleted = lastCompletedAssignableWithinTypeInfo( conn, feedUrl, stype )
-    val mostRecentOpen = mostRecentOpenAssignableWithinTypeInfo( conn, feedUrl, stype )
+  private def assignForSubscriptionType( conn : Connection, stypeName : String, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
+    val lastCompleted = lastCompletedAssignableWithinTypeInfo( conn, feedUrl, stypeName )
+    val mostRecentOpen = mostRecentOpenAssignableWithinTypeInfo( conn, feedUrl, stypeName )
+    val stype = LatestSchema.Table.SubscriptionType.selectByName( conn, stypeName )
     stype.withinTypeId( feedUrl, lastCompleted, mostRecentOpen, guid, content, status ).foreach: wti =>
-      ensureOpenAssignable( conn, feedUrl, stype, wti, Some(guid) )
-      LatestSchema.Table.Assignment.insert( conn, feedUrl, stype, wti, guid )
+      ensureOpenAssignable( conn, feedUrl, stypeName, wti, Some(guid) )
+      LatestSchema.Table.Assignment.insert( conn, feedUrl, stypeName, wti, guid )
 
   private def assign( conn : Connection, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
-    val subscriptionTypes = LatestSchema.Table.Subscription.selectSubscriptionTypeByFeedUrl( conn, feedUrl )
-    subscriptionTypes.foreach( stype => assignForSubscriptionType( conn, stype, feedUrl, guid, content, status ) )
+    val subscriptionTypeNames = LatestSchema.Table.Subscription.selectSubscriptionTypeNamesByFeedUrl( conn, feedUrl )
+    subscriptionTypeNames.foreach( stypeName => assignForSubscriptionType( conn, stypeName, feedUrl, guid, content, status ) )
     LatestSchema.Table.Item.updateAssignability( conn, feedUrl, guid, ItemAssignability.Assigned )
 
   private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : String, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
@@ -234,13 +235,17 @@ object PgDatabase extends Migratory:
       updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
 
   private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Set[ItemContent] =
-    LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.feedUrl, assignableKey.stype, assignableKey.withinTypeId )
+    LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.feedUrl, assignableKey.stypeName, assignableKey.withinTypeId )
 
-  private def route( conn : Connection, stype : SubscriptionType, assignableKey : AssignableKey ) : Unit =
-    val AssignableKey( feedUrl, stype, withinTypeId ) = assignableKey
+  private def route( conn : Connection, assignableKey : AssignableKey ) : Unit =
+    val stype = LatestSchema.Table.SubscriptionType.selectByName( conn, assignableKey.stypeName )
+    route( conn, assignableKey, stype )
+    
+  private def route( conn : Connection, assignableKey : AssignableKey, stype : SubscriptionType ) : Unit =
+    val AssignableKey( feedUrl, stypeName, withinTypeId ) = assignableKey
     val contents = materializeAssignable(conn, assignableKey)
-    val destinations = LatestSchema.Table.Subscription.selectDestination( conn, feedUrl, stype )
-    stype.route(conn, assignableKey.feedUrl, assignableKey.withinTypeId, contents, destinations )
+    val destinations = LatestSchema.Table.Subscription.selectDestination( conn, feedUrl, stypeName )
+    stype.route(conn, assignableKey, contents, destinations )
 
   private def queueContentsForMailing( conn : Connection, contents : String, destinations : Set[String] ) : Unit = ???
 
@@ -285,12 +290,13 @@ object PgDatabase extends Migratory:
   def completeAssignables( ds : DataSource ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Assignable.selectOpen( conn ).foreach: ak =>
-        val AssignableKey( feedUrl, stype, withinTypeId ) = ak
-        val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stype, withinTypeId )
+        val AssignableKey( feedUrl, stypeName, withinTypeId ) = ak
+        val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stypeName, withinTypeId )
+        val stype = LatestSchema.Table.SubscriptionType.selectByName( conn, stypeName )
         val now = Instant.now
         if stype.isComplete( withinTypeId, count, now ) then
-          route( conn, stype, ak )
-          LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stype, withinTypeId, Some(now) )
+          route( conn, ak, stype )
+          LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stypeName, withinTypeId, Some(now) )
 
   def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
@@ -312,7 +318,6 @@ object PgDatabase extends Migratory:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Item.selectExcluded(conn)
 
-  def addSubscription( ds : DataSource, stype : SubscriptionType, destination : String, feedUrl : String ) : Task[Unit] =
+  def addSubscription( ds : DataSource, stypeName : String, destination : String, feedUrl : String ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
-      LatestSchema.Table.SubscriptionType.ensure( conn, stype )
-      LatestSchema.Table.Subscription.insert( conn, destination, feedUrl, stype )
+      LatestSchema.Table.Subscription.insert( conn, destination, feedUrl, stypeName )

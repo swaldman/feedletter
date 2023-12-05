@@ -230,9 +230,30 @@ object PgSchema:
               ps.setString( 12, assignability.toString() )
               ps.executeUpdate()
         object SubscriptionType extends Creatable:
-          val Create = "CREATE TABLE subscription_type( stype VARCHAR(1024) PRIMARY KEY )"
-          val Insert = "INSERT INTO subscription_type VALUES ( ? )"
-          val Ensure = "INSERT INTO subscription_type VALUES ( ? ) ON CONFLICT(stype) DO NOTHING"
+          import com.mchange.feedletter.{SubscriptionType as SubscriptionTypeNotTable}
+          val Create =
+            """|CREATE TABLE subscription_type(
+               |  stype_name VARCHAR(64),
+               |  stype      VARCHAR(1024),
+               |  PRIMARY KEY (stype_name)
+               |)""".stripMargin
+          val SelectByName =
+            """|SELECT stype
+               |FROM subscription_type
+               |WHERE stype_name = ?""".stripMargin
+          val Insert = "INSERT INTO subscription_type VALUES ( ?, ? )"
+          def selectByName( conn : Connection, stypeName : String ) : SubscriptionTypeNotTable =
+            Using.resource( conn.prepareStatement( SelectByName ) ): ps =>
+              ps.setString(1, stypeName)
+              Using.resource( ps.executeQuery() ): rs =>
+                uniqueResult("select-stype-by-name", rs)( rs => SubscriptionTypeNotTable.parse( rs.getString(1) ) )
+          def insert( conn : Connection, stypeName : String, stype : SubscriptionTypeNotTable ) =
+            Using.resource( conn.prepareStatement( Insert ) ): ps =>
+              ps.setString(1, stypeName)
+              ps.setString(2, stype.toString())
+              ps.executeUpdate()
+          /*
+          val Ensure = "INSERT INTO subscription_type VALUES ( ?, ? ) ON CONFLICT(stype) DO NOTHING"
           def insert( conn : Connection, subscriptionType : SubscriptionType, moreSubscriptionTypes : SubscriptionType* ) : Unit =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               def insertType( stype : SubscriptionType ) =
@@ -247,24 +268,25 @@ object PgSchema:
                 ps.executeUpdate()
               ensureType( subscriptionType )
               moreSubscriptionTypes.foreach( ensureType )
+          */    
         object Assignable extends Creatable:
           val Create = // an assignable represents a collection of posts for a single mail
             """|CREATE TABLE assignable(
                |  feed_url VARCHAR(1024),
-               |  stype VARCHAR(1024),
+               |  stype_name VARCHAR(64),
                |  within_type_id VARCHAR(1024),
                |  opened TIMESTAMP NOT NULL,
                |  completed TIMESTAMP,
-               |  PRIMARY KEY(feed_url, stype, within_type_id),
+               |  PRIMARY KEY(feed_url, stype_name, within_type_id),
                |  FOREIGN KEY(feed_url) REFERENCES feed(url),
-               |  FOREIGN KEY(stype) REFERENCES subscription_type(stype)
+               |  FOREIGN KEY(stype_name) REFERENCES subscription_type(stype_name)
                |)""".stripMargin
           val SelectIsCompleted =
             """|SELECT completed IS NOT NULL
                |FROM assignable
-               |WHERE feed_url = ? AND stype = ? AND within_type_id = ?""".stripMargin
+               |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
           val SelectOpen =
-            """|SELECT feed_url, stype, within_type_id
+            """|SELECT feed_url, stype_name, within_type_id
                |FROM assignable
                |WHERE completed IS NULL""".stripMargin
           // should I make indexes for these next two? should I try some more clever/efficient form of query?
@@ -275,89 +297,89 @@ object PgSchema:
           val SelectWithinTypeIdMostRecentOpen =
             """|SELECT within_type_id
                |FROM assignable
-               |WHERE feed_url = ? AND stype = ?
+               |WHERE feed_url = ? AND stype_name = ?
                |ORDER BY opened DESC
                |LIMIT 1""".stripMargin
           val SelectWithinTypeIdLastCompleted =
             """|SELECT within_type_id
                |FROM assignable
-               |WHERE feed_url = ? AND stype = ?
+               |WHERE feed_url = ? AND stype_name = ?
                |ORDER BY completed DESC NULLS LAST
                |LIMIT 1""".stripMargin
           val Insert =
-            """|INSERT INTO assignable( feed_url, stype, within_type_id, opened, completed )
+            """|INSERT INTO assignable( feed_url, stype_name, within_type_id, opened, completed )
                |VALUES ( ?, ?, ?, ?, ? )""".stripMargin
           val UpdateCompleted =
             """|UPDATE assignable
                |SET completed = ?
-               |WHERE feed_url = ? AND stype = ? AND within_type_id = ?""".stripMargin
+               |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
           def selectOpen( conn : Connection ) : Set[AssignableKey] =
             Using.resource( conn.prepareStatement( this.SelectOpen ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => AssignableKey( rs.getString(1), com.mchange.feedletter.SubscriptionType.parse( rs.getString(2) ), rs.getString(3) ) )
-          def selectIsCompleted( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String ) : Option[Boolean] =
+                toSet(rs)( rs => AssignableKey( rs.getString(1), rs.getString(2), rs.getString(3) ) )
+          def selectIsCompleted( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String ) : Option[Boolean] =
             Using.resource( conn.prepareStatement( this.SelectIsCompleted ) ): ps =>
               ps.setString(1, feedUrl)
-              ps.setString(2, stype.toString())
+              ps.setString(2, stypeName)
               ps.setString(3, withinTypeId)
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-completed", rs)( _.getBoolean(1) )
-          def selectWithinTypeIdMostRecentOpen( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[String] =
+          def selectWithinTypeIdMostRecentOpen( conn : Connection, feedUrl : String, stypeName : String ) : Option[String] =
             Using.resource( conn.prepareStatement( this.SelectWithinTypeIdMostRecentOpen ) ): ps =>
               ps.setString(1, feedUrl)
-              ps.setString(2, stype.toString())
+              ps.setString(2, stypeName)
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-most-recent-open-within-type-id", rs)( _.getString(1) )
-          def selectWithinTypeIdLastCompleted( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Option[String] =
+          def selectWithinTypeIdLastCompleted( conn : Connection, feedUrl : String, stypeName : String ) : Option[String] =
             Using.resource( conn.prepareStatement( this.SelectWithinTypeIdLastCompleted ) ): ps =>
               ps.setString(1, feedUrl)
-              ps.setString(2, stype.toString())
+              ps.setString(2, stypeName)
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-last-completed-within-type-id", rs)( _.getString(1) )
-          def insert( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, opened : Instant, completed : Option[Instant] ) =
+          def insert( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String, opened : Instant, completed : Option[Instant] ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString(1, feedUrl)
-              ps.setString(2, stype.toString())
+              ps.setString(2, stypeName)
               ps.setString(3, withinTypeId)
               ps.setTimestamp(4, Timestamp.from(opened))
               setTimestampOptional(ps, 5, completed.map( Timestamp.from ))
               ps.executeUpdate()
-          def updateCompleted( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, completed : Option[Instant] ) =
+          def updateCompleted( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String, completed : Option[Instant] ) =
             Using.resource( conn.prepareStatement( this.UpdateCompleted ) ): ps =>
               completed.fold( ps.setNull(1, Types.TIMESTAMP) )( instant => ps.setTimestamp(1, Timestamp.from(instant)) )
               ps.setString(2, feedUrl)
-              ps.setString(3, stype.toString())
+              ps.setString(3, stypeName)
               ps.setString(4, withinTypeId)
               ps.executeUpdate()
         object Assignment extends Creatable:
           val Create = // an assignment represents a membership of a post in a collection
             """|CREATE TABLE assignment(
                |  feed_url VARCHAR(1024),
-               |  stype VARCHAR(1024),
+               |  stype_name VARCHAR(64),
                |  within_type_id VARCHAR(1024),
                |  guid VARCHAR(1024),
-               |  PRIMARY KEY( feed_url, stype, within_type_id, guid ),
+               |  PRIMARY KEY( feed_url, stype_name, within_type_id, guid ),
                |  FOREIGN KEY( feed_url, guid ) REFERENCES item( feed_url, guid ),
-               |  FOREIGN KEY( feed_url, stype, within_type_id ) REFERENCES assignable( feed_url, stype, within_type_id )
+               |  FOREIGN KEY( feed_url, stype_name, within_type_id ) REFERENCES assignable( feed_url, stype_name, within_type_id )
                |)""".stripMargin
           val SelectCountWithinAssignable =
             """|SELECT COUNT(*)
                |FROM assignment
-               |WHERE feed_url = ? AND stype = ? AND within_type_id = ?""".stripMargin
+               |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
           val Insert =
-            """|INSERT INTO assignment( feed_url, stype, within_type_id, guid )
+            """|INSERT INTO assignment( feed_url, stype_name, within_type_id, guid )
                |VALUES ( ?, ?, ?, ? )""".stripMargin
-          def selectCountWithinAssignable( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String ) : Int =
+          def selectCountWithinAssignable( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String ) : Int =
             Using.resource( conn.prepareStatement( this.SelectCountWithinAssignable ) ): ps =>
               ps.setString(1, feedUrl)
-              ps.setString(2, stype.toString())
+              ps.setString(2, stypeName)
               ps.setString(3, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult( "select-count-within-assignable", rs )( _.getInt(1) )
-          def insert( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String, guid : String ) =
+          def insert( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String, guid : String ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString(1, feedUrl)
-              ps.setString(2, stype.toString())
+              ps.setString(2, stypeName)
               ps.setString(3, withinTypeId)
               ps.setString(4, guid)
               ps.executeUpdate()
@@ -366,38 +388,38 @@ object PgSchema:
             """|CREATE TABLE subscription(
                |  destination VARCHAR(1024),
                |  feed_url VARCHAR(1024),
-               |  stype VARCHAR(1024),
+               |  stype_name VARCHAR(64),
                |  PRIMARY KEY( destination, feed_url ),
                |  FOREIGN KEY( feed_url ) REFERENCES feed(url),
-               |  FOREIGN KEY( stype ) REFERENCES subscription_type( stype )
+               |  FOREIGN KEY( stype_name ) REFERENCES subscription_type( stype_name )
                |)""".stripMargin
           val SelectSubscriptionTypesByFeedUrl =
-            """|SELECT DISTINCT stype
+            """|SELECT DISTINCT stype_name
                |FROM subscription
                |WHERE feed_url = ?""".stripMargin
           val SelectDestination =
             """|SELECT destination
                |FROM subscription
-               |WHERE feed_url = ? AND stype = ?""".stripMargin
+               |WHERE feed_url = ? AND stype_name = ?""".stripMargin
           val Insert =
-            """|INSERT INTO subscription(destination, feed_url, stype)
+            """|INSERT INTO subscription(destination, feed_url, stype_name)
                |VALUES ( ?, ?, ? )""".stripMargin
-          def selectSubscriptionTypeByFeedUrl( conn : Connection, feedUrl : String ) : Set[SubscriptionType] =
+          def selectSubscriptionTypeNamesByFeedUrl( conn : Connection, feedUrl : String ) : Set[String] =
             Using.resource( conn.prepareStatement( this.SelectSubscriptionTypesByFeedUrl ) ): ps =>
               ps.setString(1, feedUrl)
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => com.mchange.feedletter.SubscriptionType.parse( rs.getString(1) ) )
-          def selectDestination( conn : Connection, feedUrl : String, stype : SubscriptionType ) : Set[String] =
+                toSet(rs)( rs => rs.getString(1) )
+          def selectDestination( conn : Connection, feedUrl : String, stypeName : String ) : Set[String] =
             Using.resource( conn.prepareStatement( this.SelectDestination ) ): ps =>
               ps.setString(1, feedUrl)
-              ps.setString(2, stype.toString())
+              ps.setString(2, stypeName)
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => rs.getString(1) )
-          def insert( conn : Connection, destination : String, feedUrl : String, stype : SubscriptionType ) =
+          def insert( conn : Connection, destination : String, feedUrl : String, stypeName : String ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               ps.setString(1, destination)
               ps.setString(2, feedUrl)
-              ps.setString(3, stype.toString())
+              ps.setString(3, stypeName)
               ps.executeUpdate()
 
         // publication-related tables should be decoupled from, unrelated to the
@@ -444,11 +466,11 @@ object PgSchema:
                |FROM item
                |INNER JOIN assignment
                |ON item.feed_url = assignment.feed_url AND item.guid = assignment.guid
-               |WHERE item.feed_url = ? AND assignment.stype = ? AND assignment.within_type_id = ?""".stripMargin
-          def selectItemContentsForAssignable( conn : Connection, feedUrl : String, stype : SubscriptionType, withinTypeId : String ) : Set[ItemContent] =
+               |WHERE item.feed_url = ? AND assignment.stype_name = ? AND assignment.within_type_id = ?""".stripMargin
+          def selectItemContentsForAssignable( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String ) : Set[ItemContent] =
             Using.resource( conn.prepareStatement( SelectItemContentsForAssignable ) ): ps =>
               ps.setString(1, feedUrl)
-              ps.setString(2, stype.toString)
+              ps.setString(2, stypeName)
               ps.setString(3, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
                 toSet( rs )( rs => ItemContent( Option( rs.getString(1) ), Option( rs.getString(2) ), Option( rs.getString(3) ), Option( rs.getTimestamp(4) ).map( _.toInstant ), Option( rs.getString(5) ) ) )

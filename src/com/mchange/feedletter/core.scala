@@ -26,7 +26,7 @@ final case class FeedInfo( feedUrl : String, minDelayMinutes : Int, awaitStabili
 
 final case class ExcludedItem( feedUrl : String, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 
-final case class AdminSubscribeOptions( stype : SubscriptionType, destination : String, feedUrl : String )
+final case class AdminSubscribeOptions( stypeName : String, destination : String, feedUrl : String )
 
 def composeMultipleItemHtmlMailContent( contents : Set[ItemContent] ) : String = ???
 
