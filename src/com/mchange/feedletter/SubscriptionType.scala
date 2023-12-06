@@ -14,24 +14,8 @@ import com.mchange.conveniences.www.*
 object SubscriptionType:
   private val GeneralRegex = """^(\w+)\.(\w+)\:(.*)$""".r
 
-  private def preparse( s : String ) : Option[Tuple3[String,String,Seq[Tuple2[String,String]]]] =
-    s match
-      case GeneralRegex( category, subtype, params ) => Some( Tuple3( category, subtype, wwwFormDecodeUTF8( params ) ) )
-      case _ => None
-
   object Email:
-    private def createBySubtype( subtype : String, params : Seq[Tuple2[String,String]] ) : Option[SubscriptionType.Email] =
-      subtype match
-        case "Immediate" => Some( Immediate( params ) )
-        case "Weekly"    => Some( Weekly( params ) )
-        case _                 => None
-
-    def parse( s : String ) : Option[SubscriptionType.Email] =
-      preparse(s) match
-        case Some( Tuple3("Email", subtype, params) ) => createBySubtype( subtype, params )
-        case _ => None
-
-    class Immediate( params : Seq[Tuple2[String,String]] ) extends Email("Immediate", params):
+    class Immediate( params : Seq[(String,String)] ) extends Email("Immediate", params):
       override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid )
       override def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean = true
@@ -42,7 +26,7 @@ object SubscriptionType:
         ???
       */
 
-    class Weekly( params : Seq[Tuple2[String,String]] ) extends Email( "Weekly", params ):
+    class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
       override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( WtiFormatter.format( status.lastChecked ) ) 
@@ -63,13 +47,22 @@ object SubscriptionType:
       )
   end Email
 
+  def dispatch( category : String, subtype : String, params : Seq[(String,String)] ) : Option[SubscriptionType] =
+    ( category, subtype ) match
+      case ("Email", "Immediate") => Some( Email.Immediate(params) )
+      case ("Email", "Weekly")    => Some( Email.Weekly(params) )
+      case _                      => None 
+
+  private def preparse( s : String ) : Option[Tuple3[String,String,Seq[Tuple2[String,String]]]] =
+    s match
+      case GeneralRegex( category, subtype, params ) => Some( Tuple3( category, subtype, wwwFormDecodeUTF8( params ) ) )
+      case _ => None
+
   def parse( str : String ) : SubscriptionType =
-    val parsed =
-      Email.parse( str ) // orElse ... whatever other categories we come up with
-    parsed match
-      case Some( stype ) => stype
-      case other => throw new InvalidSubscriptionType(s"'${other}' could not be parsed into a valid subscription type.")
-sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[Tuple2[String,String]] ):
+      preparse( str ).flatMap( dispatch.tupled ).getOrElse:
+        throw new InvalidSubscriptionType(s"'${str}' could not be parsed into a valid subscription type.")
+
+sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
   def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
@@ -83,7 +76,7 @@ sealed abstract class SubscriptionType( val category : String, val subtype : Str
   override def hashCode(): Int =
     category.## ^ subtype.## ^ params.##
 
-        
+
 
 
 

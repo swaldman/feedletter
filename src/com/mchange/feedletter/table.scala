@@ -36,4 +36,13 @@ def extractExcludedItem( ei : ExcludedItem ) : Seq[String] =
 def printExcludedItemsTable( eis : Set[ExcludedItem] ) : Task[Unit] =
   ZIO.attempt( texttable.printTable( ExcludedItemsColumns, extractExcludedItem )( eis.map(texttable. Row.apply) ) )
 
+val SubscriptionTypeColumns = Seq(
+  texttable.Column("Name"),
+  texttable.Column("Subscription Type")
+)
+
+def printSubscriptionTypeTable( tups : Set[(String,SubscriptionType)] ) : Task[Unit] =
+  ZIO.attempt( texttable.printProductTable( SubscriptionTypeColumns )( tups.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
+
+
 

@@ -318,6 +318,14 @@ object PgDatabase extends Migratory:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Item.selectExcluded(conn)
 
+  def addSubscriptionType( ds : DataSource, stypeName : String, stype : SubscriptionType ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.SubscriptionType.insert( conn, stypeName, stype )
+
   def addSubscription( ds : DataSource, stypeName : String, destination : String, feedUrl : String ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscription.insert( conn, destination, feedUrl, stypeName )
+
+  def listSubscriptionTypes( ds : DataSource ) : Task[Set[(String,SubscriptionType)]] =
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.SubscriptionType.select( conn )

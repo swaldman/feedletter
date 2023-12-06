@@ -4,9 +4,10 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.{ConfigKey,ExcludedItem,FeedInfo,ItemContent,SubscriptionType}
+import com.mchange.feedletter.{ConfigKey,ExcludedItem,FeedInfo,ItemContent}
 
 import com.mchange.cryptoutil.{Hash, given}
+import com.mchange.feedletter.InvalidSubscriptionType
 
 object PgSchema:
   trait Creatable:
@@ -237,11 +238,16 @@ object PgSchema:
                |  stype      VARCHAR(1024),
                |  PRIMARY KEY (stype_name)
                |)""".stripMargin
+          private val Select = "SELECT stype_name, stype FROM subscription_type"
           private val SelectByName =
             """|SELECT stype
                |FROM subscription_type
                |WHERE stype_name = ?""".stripMargin
           private val Insert = "INSERT INTO subscription_type VALUES ( ?, ? )"
+          def select( conn : Connection ) : Set[(String,SubscriptionTypeNotTable)] =
+            Using.resource( conn.prepareStatement( Select ) ): ps =>
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet(rs)( rs => ( rs.getString(1), SubscriptionTypeNotTable.parse( rs.getString(2) ) ) )
           def selectByName( conn : Connection, stypeName : String ) : SubscriptionTypeNotTable =
             Using.resource( conn.prepareStatement( SelectByName ) ): ps =>
               ps.setString(1, stypeName)
@@ -252,23 +258,6 @@ object PgSchema:
               ps.setString(1, stypeName)
               ps.setString(2, stype.toString())
               ps.executeUpdate()
-          /*
-          private val Ensure = "INSERT INTO subscription_type VALUES ( ?, ? ) ON CONFLICT(stype) DO NOTHING"
-          def insert( conn : Connection, subscriptionType : SubscriptionType, moreSubscriptionTypes : SubscriptionType* ) : Unit =
-            Using.resource( conn.prepareStatement( Insert ) ): ps =>
-              def insertType( stype : SubscriptionType ) =
-                ps.setString(1, stype.toString())
-                ps.executeUpdate()
-              insertType( subscriptionType )
-              moreSubscriptionTypes.foreach( insertType )
-          def ensure( conn : Connection, subscriptionType : SubscriptionType, moreSubscriptionTypes : SubscriptionType* ) : Unit =
-            Using.resource( conn.prepareStatement( Ensure ) ): ps =>
-              def ensureType( stype : SubscriptionType ) =
-                ps.setString(1, stype.toString())
-                ps.executeUpdate()
-              ensureType( subscriptionType )
-              moreSubscriptionTypes.foreach( ensureType )
-          */    
         object Assignable extends Creatable:
           protected val Create = // an assignable represents a collection of posts for a single mail
             """|CREATE TABLE assignable(

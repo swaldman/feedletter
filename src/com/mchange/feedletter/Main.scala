@@ -17,69 +17,70 @@ object Main extends ZIOCliDefault:
 
   val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] = ZLayer.fromZIO( ZIO.attempt( config.dataSource ) )
 
-  val forceOption = Options.boolean("force").alias("f")
+  val admin =
+    val addFeed =
+      val options =
+        val minDelayMinutes = Options.integer("min-delay-mins").map( _.toInt).withDefault(30)
+        val awaitStabilizationMinutes = Options.integer("await-stabilization-minutes").map( _.toInt ).withDefault(15)
+        val maxDelayMinutes = Options.integer("max-delay-minutes").map( _.toInt).withDefault(180)
+        val paused = Options.boolean("paused")
+        (minDelayMinutes ++ awaitStabilizationMinutes ++ maxDelayMinutes ++ paused)
+      val args = Args.text("feed-url")
+      Command("add-feed", options, args).map { case ((minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused), feedUrl) =>
+        val fi = FeedInfo(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused, Instant.now )
+        CommandConfig.Admin.AddFeed( fi )
+      }
+    val createSubscriptionType =
+      val email =
+        val options =
+          val from = Options.text("from")
+          val replyTo = Options.text("reply-to").optional
+          val tpe =
+            Options.enumeration("type")(
+              "immediate" -> "Immediate",
+              "weekly" -> "Weekly"
+            ).withDefault("Immediate")
+          val name = Options.text("name").withDefault("default")
+          val extra = Options.keyValueMap("extra-params").withDefault(Map.empty)
+          from ++ replyTo ++ tpe ++ name ++ extra
+        Command("email", options).map( CommandConfig.Admin.CreateSubscriptionTypeEmail.apply )
+      Command("create-subscription-type").subcommands(email)
+    val listConfig = Command("list-config").map( _ => CommandConfig.Admin.ListConfig )
+    val listExcluded = Command("list-excluded-items").map( _ => CommandConfig.Admin.ListExcludedItems )
+    val listFeeds = Command("list-feeds").map( _ => CommandConfig.Admin.ListFeeds )
+    val setConfig =
+      val options =
+        val dumpDbDir = Options.directory("dump-db-dir").map( checkExpandTildeHomeDirPath ).map( _.toAbsolutePath ).optional.map( opt => opt.map( v => Tuple2(ConfigKey.DumpDbDir, v.toString ) ) )
+        val mailBatchSize =  Options.integer("mail-batch-size").optional.map( opt => opt.map( v => Tuple2(ConfigKey.MailBatchSize, v.toString ) ) )
+        val mailBatchDelaySecs = Options.integer("mail-batch-delay-secs").optional.map( opt => opt.map( v => Tuple2(ConfigKey.MailBatchDelaySecs, v.toString ) ) )
+        (dumpDbDir ++ mailBatchSize ++ mailBatchDelaySecs).map( _.toList.collect { case Some(tup) => tup }.toMap )
+      Command("set-config", options).map( settings => CommandConfig.Admin.SetConfig(settings) )
+    Command("admin").subcommands( addFeed, createSubscriptionType, listConfig, listExcluded, listFeeds, setConfig )
 
-  val dbDumpCommand = Command("dump").map( _ => CommandConfig.DbDump )
-  val dbInitCommand = Command("init").map( _ => CommandConfig.DbInit )
-  val dbMigrateCommand = Command("migrate", forceOption).map( force => CommandConfig.DbMigrate(force) )
+  val crank =
+    val assign = Command("assign").map( _ => CommandConfig.Crank.Assign )
+    val complete = Command("complete").map( _ => CommandConfig.Crank.Complete )
+    Command("crank").subcommands(assign, complete)
 
-  val crankAssign = Command("assign").map( _ => CommandConfig.CrankAssign )
-  val crankComplete = Command("complete").map( _ => CommandConfig.CrankComplete )
+  val daemon = Command("daemon").map( _ => CommandConfig.Daemon )
 
-  val dbCommand = Command("db").subcommands(dbInitCommand, dbMigrateCommand, dbDumpCommand)
-  val crankCommand = Command("crank").subcommands(crankAssign, crankComplete)
+  val db =
+    val dump = Command("dump").map( _ => CommandConfig.Db.Dump )
+    val init = Command("init").map( _ => CommandConfig.Db.Init )
+    val migrate =
+      val forceOption = Options.boolean("force").alias("f")
+      Command("migrate", forceOption).map( force => CommandConfig.Db.Migrate(force) )
+    Command("db").subcommands(dump, init, migrate)
 
-  val adminSetOptions =
-    val dumpDbDirOption = Options.directory("dump-db-dir").map( checkExpandTildeHomeDirPath ).map( _.toAbsolutePath ).optional.map( opt => opt.map( v => Tuple2(ConfigKey.DumpDbDir, v.toString ) ) )
-    val mailBatchSizeOption =  Options.integer("mail-batch-size").optional.map( opt => opt.map( v => Tuple2(ConfigKey.MailBatchSize, v.toString ) ) )
-    val mailBatchDelaySecs = Options.integer("mail-batch-delay-secs").optional.map( opt => opt.map( v => Tuple2(ConfigKey.MailBatchDelaySecs, v.toString ) ) )
-    (dumpDbDirOption ++ mailBatchSizeOption ++ mailBatchDelaySecs).map( _.toList.collect { case Some(tup) => tup }.toMap )
-  val adminSetCommand = Command("set-config", adminSetOptions).map( settings => CommandConfig.AdminSetConfig(settings) )
-
-  val adminListCommand = Command("list-config").map( _ => CommandConfig.AdminListConfig )
-
-  val adminAddFeedOptions =
-    val minDelayMinutesOption = Options.integer("min-delay-mins").map( _.toInt).withDefault(30)
-    val awaitStabilizationMinutesOption = Options.integer("await-stabilization-minutes").map( _.toInt ).withDefault(15)
-    val maxDelayMinutesOption = Options.integer("max-delay-minutes").map( _.toInt).withDefault(180)
-    val pausedOption = Options.boolean("paused")
-    (minDelayMinutesOption ++ awaitStabilizationMinutesOption ++ maxDelayMinutesOption ++ pausedOption)
-
-  val adminAddFeedArgs = Args.text("feed-url")
-
-  val adminAddFeedCommand = Command("add-feed", adminAddFeedOptions, adminAddFeedArgs).map { case ((minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused), feedUrl) =>
-    val fi = FeedInfo(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused, Instant.now )
-    CommandConfig.AdminAddFeed( fi )
-  }
-
-  val adminListFeedsCommand = Command("list-feeds").map( _ => CommandConfig.AdminListFeeds )
-
-  val adminListExcludedItems = Command("list-excluded-items").map( _ => CommandConfig.AdminListExcludedItems )
-
-/*
-  val adminSubscribeOptions =
-    val subscriptionTypeOption = Options.text("subscription-type").withDefault("Immediate").map( SubscriptionType.parse )
-    val emailTypeOption = Options.text("e-mail")
-    val feedUrlOption = Options.text("feed-url")
-    (subscriptionTypeOption ++ emailTypeOption ++ feedUrlOption)
-
-  val adminSubscribeCommand = Command("subscribe", adminSubscribeOptions).map( tup => CommandConfig.AdminSubscribe( AdminSubscribeOptions.apply.tupled(tup) ) )
-*/  
-
-  val adminCommand = Command("admin").subcommands( adminAddFeedCommand, adminListCommand, adminListFeedsCommand, adminSetCommand )
-
-  val sendmailCommand = Command("sendmail").map( _ => CommandConfig.Sendmail )
-
-  val daemonCommand = Command("daemon").map( _ => CommandConfig.Daemon )
-
-  val mainCommand = Command("feedletter").subcommands( adminCommand, crankCommand, daemonCommand, dbCommand, sendmailCommand )
+  val sendmail = Command("sendmail").map( _ => CommandConfig.Sendmail )
 
   val cliApp = CliApp.make(
     name = "feedletter",
     version = com.mchange.feedletter.BuildInfo.version,
     summary = text("Manage e-mail subscriptions to RSS feeds."),
-    command = mainCommand
+    command = Command("feedletter").subcommands( admin, crank, daemon, db, sendmail )
   ){
     case cc : CommandConfig =>
       cc.zcommand.provide( AppSetup.live, LayerDataSource )
   }
+
