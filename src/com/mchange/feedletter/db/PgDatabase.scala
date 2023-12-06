@@ -16,6 +16,8 @@ import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
 import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, ExcludedItem, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
+import com.mchange.cryptoutil.{Hash, given}
+
 import java.time.temporal.ChronoUnit
 
 object PgDatabase extends Migratory:
@@ -247,7 +249,10 @@ object PgDatabase extends Migratory:
     val destinations = LatestSchema.Table.Subscription.selectDestination( conn, feedUrl, stypeName )
     stype.route(conn, assignableKey, contents, destinations )
 
-  private def queueContentsForMailing( conn : Connection, contents : String, destinations : Set[String] ) : Unit = ???
+  def queueContentsForMailing( conn : Connection, contents : String, emails : Set[String] ) : Unit = 
+    val hash = Hash.SHA3_256( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
+    LatestSchema.Table.MailableContents.ensure( conn, hash, contents )
+    LatestSchema.Table.Mailable.insertBatch( conn, hash, emails, false )
 
 /*
   private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit =
@@ -329,3 +334,5 @@ object PgDatabase extends Migratory:
   def listSubscriptionTypes( ds : DataSource ) : Task[Set[(String,SubscriptionType)]] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.SubscriptionType.select( conn )
+
+

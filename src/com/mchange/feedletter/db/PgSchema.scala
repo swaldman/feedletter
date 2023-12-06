@@ -425,10 +425,19 @@ object PgSchema:
           private val Insert =
             """|INSERT INTO mailable_contents(sha3_256, contents)
                |VALUES ( ?, ? )""".stripMargin
+          private val Ensure =
+            """|INSERT INTO mailable_contents(sha3_256, contents)
+               |VALUES ( ?, ? )
+               |ON CONFLICT(sha3_256) DO NOTHING""".stripMargin
+          def ensure( conn : Connection, hash : Hash.SHA3_256, contents : String ) =
+            Using.resource( conn.prepareStatement(Ensure) ): ps =>
+              ps.setString(1, hash.hex )
+              ps.setString(2, contents )
+              ps.executeUpdate()
         object Mailable extends Creatable:
           protected val Create =
             """|CREATE TABLE mailable(
-               |  seqnum INTEGER,
+               |  seqnum BIGINT,
                |  sha3_256 CHAR(64),
                |  email VARCHAR(256),
                |  mailed BOOLEAN,
@@ -438,15 +447,23 @@ object PgSchema:
           private val Insert =
             """|INSERT INTO mailable(seqnum, sha3_256, email, mailed)
                |VALUES ( nextval('mailable_seq'), ?, ?, ? )""".stripMargin
-          def insert( conn : Connection, sha3_256 : Hash.SHA3_256, email : String, mailed : Boolean ) =
+          def insert( conn : Connection, hash : Hash.SHA3_256, email : String, mailed : Boolean ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-              ps.setString(1, sha3_256.hex)
+              ps.setString(1, hash.hex)
               ps.setString(2, email)
               ps.setBoolean(3, mailed)
               ps.executeUpdate()
+          def insertBatch( conn : Connection, hash : Hash.SHA3_256, emails : Set[String], mailed : Boolean ) =    
+            Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
+              emails.foreach: email =>
+                ps.setString(1, hash.hex)
+                ps.setString(2, email)
+                ps.setBoolean(3, mailed)
+                ps.addBatch()
+              ps.executeBatch()  
           object Sequence:
             object MailableSeq extends Creatable:
-              protected val Create = "CREATE SEQUENCE mailable_seq AS INTEGER"
+              protected val Create = "CREATE SEQUENCE mailable_seq AS BIGINT"
       end Table
       object Join:
         object ItemAssignment:

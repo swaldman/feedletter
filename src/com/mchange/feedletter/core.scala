@@ -10,6 +10,8 @@ import javax.sql.DataSource
 import scala.util.Using
 import scala.xml.{Elem,XML}
 
+import db.AssignableKey
+
 import scala.collection.immutable
 
 type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
@@ -28,9 +30,9 @@ final case class ExcludedItem( feedUrl : String, guid : String, title : Option[S
 
 final case class AdminSubscribeOptions( stypeName : String, destination : String, feedUrl : String )
 
-def composeMultipleItemHtmlMailContent( contents : Set[ItemContent] ) : String = ???
+def composeMultipleItemHtmlMailContent( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
 
-def composeSingleItemHtmlMailContent( content : ItemContent ) : String = ???
+def composeSingleItemHtmlMailContent( assignableKey : AssignableKey, stype : SubscriptionType, contents : ItemContent ) : String = ???
 
 def doDigestFeed( is : InputStream ) : FeedDigest =
   val rootElem = XML.load( is )
