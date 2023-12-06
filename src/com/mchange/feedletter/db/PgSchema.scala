@@ -90,47 +90,43 @@ object PgSchema:
                |  min_delay_minutes INTEGER,
                |  await_stabilization_minutes INTEGER,
                |  max_delay_minutes INTEGER,
-               |  paused BOOLEAN,
                |  subscribed TIMESTAMP,
                |  PRIMARY KEY(url)
                |)""".stripMargin
           private val Insert =
-            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed)
-               |VALUES( ?, ?, ?, ?, ?, ? )""".stripMargin
+            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed)
+               |VALUES( ?, ?, ?, ?, ? )""".stripMargin
           private val Select =
-            "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed FROM feed"
+            "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed FROM feed"
           private val Upsert =
-            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, paused, subscribed)
-               |VALUES ( ?, ?, ?, ?, ?, ? )
+            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed)
+               |VALUES ( ?, ?, ?, ?, ? )
                |ON CONFLICT(url) DO UPDATE
-               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ?, paused = ?""".stripMargin // leave subscribed as first set
+               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ? """.stripMargin // leave subscribed as first set
           def insert( conn : Connection, fi : FeedInfo ) : Int =
-            insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.paused, fi.subscribed)
-          def insert( conn : Connection, url : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, paused : Boolean, subscribed : Instant ) : Int =
+            insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.subscribed)
+          def insert( conn : Connection, url : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
               ps.setString(1, url)
               ps.setInt(2, minDelayMinutes )
               ps.setInt(3, awaitStabilizationMinutes)
               ps.setInt(4, maxDelayMinutes )
-              ps.setBoolean(5, paused)
-              ps.setTimestamp( 6, Timestamp.from(subscribed) )
+              ps.setTimestamp( 5, Timestamp.from(subscribed) )
               ps.executeUpdate()
           def select( conn : Connection ) : Set[FeedInfo] =
             Using.resource( conn.prepareStatement( this.Select ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getBoolean(5), rs.getTimestamp(6).toInstant ) )
+                toSet(rs)( rs => FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getTimestamp(5).toInstant ) )
           def upsert( conn : Connection, fi : FeedInfo ) =
             Using.resource( conn.prepareStatement(this.Upsert) ): ps =>
               ps.setString(1, fi.feedUrl)
               ps.setInt(2, fi.minDelayMinutes )
               ps.setInt(3, fi.awaitStabilizationMinutes)
               ps.setInt(4, fi.maxDelayMinutes )
-              ps.setBoolean(5, fi.paused)
-              ps.setTimestamp(6, Timestamp.from(fi.subscribed))
+              ps.setTimestamp(5, Timestamp.from(fi.subscribed))
               ps.setInt(7, fi.minDelayMinutes )
               ps.setInt(8, fi.awaitStabilizationMinutes)
               ps.setInt(9, fi.maxDelayMinutes )
-              ps.setBoolean(10, fi.paused)
               ps.executeUpdate()
 
         object Item extends Creatable:

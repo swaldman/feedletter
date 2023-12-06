@@ -23,11 +23,10 @@ object Main extends ZIOCliDefault:
         val minDelayMinutes = Options.integer("min-delay-mins").map( _.toInt).withDefault(30)
         val awaitStabilizationMinutes = Options.integer("await-stabilization-minutes").map( _.toInt ).withDefault(15)
         val maxDelayMinutes = Options.integer("max-delay-minutes").map( _.toInt).withDefault(180)
-        val paused = Options.boolean("paused")
-        (minDelayMinutes ++ awaitStabilizationMinutes ++ maxDelayMinutes ++ paused)
+        (minDelayMinutes ++ awaitStabilizationMinutes ++ maxDelayMinutes)
       val args = Args.text("feed-url")
-      Command("add-feed", options, args).map { case ((minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused), feedUrl) =>
-        val fi = FeedInfo(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, paused, Instant.now )
+      Command("add-feed", options, args).map { case ((minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes), feedUrl) =>
+        val fi = FeedInfo(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, Instant.now )
         CommandConfig.Admin.AddFeed( fi )
       }
     val createSubscriptionType =
