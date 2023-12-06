@@ -21,7 +21,7 @@ object CommandConfig:
           _   <- printFeedInfoTable(fis)
         yield ()
       end zcommand
-    case class CreateSubscriptionTypeEmail( from : String, replyTo : Option[String], subtype : String, name : String, extraParams : Map[String,String]  ) extends CommandConfig:
+    case class CreateSubscriptionTypeEmail( name : String, from : String, replyTo : Option[String], subtype : String, extraParams : Map[String,String]  ) extends CommandConfig:
       override def zcommand : ZCommand =
         val params = Seq( ("from", from) ) ++ replyTo.map( rt => ("replyTo",rt) ) ++ extraParams.toSeq
         val mbStype = SubscriptionType.dispatch( "Email", subtype, params )
@@ -30,9 +30,9 @@ object CommandConfig:
             ds   <- ZIO.service[DataSource]
             _    <- PgDatabase.ensureDb( ds )
             _    <- PgDatabase.addSubscriptionType( ds, name, subscriptionType )
-            _    <- Console.printLine(s"SubscriptionType '${name}' created.")
             tups <- PgDatabase.listSubscriptionTypes(ds)
             _    <- printSubscriptionTypeTable(tups)
+            _    <- Console.printLine(s"SubscriptionType '${name}' created.")
           yield ()
       end zcommand
     case object ListConfig extends CommandConfig:

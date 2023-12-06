@@ -33,16 +33,16 @@ object Main extends ZIOCliDefault:
     val createSubscriptionType =
       val email =
         val options =
-          val from = Options.text("from")
-          val replyTo = Options.text("reply-to").optional
-          val tpe =
-            Options.enumeration("type")(
+          val name = Options.text("name") ?? "Name of the subscription-type to be created."
+          val from = Options.text("from") ?? "E-Mail address from which mail should be sent."
+          val replyTo = Options.text("reply-to").optional ?? "Optional reply-to address, rather than from"
+          val kind =
+            Options.enumeration("kind")(
               "immediate" -> "Immediate",
               "weekly" -> "Weekly"
-            ).withDefault("Immediate")
-          val name = Options.text("name").withDefault("default")
-          val extra = Options.keyValueMap("extra-params").withDefault(Map.empty)
-          from ++ replyTo ++ tpe ++ name ++ extra
+            ).withDefault("Immediate") ?? "Kind of subscription (each post immediately, weekly collections, etc.)"
+          val extra = Options.keyValueMap("extra-params").withDefault(Map.empty) ?? "Any extra parameters you'd like to define, in name=value format."
+          name ++ from ++ replyTo ++ kind ++ extra
         Command("email", options).map( CommandConfig.Admin.CreateSubscriptionTypeEmail.apply )
       Command("create-subscription-type").subcommands(email)
     val listConfig = Command("list-config").map( _ => CommandConfig.Admin.ListConfig )
