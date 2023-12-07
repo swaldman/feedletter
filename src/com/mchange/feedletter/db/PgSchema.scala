@@ -436,27 +436,41 @@ object PgSchema:
                |  seqnum BIGINT,
                |  sha3_256 CHAR(64),
                |  email VARCHAR(256),
-               |  mailed BOOLEAN,
                |  PRIMARY KEY(seqnum),
                |  FOREIGN KEY(sha3_256) REFERENCES mailable_contents(sha3_256)
                |)""".stripMargin
+          private val SelectGroup =
+            """|SELECT seqnum, sha3_256, email
+               |FROM mailable
+               |ORDER BY seqnum ASC
+               |LIMIT ?""".stripMargin
           private val Insert =
-            """|INSERT INTO mailable(seqnum, sha3_256, email, mailed)
-               |VALUES ( nextval('mailable_seq'), ?, ?, ? )""".stripMargin
-          def insert( conn : Connection, hash : Hash.SHA3_256, email : String, mailed : Boolean ) =
+            """|INSERT INTO mailable(seqnum, sha3_256, email)
+               |VALUES ( nextval('mailable_seq'), ?, ? )""".stripMargin
+          private val DeleteSingle =
+            """|DELETE FROM mailable
+               |WHERE seqnum = ?""".stripMargin
+          def selectGroup( conn : Connection, batchSize : Int ) : Set[(Long,Hash.SHA3_256,String)] = 
+            Using.resource( conn.prepareStatement( this.SelectGroup ) ): ps =>
+              ps.setInt( 1, batchSize )
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet(rs)( rs => ( rs.getLong(1), Hash.SHA3_256.withHexBytes( rs.getString(2) ), rs.getString(3) ) )
+          def insert( conn : Connection, hash : Hash.SHA3_256, email : String ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString(1, hash.hex)
               ps.setString(2, email)
-              ps.setBoolean(3, mailed)
               ps.executeUpdate()
-          def insertBatch( conn : Connection, hash : Hash.SHA3_256, emails : Set[String], mailed : Boolean ) =    
+          def insertBatch( conn : Connection, hash : Hash.SHA3_256, emails : Set[String] ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               emails.foreach: email =>
                 ps.setString(1, hash.hex)
                 ps.setString(2, email)
-                ps.setBoolean(3, mailed)
                 ps.addBatch()
-              ps.executeBatch()  
+              ps.executeBatch()
+          def deleteSingle( conn : Connection, seqnum : Long ) =
+            Using.resource( conn.prepareStatement( this.DeleteSingle ) ): ps =>
+              ps.setLong( 1, seqnum )
+              ps.executeUpdate()
           object Sequence:
             object MailableSeq extends Creatable:
               protected val Create = "CREATE SEQUENCE mailable_seq AS BIGINT"

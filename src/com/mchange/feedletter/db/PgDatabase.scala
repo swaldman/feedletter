@@ -250,9 +250,9 @@ object PgDatabase extends Migratory:
     stype.route(conn, assignableKey, contents, destinations )
 
   def queueContentsForMailing( conn : Connection, contents : String, emails : Set[String] ) : Unit = 
-    val hash = Hash.SHA3_256( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
+    val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
     LatestSchema.Table.MailableContents.ensure( conn, hash, contents )
-    LatestSchema.Table.Mailable.insertBatch( conn, hash, emails, false )
+    LatestSchema.Table.Mailable.insertBatch( conn, hash, emails )
 
 /*
   private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit =
