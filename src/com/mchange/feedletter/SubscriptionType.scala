@@ -24,7 +24,7 @@ object SubscriptionType:
       if t.nonEmpty then Some(t) else None
 
   object Email:
-    class Immediate( params : Seq[(String,String)] ) extends Email("Immediate", params):
+    class Each( params : Seq[(String,String)] ) extends Email("Each", params):
 
       override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid )
@@ -32,13 +32,13 @@ object SubscriptionType:
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit =
-        assert( contents.size == 1, s"Email.Immediate expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
+        assert( contents.size == 1, s"Email.Each expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
         val computedSubject = subject( assignableKey.stypeName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
         val fullContents = composeSingleItemHtmlMailContent( assignableKey, this, contents.head )
         PgDatabase.queueForMailing( conn, fullContents, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, destinations, computedSubject)
 
       override def defaultSubject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String =
-        assert( contents.size == 1, s"Email.Immediate expects contents exactly one item, while generating default subject, we found ${contents.size}." )
+        assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         s"""[${subscriptionTypeName}] New Post: ${contents.head.title.getOrElse("(untitled post)")}"""
 
     class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
@@ -102,9 +102,9 @@ object SubscriptionType:
 
   def dispatch( category : String, subtype : String, params : Seq[(String,String)] ) : Option[SubscriptionType] =
     ( category, subtype ) match
-      case ("Email", "Immediate") => Some( Email.Immediate(params) )
-      case ("Email", "Weekly")    => Some( Email.Weekly(params) )
-      case _                      => None 
+      case ("Email", "Each")   => Some( Email.Each(params) )
+      case ("Email", "Weekly") => Some( Email.Weekly(params) )
+      case _                   => None 
 
   private def preparse( s : String ) : Option[Tuple3[String,String,Seq[Tuple2[String,String]]]] =
     s match

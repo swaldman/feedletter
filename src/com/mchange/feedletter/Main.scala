@@ -39,9 +39,9 @@ object Main extends ZIOCliDefault:
           val replyTo = Options.text("reply-to").optional ?? "Optional reply-to address, rather than from"
           val kind =
             Options.enumeration("kind")(
-              "immediate" -> "Immediate",
+              "each" -> "Each",
               "weekly" -> "Weekly"
-            ).withDefault("Immediate") ?? "Kind of subscription (each post immediately, weekly collections, etc.)"
+            ).withDefault("Each") ?? "Kind of subscription (each post immediately, weekly collections, etc.)"
           val extra = Options.keyValueMap("extra-params").withDefault(Map.empty) ?? "Any extra parameters you'd like to define, in name=value format."
           name ++ from ++ replyTo ++ kind ++ extra
         Command("email", options).map( CommandConfig.Admin.CreateSubscriptionTypeEmail.apply )
