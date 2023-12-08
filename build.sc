@@ -20,6 +20,7 @@ object feedletter extends RootModule with ScalaModule with BuildInfo {
     ivy"com.mchange::audiofluidity-rss:0.0.3",
     ivy"com.mchange::mlog-scala:0.3.14",
     ivy"com.mchange::texttable:0.0.3",
+    ivy"com.mchange::mailutil:0.0.1",
     ivy"com.mchange::cryptoutil:0.0.2-SNAPSHOT",
     ivy"com.mchange::conveniences:0.0.2-SNAPSHOT",
   )

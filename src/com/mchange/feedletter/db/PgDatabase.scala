@@ -4,21 +4,20 @@ import zio.*
 import java.sql.{Connection,Timestamp}
 import javax.sql.DataSource
 
-import scala.collection.immutable
+import scala.collection.{immutable,mutable}
 import scala.util.Using
 import scala.util.control.NonFatal
 
 import java.sql.SQLException
-import java.time.{Duration as JDuration,Instant,ZonedDateTime}
+import java.time.{Duration as JDuration,Instant,ZonedDateTime,ZoneId}
+import java.time.temporal.ChronoUnit
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
 import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, ExcludedItem, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
-import com.mchange.cryptoutil.{Hash, given}
-
-import java.time.temporal.ChronoUnit
+import com.mchange.cryptoutil.{*, given}
 
 object PgDatabase extends Migratory:
   private lazy given logger : MLogger = mlogger( this )
@@ -29,10 +28,16 @@ object PgDatabase extends Migratory:
   val DefaultMailBatchSize = 100
   val DefaultMailBatchDelaySeconds = 15 * 60 // 15 mins
 
-  private def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
+  private def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Option[String] =
+    PgSchema.Unversioned.Table.Metadata.select( conn, key )
+
+  private def fetchConfigValue( conn : Connection, key : ConfigKey ) : Option[String] =
+    LatestSchema.Table.Config.select( conn, key )
+
+  private def zfetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
     ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key ) )
 
-  private def fetchConfigValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] =
+  private def zfetchConfigValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] =
     ZIO.attemptBlocking( LatestSchema.Table.Config.select( conn, key ) )
 
   private def fetchDbName(conn : Connection) : Task[String] =
@@ -43,7 +48,7 @@ object PgDatabase extends Migratory:
 
   private def fetchDumpDir(conn : Connection) : Task[os.Path] =
     for
-      mbDumpDir <- fetchConfigValue(conn, ConfigKey.DumpDbDir)
+      mbDumpDir <- zfetchConfigValue(conn, ConfigKey.DumpDbDir)
     yield
       os.Path( mbDumpDir.getOrElse( throw new ConfigurationMissing(ConfigKey.DumpDbDir) ) )
 
@@ -67,8 +72,8 @@ object PgDatabase extends Migratory:
     withConnectionZIO( ds ): conn =>
       val okeyDokeyIsh =
         for
-          mbDbVersion <- fetchMetadataValue(conn, MetadataKey.SchemaVersion)
-          mbCreatorAppVersion <- fetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
+          mbDbVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion)
+          mbCreatorAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
         yield
           try
             mbDbVersion.map( _.toInt ) match
@@ -242,30 +247,23 @@ object PgDatabase extends Migratory:
   private def route( conn : Connection, assignableKey : AssignableKey ) : Unit =
     val stype = LatestSchema.Table.SubscriptionType.selectByName( conn, assignableKey.stypeName )
     route( conn, assignableKey, stype )
-    
+
   private def route( conn : Connection, assignableKey : AssignableKey, stype : SubscriptionType ) : Unit =
     val AssignableKey( feedUrl, stypeName, withinTypeId ) = assignableKey
     val contents = materializeAssignable(conn, assignableKey)
     val destinations = LatestSchema.Table.Subscription.selectDestination( conn, feedUrl, stypeName )
     stype.route(conn, assignableKey, contents, destinations )
 
-  def queueContentsForMailing( conn : Connection, contents : String, emails : Set[String] ) : Unit = 
+  def queueForMailing( conn : Connection, contents : String, from : String, replyTo : Option[String], tos : Set[String], subject : String ) : Unit = 
     val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
     LatestSchema.Table.MailableContents.ensure( conn, hash, contents )
-    LatestSchema.Table.Mailable.insertBatch( conn, hash, emails )
-
-/*
-  private def populateMailable( conn : Connection, assignableKey : AssignableKey ) : Unit =
-    val AssignableKey( feedUrl, stype, withinTypeId ) = assignableKey
-    LatestSchema.Table.Subscription.selectDestination( conn, feedUrl, stype ).foreach: email =>
-      LatestSchema.Table.Mailable.insert( conn, email, feedUrl, stype, withinTypeId, false )
-*/
+    LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tos, subject )
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
     withConnectionZIO( ds ): conn =>
       for
-        mbSchemaVersion <- fetchMetadataValue(conn, MetadataKey.SchemaVersion).map( option => option.map( _.toInt ) )
-        mbAppVersion <- fetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
+        mbSchemaVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion).map( option => option.map( _.toInt ) )
+        mbAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
       yield
         mbSchemaVersion match
           case Some( schemaVersion ) =>
@@ -299,7 +297,7 @@ object PgDatabase extends Migratory:
         val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stypeName, withinTypeId )
         val stype = LatestSchema.Table.SubscriptionType.selectByName( conn, stypeName )
         val now = Instant.now
-        if stype.isComplete( withinTypeId, count, now ) then
+        if stype.isComplete( conn, withinTypeId, count, now ) then
           route( conn, ak, stype )
           LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stypeName, withinTypeId, Some(now) )
 
@@ -335,4 +333,19 @@ object PgDatabase extends Migratory:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.SubscriptionType.select( conn )
 
+  def timeZone( conn : Connection ) : ZoneId =
+    fetchConfigValue( conn, ConfigKey.TimeZone ).map( str => ZoneId.of(str) ).getOrElse( ZoneId.systemDefault() )
 
+  def pullMailGroup( conn : Connection ) : Set[MailSpec.WithContents] =
+    val batchSize = fetchConfigValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( DefaultMailBatchSize )
+    val withHashes : Set[MailSpec.WithHash] = LatestSchema.Table.Mailable.selectForDelivery(conn, batchSize)
+    LatestSchema.Table.Mailable.updateOutForDeliveryBatch( conn, withHashes.map( _.seqnum ), true )
+    val contentMap = mutable.Map.empty[Hash.SHA3_256,String]
+    def contentsFromHash( hash : Hash.SHA3_256 ) : String =
+      LatestSchema.Table.MailableContents.selectByHash( conn, hash ).getOrElse:
+        throw new AssertionError(s"Database consistency issue, we should only be trying to load contents from extant hashes. (${hash.hex})")
+    withHashes.foreach: mswh =>
+      contentMap.getOrElseUpdate( mswh.contentsHash, contentsFromHash(mswh.contentsHash) )
+    withHashes.map( mswh => MailSpec.WithContents( mswh.seqnum, contentsFromHash( mswh.contentsHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject ) )
+
+  def attemptMail( conn : Connection, mswc : MailSpec.WithContents ) : Unit = ???

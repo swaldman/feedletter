@@ -1,9 +1,11 @@
 package com.mchange.feedletter
 
 import java.sql.Connection
-import java.time.Instant
+import java.time.{LocalDate,Instant}
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoField
+import java.time.temporal.{ChronoField,WeekFields}
+
+import DateTimeFormatter.ISO_LOCAL_DATE
 
 import scala.collection.immutable
 
@@ -15,37 +17,85 @@ import com.mchange.feedletter.db.PgDatabase
 object SubscriptionType:
   private val GeneralRegex = """^(\w+)\.(\w+)\:(.*)$""".r
 
+  extension ( s : String )
+    def asOptionNotBlank : Option[String] = if s.trim().nonEmpty then Some(s) else None
+    def asOptionNotBlankTrimmed : Option[String] =
+      val t = s.trim()
+      if t.nonEmpty then Some(t) else None
+
   object Email:
     class Immediate( params : Seq[(String,String)] ) extends Email("Immediate", params):
+
       override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid )
-      override def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean = true
+
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, now : Instant ) : Boolean = true
+
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit =
-        assert( contents.size == 1, s"Email.Immediate expects contents exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
+        assert( contents.size == 1, s"Email.Immediate expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
+        val computedSubject = subject( assignableKey.stypeName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
         val fullContents = composeSingleItemHtmlMailContent( assignableKey, this, contents.head )
-        PgDatabase.queueContentsForMailing( conn, fullContents, destinations )
+        PgDatabase.queueForMailing( conn, fullContents, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, destinations, computedSubject)
+
+      override def defaultSubject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String =
+        assert( contents.size == 1, s"Email.Immediate expects contents exactly one item, while generating default subject, we found ${contents.size}." )
+        s"""[${subscriptionTypeName}] New Post: ${contents.head.title.getOrElse("(untitled post)")}"""
 
     class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
-      override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
+
+      // this is set only on assignment, should be lastChecked, because week in which firstSeen might already have passed
+      override def withinTypeId(
+        feedUrl : String,
+        lastCompleted : Option[AssignableWithinTypeInfo],
+        mostRecentOpen : Option[AssignableWithinTypeInfo],
+        guid : String,
+        content : ItemContent,
+        status : ItemStatus
+      ) : Option[String] =
         Some( WtiFormatter.format( status.lastChecked ) ) 
-      override def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean =
-        val ta = WtiFormatter.parse( withinTypeId )
-        val year = ta.get( ChronoField.YEAR )
-        val woy = ta.get( ChronoField.ALIGNED_WEEK_OF_YEAR )
-        val nowYear = now.get( ChronoField.YEAR )
-        nowYear > year || (nowYear == year && now.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
+
+      // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
+      private def extractYearWeekAndWeekFields( withinTypeId : String ) : (Int, Int, WeekFields) =
+        val ( yearStr, restStr ) = withinTypeId.span( Character.isDigit )
+        val year = yearStr.toInt
+        val baseDayOfWeek = LocalDate.of( year, 1, 1 ).getDayOfWeek()
+        val weekNum = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
+        ( year, weekNum, WeekFields.of(baseDayOfWeek, 1) )
+
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, now : Instant ) : Boolean =
+        val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
+        val tz = PgDatabase.timeZone( conn ) // do we really need to hit this every time?
+        val nowZoned = now.atZone(tz)
+        val nowYear = nowZoned.get( ChronoField.YEAR )
+        nowYear > year || (nowYear == year && nowZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
+
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit =
-        val fullContents = composeMultipleItemHtmlMailContent( assignableKey, this, contents )
-        PgDatabase.queueContentsForMailing( conn, fullContents, destinations )
+        if contents.nonEmpty then
+          val computedSubject = subject( assignableKey.stypeName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
+          val fullContents = composeMultipleItemHtmlMailContent( assignableKey, this, contents )
+          PgDatabase.queueForMailing( conn, fullContents, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, destinations, computedSubject)
+
+      override def defaultSubject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String =
+        val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
+        val weekStart = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 1 )
+        val weekEnd = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 7 )
+        s"[${subscriptionTypeName}] All posts, ${ISO_LOCAL_DATE.format(weekStart)} to ${ISO_LOCAL_DATE.format(weekEnd)}"
 
   abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params):
-    val from    : Seq[String] = params.filter( _(0) == "from" ).map( _(1) )
-    val replyTo : Seq[String] = params.filter( _(0) == "replyTo" ).map( _(1) )
+    val from    : Seq[String] = wwwFormFindAllValues("from", params)
+    val replyTo : Seq[String] = wwwFormFindAllValues("replyTo", params)
+
+    def subject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String =
+      val args = ( subscriptionTypeName, withinTypeId, feedUrl, contents )
+      config.SubjectCustomizers.get( subscriptionTypeName ).fold( defaultSubject.tupled(args) ): customizer =>
+        customizer.tupled( args )
+
+    def defaultSubject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String
 
     if from.isEmpty then
       throw new InvalidSubscriptionType(
-        "An Email subscription type must include at least one 'from' paramm. Params given: " +
+        "An Email subscription type must include at least one 'from' param. Params given: " +
         params.map( (k,v) => k + " -> " + v ).mkString(", ")
       )
   end Email
@@ -67,7 +117,7 @@ object SubscriptionType:
 
 sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
   def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String]
-  def isComplete( withinTypeId : String, currentCount : Int, now : Instant ) : Boolean
+  def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, now : Instant ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
   override def toString() : String = s"${category}.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
   override def equals( other : Any ) : Boolean =

@@ -17,10 +17,13 @@ import scala.collection.immutable
 type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
 
 enum ConfigKey:
+  case DumpDbDir
   case MailNextBatchTime
   case MailBatchSize
   case MailBatchDelaySecs
-  case DumpDbDir
+  case TimeZone
+
+type SubjectCustomizer = ( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) => String
 
 final case class FeedDigest( guidToItemContent : immutable.Map[String,ItemContent], timestamp : Instant )
 

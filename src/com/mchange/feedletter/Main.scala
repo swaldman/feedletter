@@ -10,12 +10,14 @@ import MLevel.*
 import java.time.Instant
 import javax.sql.DataSource
 
+import com.mchange.v2.c3p0.ComboPooledDataSource
+
 import com.mchange.feedletter.db.DbVersionStatus
 
 object Main extends ZIOCliDefault:
   private lazy given logger : MLogger = mlogger( this )
 
-  val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] = ZLayer.fromZIO( ZIO.attempt( config.dataSource ) )
+  val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] = ZLayer.fromZIO( ZIO.attempt( new ComboPooledDataSource() ) )
 
   val admin =
     val addFeed =
