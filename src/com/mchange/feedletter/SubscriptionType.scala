@@ -29,7 +29,7 @@ object SubscriptionType:
       override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid )
 
-      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, now : Instant ) : Boolean = true
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit =
         assert( contents.size == 1, s"Email.Immediate expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
@@ -44,7 +44,7 @@ object SubscriptionType:
     class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
-      // this is set only on assignment, should be lastChecked, because week in which firstSeen might already have passed
+      // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
         feedUrl : String,
         lastCompleted : Option[AssignableWithinTypeInfo],
@@ -63,12 +63,12 @@ object SubscriptionType:
         val weekNum = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
         ( year, weekNum, WeekFields.of(baseDayOfWeek, 1) )
 
-      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, now : Instant ) : Boolean =
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
         val tz = PgDatabase.timeZone( conn ) // do we really need to hit this every time?
-        val nowZoned = now.atZone(tz)
-        val nowYear = nowZoned.get( ChronoField.YEAR )
-        nowYear > year || (nowYear == year && nowZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
+        val laZoned = lastAssigned.atZone(tz)
+        val laYear = laZoned.get( ChronoField.YEAR )
+        laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit =
         if contents.nonEmpty then
@@ -117,7 +117,7 @@ object SubscriptionType:
 
 sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
   def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String]
-  def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, now : Instant ) : Boolean
+  def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
   override def toString() : String = s"${category}.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
   override def equals( other : Any ) : Boolean =

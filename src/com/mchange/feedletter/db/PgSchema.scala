@@ -86,47 +86,69 @@ object PgSchema:
         object Feed extends Creatable:
           protected val Create =
             """|CREATE TABLE feed(
-               |  url VARCHAR(1024),
-               |  min_delay_minutes INTEGER,
-               |  await_stabilization_minutes INTEGER,
-               |  max_delay_minutes INTEGER,
-               |  subscribed TIMESTAMP,
+               |  url                         VARCHAR(1024),
+               |  min_delay_minutes           INTEGER NOT NULL,
+               |  await_stabilization_minutes INTEGER NOT NULL,
+               |  max_delay_minutes           INTEGER NOT NULL,
+               |  subscribed                  TIMESTAMP NOT NULL,
+               |  last_assigned               TIMESTAMP NOT NULL     -- we'll start at subscribed
                |  PRIMARY KEY(url)
                |)""".stripMargin
           private val Insert =
-            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed)
-               |VALUES( ?, ?, ?, ?, ? )""".stripMargin
-          private val Select =
-            "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed FROM feed"
+            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed, last_assigned)
+               |VALUES( ?, ?, ?, ?, ?, ? )""".stripMargin
+          private val SelectAll =
+            "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed, last_assigned FROM feed"
+          private val SelectLastAssigned =
+            """|SELECT last_assigned
+               |FROM feed
+               |WHERE url = ?""".stripMargin
           private val Upsert =
-            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed)
-               |VALUES ( ?, ?, ?, ?, ? )
+            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed, last_assigned)
+               |VALUES ( ?, ?, ?, ?, ?, ? )
                |ON CONFLICT(url) DO UPDATE
-               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ? """.stripMargin // leave subscribed as first set
+               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ? """.stripMargin // leave subscribed and last_assigned unchange
+          private def UpdateLastAssigned =
+            """|UPDATE feed
+               |SET last_assigned = ?
+               |WHERE url = ?""".stripMargin
           def insert( conn : Connection, fi : FeedInfo ) : Int =
-            insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.subscribed)
-          def insert( conn : Connection, url : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant ) : Int =
+            insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.subscribed, fi.lastAssigned)
+          def insert( conn : Connection, url : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant, lastAssigned : Instant ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
-              ps.setString(1, url)
-              ps.setInt(2, minDelayMinutes )
-              ps.setInt(3, awaitStabilizationMinutes)
-              ps.setInt(4, maxDelayMinutes )
-              ps.setTimestamp( 5, Timestamp.from(subscribed) )
+              ps.setString    (1, url)
+              ps.setInt       (2, minDelayMinutes )
+              ps.setInt       (3, awaitStabilizationMinutes)
+              ps.setInt       (4, maxDelayMinutes )
+              ps.setTimestamp (5, Timestamp.from(subscribed) )
+              ps.setTimestamp (6, Timestamp.from(lastAssigned) )
               ps.executeUpdate()
-          def select( conn : Connection ) : Set[FeedInfo] =
-            Using.resource( conn.prepareStatement( this.Select ) ): ps =>
+          def selectAll( conn : Connection ) : Set[FeedInfo] =
+            Using.resource( conn.prepareStatement( this.SelectAll ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getTimestamp(5).toInstant ) )
+                toSet(rs)( rs => FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getTimestamp(5).toInstant, rs.getTimestamp(6).toInstant ) )
+          def selectLastAssigned( conn : Connection, feedUrl : String ) : Option[Instant] =
+            Using.resource(conn.prepareStatement(this.SelectLastAssigned)): ps =>
+              ps.setString(1, feedUrl)
+              Using.resource( ps.executeQuery() ): rs =>
+                zeroOrOneResult("select-when-feed-last-assigned", rs)( _.getTimestamp(1).toInstant() )
+
           def upsert( conn : Connection, fi : FeedInfo ) =
             Using.resource( conn.prepareStatement(this.Upsert) ): ps =>
-              ps.setString(1, fi.feedUrl)
-              ps.setInt(2, fi.minDelayMinutes )
-              ps.setInt(3, fi.awaitStabilizationMinutes)
-              ps.setInt(4, fi.maxDelayMinutes )
-              ps.setTimestamp(5, Timestamp.from(fi.subscribed))
-              ps.setInt(7, fi.minDelayMinutes )
-              ps.setInt(8, fi.awaitStabilizationMinutes)
-              ps.setInt(9, fi.maxDelayMinutes )
+              ps.setString    (1, fi.feedUrl)
+              ps.setInt       (2, fi.minDelayMinutes )
+              ps.setInt       (3, fi.awaitStabilizationMinutes)
+              ps.setInt       (4, fi.maxDelayMinutes )
+              ps.setTimestamp (5, Timestamp.from(fi.subscribed))
+              ps.setTimestamp (6, Timestamp.from(fi.lastAssigned))
+              ps.setInt       (7, fi.minDelayMinutes )
+              ps.setInt       (8, fi.awaitStabilizationMinutes)
+              ps.setInt       (9, fi.maxDelayMinutes )
+              ps.executeUpdate()
+          def updateLastAssigned( conn : Connection, feedUrl : String, lastAssigned : Instant ) =
+            Using.resource( conn.prepareStatement(this.UpdateLastAssigned) ): ps =>
+              ps.setTimestamp(1, Timestamp.from(lastAssigned))
+              ps.setString   (2, feedUrl)
               ps.executeUpdate()
 
         object Item extends Creatable:

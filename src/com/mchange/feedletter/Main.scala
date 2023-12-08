@@ -28,7 +28,7 @@ object Main extends ZIOCliDefault:
         (minDelayMinutes ++ awaitStabilizationMinutes ++ maxDelayMinutes)
       val args = Args.text("feed-url")
       Command("add-feed", options, args).map { case ((minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes), feedUrl) =>
-        val fi = FeedInfo(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, Instant.now )
+        val fi = FeedInfo.forNewFeed(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes )
         CommandConfig.Admin.AddFeed( fi )
       }
     val createSubscriptionType =

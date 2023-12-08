@@ -24,8 +24,11 @@ enum ConfigKey:
 
 type SubjectCustomizer = ( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) => String
 
-
-final case class FeedInfo( feedUrl : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant )
+object FeedInfo:
+  def forNewFeed( feedUrl : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int ): FeedInfo =
+    val startTime = Instant.now()
+    FeedInfo( feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, startTime, startTime )
+final case class FeedInfo( feedUrl : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant, lastAssigned : Instant )
 
 final case class ExcludedItem( feedUrl : String, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 

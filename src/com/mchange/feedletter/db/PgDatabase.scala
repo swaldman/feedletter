@@ -240,6 +240,7 @@ object PgDatabase extends Migratory:
     guidToItemContent.foreach: ( guid, freshContent ) =>
       val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedUrl, guid )
       updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
+    LatestSchema.Table.Feed.updateLastAssigned(conn, fi.feedUrl, timestamp)
 
   private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Set[ItemContent] =
     LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.feedUrl, assignableKey.stypeName, assignableKey.withinTypeId )
@@ -259,36 +260,9 @@ object PgDatabase extends Migratory:
     LatestSchema.Table.MailableContents.ensure( conn, hash, contents )
     LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tos, subject )
 
-  def ensureDb( ds : DataSource ) : Task[Unit] =
-    withConnectionZIO( ds ): conn =>
-      for
-        mbSchemaVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion).map( option => option.map( _.toInt ) )
-        mbAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
-      yield
-        mbSchemaVersion match
-          case Some( schemaVersion ) =>
-            if schemaVersion > LatestSchema.Version then
-              throw new MoreRecentFeedletterVersionRequired(
-                s"The database schema version is ${schemaVersion}. " +
-                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
-                s"The latest version known by this version of the app is ${LatestSchema.Version}. " +
-                s"You are running app version '${BuildInfo.version}'."
-              )
-            else if schemaVersion < LatestSchema.Version then
-              throw new SchemaMigrationRequired(
-                s"The database schema version is ${schemaVersion}. " +
-                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
-                s"The current schema this version of the app (${BuildInfo.version}) is ${LatestSchema.Version}. " +
-                "Please migrate."
-              )
-            // else schemaVersion == LatestSchema.version and we're good
-          case None =>
-            throw new DbNotInitialized("Please initialize the database.")
-  end ensureDb
-
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
-      LatestSchema.Table.Feed.select( conn ).foreach( updateAssignItems( conn, _ ) )
+      LatestSchema.Table.Feed.selectAll( conn ).foreach( updateAssignItems( conn, _ ) )
 
   def completeAssignables( ds : DataSource ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
@@ -296,10 +270,11 @@ object PgDatabase extends Migratory:
         val AssignableKey( feedUrl, stypeName, withinTypeId ) = ak
         val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stypeName, withinTypeId )
         val stype = LatestSchema.Table.SubscriptionType.selectByName( conn, stypeName )
-        val now = Instant.now
-        if stype.isComplete( conn, withinTypeId, count, now ) then
+        val lastAssigned = LatestSchema.Table.Feed.selectLastAssigned( conn, feedUrl ).getOrElse:
+          throw new AssertionError( s"DB constraints should have ensured a row for feed '${feedUrl}' with a NOT NULL lastAssigned, but did not?" )
+        if stype.isComplete( conn, withinTypeId, count, lastAssigned ) then
           route( conn, ak, stype )
-          LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stypeName, withinTypeId, Some(now) )
+          LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, stypeName, withinTypeId, Some(Instant.now) )
 
   def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
@@ -311,11 +286,11 @@ object PgDatabase extends Migratory:
       catch
         case NonFatal(t) =>
           WARNING.log(s"Failed to exclude existing content from assignment when adding feed '${fi.feedUrl}'. Existing content may be distributed.", t)
-      LatestSchema.Table.Feed.select(conn)
+      LatestSchema.Table.Feed.selectAll(conn)
 
   def listFeeds( ds : DataSource ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
-      LatestSchema.Table.Feed.select(conn)
+      LatestSchema.Table.Feed.selectAll(conn)
 
   def fetchExcluded( ds : DataSource ) : Task[Set[ExcludedItem]] =
     withConnectionTransactional( ds ): conn =>
@@ -349,3 +324,31 @@ object PgDatabase extends Migratory:
     withHashes.map( mswh => MailSpec.WithContents( mswh.seqnum, contentsFromHash( mswh.contentsHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject ) )
 
   def attemptMail( conn : Connection, mswc : MailSpec.WithContents ) : Unit = ???
+
+  def ensureDb( ds : DataSource ) : Task[Unit] =
+    withConnectionZIO( ds ): conn =>
+      for
+        mbSchemaVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion).map( option => option.map( _.toInt ) )
+        mbAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
+      yield
+        mbSchemaVersion match
+          case Some( schemaVersion ) =>
+            if schemaVersion > LatestSchema.Version then
+              throw new MoreRecentFeedletterVersionRequired(
+                s"The database schema version is ${schemaVersion}. " +
+                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
+                s"The latest version known by this version of the app is ${LatestSchema.Version}. " +
+                s"You are running app version '${BuildInfo.version}'."
+              )
+            else if schemaVersion < LatestSchema.Version then
+              throw new SchemaMigrationRequired(
+                s"The database schema version is ${schemaVersion}. " +
+                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
+                s"The current schema this version of the app (${BuildInfo.version}) is ${LatestSchema.Version}. " +
+                "Please migrate."
+              )
+            // else schemaVersion == LatestSchema.version and we're good
+          case None =>
+            throw new DbNotInitialized("Please initialize the database.")
+  end ensureDb
+
