@@ -470,65 +470,50 @@ object PgSchema:
                |  mail_reply_to VARCHAR(256),           -- mail_reply_to could be NULL!
                |  mail_to VARCHAR(256) NOT NULL,
                |  mail_subject VARCHAR(256) NOT NULL,
-               |  out_for_delivery BOOLEAN,
+               |  retried INTEGER,
                |  PRIMARY KEY(seqnum),
                |  FOREIGN KEY(sha3_256) REFERENCES mailable_contents(sha3_256)
                |)""".stripMargin
           private val SelectForDelivery =
-            """|SELECT seqnum, sha3_256, mail_from, mail_reply_to, mail_to, mail_subject
+            """|SELECT seqnum, sha3_256, mail_from, mail_reply_to, mail_to, mail_subject, retried
                |FROM mailable
-               |WHERE out_for_delivery = FALSE
                |ORDER BY seqnum ASC
                |LIMIT ?""".stripMargin
           private val Insert =
-            """|INSERT INTO mailable(seqnum, sha3_256, mail_from, mail_reply_to, mail_to, mail_subject, out_for_delivery)
-               |VALUES ( nextval('mailable_seq'), ?, ?, ?, ?, ?, FALSE )""".stripMargin
+            """|INSERT INTO mailable(seqnum, sha3_256, mail_from, mail_reply_to, mail_to, mail_subject, retried)
+               |VALUES ( nextval('mailable_seq'), ?, ?, ?, ?, ?, ? )""".stripMargin
           private val DeleteSingle =
             """|DELETE FROM mailable
-               |WHERE seqnum = ?""".stripMargin
-          private val UpdateOutForDelvery =
-            """|UPDATE mailable
-               |SET out_for_delivery = ?
                |WHERE seqnum = ?""".stripMargin
           def selectForDelivery( conn : Connection, batchSize : Int ) : Set[MailSpec.WithHash] = 
             Using.resource( conn.prepareStatement( this.SelectForDelivery ) ): ps =>
               ps.setInt( 1, batchSize )
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => MailSpec.WithHash( rs.getLong(1), Hash.SHA3_256.withHexBytes( rs.getString(2) ), rs.getString(3), Option(rs.getString(4)), rs.getString(5), rs.getString(6) ) )
-          def insert( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], to : String, subject : String ) =
+                toSet(rs)( rs => MailSpec.WithHash( rs.getLong(1), Hash.SHA3_256.withHexBytes( rs.getString(2) ), rs.getString(3), Option(rs.getString(4)), rs.getString(5), rs.getString(6), rs.getInt(7) ) )
+          def insert( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], to : String, subject : String, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-              ps.setString(1, hash.hex)
-              ps.setString(2, from)
+              ps.setString         (1, hash.hex)
+              ps.setString         (2, from)
               setStringOptional(ps, 3, Types.VARCHAR, replyTo)
-              ps.setString(4, to)
-              ps.setString(5, subject)
+              ps.setString         (4, to)
+              ps.setString         (5, subject)
+              ps.setInt            (6, retried)
               ps.executeUpdate()
-          def insertBatch( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], tos : Set[String], subject : String ) =
+          def insertBatch( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], tos : Set[String], subject : String, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               tos.foreach: to =>
-                ps.setString(1, hash.hex)
-                ps.setString(2, from)
+                ps.setString         (1, hash.hex)
+                ps.setString         (2, from)
                 setStringOptional(ps, 3, Types.VARCHAR, replyTo)
-                ps.setString(4, to)
-                ps.setString(5, subject)
+                ps.setString         (4, to)
+                ps.setString         (5, subject)
+                ps.setInt            (6, retried)
                 ps.addBatch()
               ps.executeBatch()
           def deleteSingle( conn : Connection, seqnum : Long ) =
             Using.resource( conn.prepareStatement( this.DeleteSingle ) ): ps =>
               ps.setLong( 1, seqnum )
               ps.executeUpdate()
-          def updateOutForDelivery( conn : Connection, seqnum : Long, outForDelivery : Boolean ) =
-            Using.resource( conn.prepareStatement( this.UpdateOutForDelvery ) ): ps =>
-              ps.setBoolean(1, outForDelivery)
-              ps.setLong(2, seqnum)
-              ps.executeUpdate()
-          def updateOutForDeliveryBatch( conn : Connection, seqnums : Set[Long], outForDelivery : Boolean ) =
-            Using.resource( conn.prepareStatement( this.UpdateOutForDelvery ) ): ps =>
-              seqnums.foreach: seqnum =>
-                ps.setBoolean(1, outForDelivery)
-                ps.setLong(2, seqnum)
-                ps.addBatch()
-              ps.executeBatch()  
           object Sequence:
             object MailableSeq extends Creatable:
               protected val Create = "CREATE SEQUENCE mailable_seq AS BIGINT"

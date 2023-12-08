@@ -258,7 +258,7 @@ object PgDatabase extends Migratory:
   def queueForMailing( conn : Connection, contents : String, from : String, replyTo : Option[String], tos : Set[String], subject : String ) : Unit = 
     val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
     LatestSchema.Table.MailableContents.ensure( conn, hash, contents )
-    LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tos, subject )
+    LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tos, subject, 0 )
 
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
@@ -314,14 +314,13 @@ object PgDatabase extends Migratory:
   def pullMailGroup( conn : Connection ) : Set[MailSpec.WithContents] =
     val batchSize = fetchConfigValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( DefaultMailBatchSize )
     val withHashes : Set[MailSpec.WithHash] = LatestSchema.Table.Mailable.selectForDelivery(conn, batchSize)
-    LatestSchema.Table.Mailable.updateOutForDeliveryBatch( conn, withHashes.map( _.seqnum ), true )
     val contentMap = mutable.Map.empty[Hash.SHA3_256,String]
     def contentsFromHash( hash : Hash.SHA3_256 ) : String =
       LatestSchema.Table.MailableContents.selectByHash( conn, hash ).getOrElse:
         throw new AssertionError(s"Database consistency issue, we should only be trying to load contents from extant hashes. (${hash.hex})")
     withHashes.foreach: mswh =>
       contentMap.getOrElseUpdate( mswh.contentsHash, contentsFromHash(mswh.contentsHash) )
-    withHashes.map( mswh => MailSpec.WithContents( mswh.seqnum, contentsFromHash( mswh.contentsHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject ) )
+    withHashes.map( mswh => MailSpec.WithContents( mswh.seqnum, contentsFromHash( mswh.contentsHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject, mswh.retried ) )
 
   def attemptMail( conn : Connection, mswc : MailSpec.WithContents ) : Unit = ???
 
