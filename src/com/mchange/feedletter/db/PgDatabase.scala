@@ -16,7 +16,7 @@ import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.{doDigestFeed, BuildInfo, ConfigKey, ExcludedItem, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
+import com.mchange.feedletter.{BuildInfo, ConfigKey, ExcludedItem, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
 import com.mchange.cryptoutil.{*, given}
 
 object PgDatabase extends Migratory:
@@ -236,7 +236,7 @@ object PgDatabase extends Migratory:
             doInsert()
 
   private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Unit =
-    val FeedDigest( guidToItemContent, timestamp ) = doDigestFeed( fi.feedUrl )
+    val FeedDigest( guidToItemContent, timestamp ) = FeedDigest( fi.feedUrl )
     guidToItemContent.foreach: ( guid, freshContent ) =>
       val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedUrl, guid )
       updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
@@ -305,7 +305,7 @@ object PgDatabase extends Migratory:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Feed.upsert(conn, fi)
       try
-        val fd = doDigestFeed( fi.feedUrl )
+        val fd = FeedDigest( fi.feedUrl )
         fd.guidToItemContent.foreach: (guid, itemContent) =>
           LatestSchema.Table.Item.insertNew( conn, fi.feedUrl, guid, itemContent, ItemAssignability.Excluded )
       catch
