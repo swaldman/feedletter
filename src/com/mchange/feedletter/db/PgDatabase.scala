@@ -26,8 +26,9 @@ object PgDatabase extends Migratory:
   val LatestSchema = PgSchema.V1
   override val targetDbVersion = LatestSchema.Version
 
-  val DefaultMailBatchSize = 100
+  val DefaultMailBatchSize         = 100
   val DefaultMailBatchDelaySeconds = 15 * 60 // 15 mins
+  val DefaultMailMaxRetries        = 5
 
   private def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Option[String] =
     PgSchema.Unversioned.Table.Metadata.select( conn, key )
@@ -130,7 +131,8 @@ object PgDatabase extends Migratory:
           conn,
           (ConfigKey.MailNextBatchTime, formatPubDate(ZonedDateTime.now)),
           (ConfigKey.MailBatchSize, DefaultMailBatchSize.toString()),
-          (ConfigKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString())
+          (ConfigKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString()),
+          (ConfigKey.MailMaxRetries, DefaultMailMaxRetries.toString())
         )
         updateMetadataKeys(
           conn,
@@ -325,6 +327,8 @@ object PgDatabase extends Migratory:
       contentMap.getOrElseUpdate( mswh.contentsHash, contentsFromHash(mswh.contentsHash) )
     withHashes.map( mswh => MailSpec.WithContents( mswh.seqnum, mswh.contentsHash, contentsFromHash( mswh.contentsHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject, mswh.retried ) )
 
+  def maxRetries( conn : Connection ) : Int = fetchConfigValue( conn, ConfigKey.MailMaxRetries ).map( _.toInt ).getOrElse( DefaultMailMaxRetries )
+
   def attemptMail( conn : Connection, maxRetries : Int, mswc : MailSpec.WithContents ) : Unit =
     LatestSchema.Table.Mailable.deleteSingle( conn, mswc.seqnum )
     try
@@ -334,6 +338,11 @@ object PgDatabase extends Migratory:
         val lastRetryMessage = if mswc.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
         WARNING.log( s"Failed email attempt: subject = ${mswc.subject}, from = ${mswc.from}, to = ${mswc.to}, replyTo = ${mswc.replyTo} ), retried = ${mswc.retried} ${lastRetryMessage}", t )
         LatestSchema.Table.Mailable.insert( conn, mswc.contentsHash, mswc.from, mswc.replyTo, mswc.to, mswc.subject, mswc.retried + 1)
+
+  def mailNextGroup( conn : Connection ) =
+    val retries = maxRetries( conn )
+    val mswcs   = pullMailGroup( conn )
+    mswcs.foreach( mswc => attemptMail( conn, retries, mswc ) )
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
     withConnectionZIO( ds ): conn =>

@@ -20,6 +20,7 @@ enum ConfigKey:
   case MailNextBatchTime
   case MailBatchSize
   case MailBatchDelaySecs
+  case MailMaxRetries
   case TimeZone
 
 type SubjectCustomizer = ( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) => String
