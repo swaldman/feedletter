@@ -18,7 +18,7 @@ final case class AssignableKey( feedUrl : String, stypeName : String, withinType
 
 object MailSpec:
   final case class WithHash( seqnum : Long, contentsHash : Hash.SHA3_256, from : String, replyTo : Option[String], to : String, subject : String, retried : Int )
-  final case class WithContents( seqnum : Long, contents : String, from : String, replyTo : Option[String], to : String, subject : String, retried : Int )
+  final case class WithContents( seqnum : Long, contentsHash : Hash.SHA3_256, contents : String, from : String, replyTo : Option[String], to : String, subject : String, retried : Int )
 
 enum MetadataKey:
   case SchemaVersion

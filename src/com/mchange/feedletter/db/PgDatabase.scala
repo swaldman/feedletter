@@ -17,6 +17,7 @@ import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
 import com.mchange.feedletter.{BuildInfo, ConfigKey, ExcludedItem, FeedDigest, FeedInfo, ItemContent, SubscriptionType}
+import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}
 
 object PgDatabase extends Migratory:
@@ -322,9 +323,17 @@ object PgDatabase extends Migratory:
         throw new AssertionError(s"Database consistency issue, we should only be trying to load contents from extant hashes. (${hash.hex})")
     withHashes.foreach: mswh =>
       contentMap.getOrElseUpdate( mswh.contentsHash, contentsFromHash(mswh.contentsHash) )
-    withHashes.map( mswh => MailSpec.WithContents( mswh.seqnum, contentsFromHash( mswh.contentsHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject, mswh.retried ) )
+    withHashes.map( mswh => MailSpec.WithContents( mswh.seqnum, mswh.contentsHash, contentsFromHash( mswh.contentsHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject, mswh.retried ) )
 
-  def attemptMail( conn : Connection, mswc : MailSpec.WithContents ) : Unit = ???
+  def attemptMail( conn : Connection, maxRetries : Int, mswc : MailSpec.WithContents ) : Unit =
+    LatestSchema.Table.Mailable.deleteSingle( conn, mswc.seqnum )
+    try
+      Smtp.sendSimpleHtmlOnly( mswc.contents, subject = mswc.subject, from = mswc.from, to = mswc.to, replyTo = mswc.replyTo.toSeq )
+    catch
+      case NonFatal(t) =>
+        val lastRetryMessage = if mswc.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
+        WARNING.log( s"Failed email attempt: subject = ${mswc.subject}, from = ${mswc.from}, to = ${mswc.to}, replyTo = ${mswc.replyTo} ), retried = ${mswc.retried} ${lastRetryMessage}", t )
+        LatestSchema.Table.Mailable.insert( conn, mswc.contentsHash, mswc.from, mswc.replyTo, mswc.to, mswc.subject, mswc.retried + 1)
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
     withConnectionZIO( ds ): conn =>
