@@ -302,6 +302,8 @@ object PgDatabase extends Migratory:
 
   def addSubscription( ds : DataSource, stypeName : String, destination : String, feedUrl : String ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
+      val stype = LatestSchema.Table.SubscriptionType.selectByName( conn, stypeName )
+      stype.validateDestination( conn, stypeName, destination, feedUrl )
       LatestSchema.Table.Subscription.insert( conn, destination, feedUrl, stypeName )
 
   def listSubscriptionTypes( ds : DataSource ) : Task[Set[(String,SubscriptionType)]] =

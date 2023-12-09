@@ -13,8 +13,13 @@ import com.mchange.feedletter.db.{AssignableKey, AssignableWithinTypeInfo, ItemS
 
 import com.mchange.conveniences.www.*
 import com.mchange.feedletter.db.PgDatabase
+import com.mchange.mailutil.*
+import com.mchange.sc.v1.log.*
+import MLevel.*
 
 object SubscriptionType:
+  private lazy given logger : MLogger = mlogger(this)
+
   private val GeneralRegex = """^(\w+)\.(\w+)\:(.*)$""".r
 
   extension ( s : String )
@@ -93,6 +98,15 @@ object SubscriptionType:
 
     def defaultSubject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String
 
+    override def validateDestination( conn : Connection, stypeName : String, destination : String, feedUrl : String ) : Boolean =
+      try
+        Smtp.Address.parseSingle( destination, strict = true  )
+        true
+      catch
+        case failure : SmtpAddressParseFailed =>
+          WARNING.log( s"[${stypeName}] Could not validate destination for email subscription '${destination}'. Rejecting." )
+          false
+
     if from.isEmpty then
       throw new InvalidSubscriptionType(
         "An Email subscription type must include at least one 'from' param. Params given: " +
@@ -118,6 +132,7 @@ object SubscriptionType:
 sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
   def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeInfo], mostRecentOpen : Option[AssignableWithinTypeInfo], guid : String, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
+  def validateDestination( conn : Connection, stypeName : String, destination : String, feedUrl : String ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
   override def toString() : String = s"${category}.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
   override def equals( other : Any ) : Boolean =
