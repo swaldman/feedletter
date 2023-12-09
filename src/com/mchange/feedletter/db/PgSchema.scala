@@ -91,7 +91,7 @@ object PgSchema:
                |  await_stabilization_minutes INTEGER NOT NULL,
                |  max_delay_minutes           INTEGER NOT NULL,
                |  subscribed                  TIMESTAMP NOT NULL,
-               |  last_assigned               TIMESTAMP NOT NULL     -- we'll start at subscribed
+               |  last_assigned               TIMESTAMP NOT NULL,     -- we'll start at subscribed
                |  PRIMARY KEY(url)
                |)""".stripMargin
           private val Insert =
