@@ -13,7 +13,7 @@ import javax.print.attribute.standard.OutputDeviceAssigned
 import com.mchange.cryptoutil.*
 
 final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assignability : ItemAssignability )
-final case class AssignableWithinTypeInfo( withinTypeId : String, count : Int )
+final case class AssignableWithinTypeStatus( withinTypeId : String, count : Int )
 final case class AssignableKey( feedUrl : String, stypeName : String, withinTypeId : String )
 
 object MailSpec:

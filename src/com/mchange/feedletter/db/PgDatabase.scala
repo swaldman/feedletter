@@ -174,17 +174,17 @@ object PgDatabase extends Migratory:
   def reportConfigKeys( ds : DataSource ): Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
     withConnectionTransactional( ds )( conn => sort( LatestSchema.Table.Config.selectTuples( conn ) ) )
 
-  private def lastCompletedAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stypeName : String ) : Option[AssignableWithinTypeInfo] =
+  private def lastCompletedAssignableWithinTypeStatus( conn : Connection, feedUrl : String, stypeName : String ) : Option[AssignableWithinTypeStatus] =
     val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, stypeName )
     withinTypeId.map: wti =>
       val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stypeName, wti )
-      AssignableWithinTypeInfo( wti, count )
+      AssignableWithinTypeStatus( wti, count )
 
-  private def mostRecentOpenAssignableWithinTypeInfo( conn : Connection, feedUrl : String, stypeName : String ) : Option[AssignableWithinTypeInfo] =
+  private def mostRecentOpenAssignableWithinTypeStatus( conn : Connection, feedUrl : String, stypeName : String ) : Option[AssignableWithinTypeStatus] =
     val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdMostRecentOpen( conn, feedUrl, stypeName )
     withinTypeId.map: wti =>
       val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, feedUrl, stypeName, wti )
-      AssignableWithinTypeInfo( wti, count )
+      AssignableWithinTypeStatus( wti, count )
 
   private def ensureOpenAssignable( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String, forGuid : Option[String]) : Unit =
     LatestSchema.Table.Assignable.selectIsCompleted( conn, feedUrl, stypeName, withinTypeId) match
@@ -194,8 +194,8 @@ object PgDatabase extends Migratory:
         LatestSchema.Table.Assignable.insert( conn, feedUrl, stypeName, withinTypeId, Instant.now, None )
 
   private def assignForSubscriptionType( conn : Connection, stypeName : String, feedUrl : String, guid : String, content : ItemContent, status : ItemStatus ) : Unit =
-    val lastCompleted = lastCompletedAssignableWithinTypeInfo( conn, feedUrl, stypeName )
-    val mostRecentOpen = mostRecentOpenAssignableWithinTypeInfo( conn, feedUrl, stypeName )
+    val lastCompleted = lastCompletedAssignableWithinTypeStatus( conn, feedUrl, stypeName )
+    val mostRecentOpen = mostRecentOpenAssignableWithinTypeStatus( conn, feedUrl, stypeName )
     val stype = LatestSchema.Table.SubscriptionType.selectByName( conn, stypeName )
     stype.withinTypeId( feedUrl, lastCompleted, mostRecentOpen, guid, content, status ).foreach: wti =>
       ensureOpenAssignable( conn, feedUrl, stypeName, wti, Some(guid) )
