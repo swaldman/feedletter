@@ -1,8 +1,11 @@
 package com.mchange.feedletter
 
 import zio.*
-import zio.cli.{CliApp,Command,Options,Args,ZIOCliDefault}
-import zio.cli.HelpDoc.Span.text
+import java.lang.System
+
+import com.monovore.decline.*
+import cats.implicits.* // for mapN
+import cats.data.{NonEmptyList,Validated,ValidatedNel}
 
 import com.mchange.sc.v1.log.*
 import MLevel.*
@@ -13,75 +16,155 @@ import javax.sql.DataSource
 import com.mchange.v2.c3p0.ComboPooledDataSource
 
 import com.mchange.feedletter.db.DbVersionStatus
+import java.nio.file.Path
 
-object Main extends ZIOCliDefault:
+object Main:
   private lazy given logger : MLogger = mlogger( this )
 
   val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] = ZLayer.fromZIO( ZIO.attempt( new ComboPooledDataSource() ) )
 
-  val admin =
+  object Admin:
     val addFeed =
-      val options =
-        val minDelayMinutes = Options.integer("min-delay-mins").map( _.toInt).withDefault(30)
-        val awaitStabilizationMinutes = Options.integer("await-stabilization-minutes").map( _.toInt ).withDefault(15)
-        val maxDelayMinutes = Options.integer("max-delay-minutes").map( _.toInt).withDefault(180)
-        (minDelayMinutes ++ awaitStabilizationMinutes ++ maxDelayMinutes)
-      val args = Args.text("feed-url")
-      Command("add-feed", options, args).map { case ((minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes), feedUrl) =>
-        val fi = FeedInfo.forNewFeed(feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes )
-        CommandConfig.Admin.AddFeed( fi )
-      }
-    val createSubscriptionType =
+      val header = "Add a new feed from which mail or notifications may be generated."
+      val opts =
+        val minDelayMinutes =
+          val help = "Minimum wait (in miunutes) before a newly encountered item can be notified."
+          Opts.option[Int]("min-delay-minutes", help=help, metavar="minutes").withDefault(30)
+        val awaitStabilizationMinutes =
+          val help = "Period (in minutes) over which an item should not have changed before it is considered stable and can be notified."
+          Opts.option[Int]("await-stabilization-minutes", help=help, metavar="minutes").withDefault(15)
+        val maxDelayMinutes =
+          val help = "Notwithstanding other settings, maximum period past which an item should be notified, regardless of its stability."
+          Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes").withDefault(180)
+        val feedUrl = Opts.argument[String](metavar="feed-url")  
+        (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, feedUrl) mapN: (mindm, asm, maxdm, fu) =>
+          val fi = FeedInfo.forNewFeed(fu, mindm, asm, maxdm )
+          CommandConfig.Admin.AddFeed( fi )
+      Command("add-feed",header=header)( opts )
+    val defineSubscriptionType =
+      val header = "Define a new subscription type."
       val email =
-        val options =
-          val name = Options.text("name") ?? "Name of the subscription-type to be created."
-          val from = Options.text("from") ?? "E-Mail address from which mail should be sent."
-          val replyTo = Options.text("reply-to").optional ?? "Optional reply-to address, rather than from"
+        val header = "Define an e-mail subscription type."
+        val opts =
+          val name =
+            val help = "A name for the new subscripion type."
+            Opts.option[String]("name",help=help,metavar="name")
+          val from =
+            val help = "The email address from which emails should be sent."
+            Opts.option[String]("from",help=help,metavar="e-mail address")
+          val replyTo =
+            val help = "E-mail address to which recipients should reply."
+            Opts.option[String]("reply-to",help=help,metavar="e-mail address").orNone
+           // modified from decline's docs
           val kind =
-            Options.enumeration("kind")(
-              "each" -> "Each",
-              "weekly" -> "Weekly"
-            ).withDefault("Each") ?? "Kind of subscription (each post immediately, weekly collections, etc.)"
-          val extra = Options.keyValueMap("extra-params").withDefault(Map.empty) ?? "Any extra parameters you'd like to define, in name=value format."
-          name ++ from ++ replyTo ++ kind ++ extra
-        Command("email", options).map( CommandConfig.Admin.CreateSubscriptionTypeEmail.apply )
-      Command("create-subscription-type").subcommands(email)
-    val listConfig = Command("list-config").map( _ => CommandConfig.Admin.ListConfig )
-    val listExcluded = Command("list-excluded-items").map( _ => CommandConfig.Admin.ListExcludedItems )
-    val listFeeds = Command("list-feeds").map( _ => CommandConfig.Admin.ListFeeds )
+            val each = Opts.flag("each",help="E-mail each item").map( _ => "Each" )
+            val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => "Weekly")
+            (each orElse weekly).withDefault("Each")
+          val extraParams =
+            def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
+              strings.map{ s =>
+                s.split(":", 2) match
+                  case Array(key, value) => Validated.valid(Tuple2(key, value))
+                  case _ => Validated.invalidNel(s"Invalid key:value pair: ${s}")
+              }.sequence
+            Opts.options[String]("extra-params", "Extra params your subscription type might support, or that renderers might use.", metavar = "key:value")
+              .map( _.toList)
+              .withDefault(Nil)
+              .mapValidated( validate )
+              .map( Map.from )
+          end extraParams
+          ( name, from, replyTo, kind, extraParams ) mapN: ( n, f, rt, k, ep ) =>
+            CommandConfig.Admin.CreateSubscriptionTypeEmail( n, f, rt, k, ep )
+        Command("e-mail", header=header)( opts )
+      Command("define-subscription-type",header=header)( Opts.subcommands(email) )
+    val listConfig =
+      val header = "List all configuration parameters."
+      val opts = Opts( CommandConfig.Admin.ListConfig )
+      Command("list-config",header=header)( opts )
+    val listExcludedItems =
+      val header = "List items excluded from generating notifications."
+      val opts = Opts( CommandConfig.Admin.ListExcludedItems )
+      Command("list-excluded-items",header=header)( opts )
+    val listFeeds =
+      val header = "List all feeds the application is watching."
+      val opts = Opts( CommandConfig.Admin.ListFeeds )
+      Command("list-feeds",header=header)( opts )
     val setConfig =
-      val options =
-        val dumpDbDir = Options.directory("dump-db-dir").map( checkExpandTildeHomeDirPath ).map( _.toAbsolutePath ).optional.map( opt => opt.map( v => Tuple2(ConfigKey.DumpDbDir, v.toString ) ) )
-        val mailBatchSize =  Options.integer("mail-batch-size").optional.map( opt => opt.map( v => Tuple2(ConfigKey.MailBatchSize, v.toString ) ) )
-        val mailBatchDelaySecs = Options.integer("mail-batch-delay-secs").optional.map( opt => opt.map( v => Tuple2(ConfigKey.MailBatchDelaySecs, v.toString ) ) )
-        (dumpDbDir ++ mailBatchSize ++ mailBatchDelaySecs).map( _.toList.collect { case Some(tup) => tup }.toMap )
-      Command("set-config", options).map( settings => CommandConfig.Admin.SetConfig(settings) )
-    Command("admin").subcommands( addFeed, createSubscriptionType, listConfig, listExcluded, listFeeds, setConfig )
+      val header = "Set configuration parameters."
+      val opts =
+        val dumpDbDir =
+          val help = "Directory in which to create dump files prior to db migrations."
+          Opts.option[Path]("dump-db-dir", help=help, metavar="directory")
+            .map( checkExpandTildeHomeDirPath )
+            .map( _.toAbsolutePath )
+            .map( p => (ConfigKey.DumpDbDir, p.toString()) )
+            .orNone
+        val mailBatchSize =
+          val help = "Number of e-mails to send in each 'batch' (to avoid overwhelming the SMTP server)."
+          Opts.option[Int]("mail-batch-size", help=help, metavar="size")
+            .map( i => (ConfigKey.MailBatchSize, i.toString()) )
+            .orNone
+        val mailBatchDelaySecs =
+          val help = "Time between batches of e-mails are to be sent."
+          Opts.option[Int]("mail-batch-delay-seconds", help=help, metavar="seconds")
+            .map( i => (ConfigKey.MailBatchDelaySecs, i.toString()) )
+            .orNone
+        ( dumpDbDir, mailBatchSize, mailBatchDelaySecs ) mapN: (ddr, mbs, mbds) =>
+          val settings = (Vector.empty ++ ddr ++ mbs ++ mbds).toMap
+          CommandConfig.Admin.SetConfig( settings )
+      Command("set-config", header=header)( opts )
 
-  val crank =
-    val assign = Command("assign").map( _ => CommandConfig.Crank.Assign )
-    val complete = Command("complete").map( _ => CommandConfig.Crank.Complete )
-    Command("crank").subcommands(assign, complete)
+  object Crank:
+    val assign =
+      val header = "Assign items to the groups (sometimes of just one) in which they will be notified."
+      val opts = Opts( CommandConfig.Crank.Assign )
+      Command("assign", header=header )( opts )
+    val complete =
+      val header = "Mark groups of assigned items as complete, and queue them for notification."
+      val opts = Opts( CommandConfig.Crank.Complete )
+      Command("complete", header=header )( opts )
 
-  val daemon = Command("daemon").map( _ => CommandConfig.Daemon )
-
-  val db =
-    val dump = Command("dump").map( _ => CommandConfig.Db.Dump )
-    val init = Command("init").map( _ => CommandConfig.Db.Init )
+  object Db:
+    val init =
+      val header = "Initialize the database schema."
+      val opts = Opts( CommandConfig.Db.Init )
+      Command("init", header=header )( opts )
     val migrate =
-      val forceOption = Options.boolean("force").alias("f")
-      Command("migrate", forceOption).map( force => CommandConfig.Db.Migrate(force) )
-    Command("db").subcommands(dump, init, migrate)
+      val header = "Initialize the database schema."
+      val opts =
+        val help = "Force migration even if the application can find no recent database dump."
+        Opts.flag("force",help=help,short="f").orFalse.map( force => CommandConfig.Db.Migrate(force) )
+      Command("migrate", header=header )( opts )
 
-  val sendmail = Command("sendmail").map( _ => CommandConfig.Sendmail )
+  val feedletter =
+    val admin =
+      val header = "Administer and configure an installation."
+      val opts =
+        import Admin.*
+        Opts.subcommands(addFeed, defineSubscriptionType, listConfig, listExcludedItems, setConfig)
+      Command( name="admin", header=header )( opts )
+    val crank =
+      val header = "Run a usually recurring operation a single time."
+      val opts =
+        import Crank.*
+        Opts.subcommands(assign, complete)
+      Command( name="crank", header=header )( opts )
+    val db =
+      val header = "Manage the database and database schema."
+      val opts =
+        import Db.*
+        Opts.subcommands( init, migrate )
+      Command( name="db", header=header )( opts )
 
-  val cliApp = CliApp.make(
-    name = "feedletter",
-    version = com.mchange.feedletter.BuildInfo.version,
-    summary = text("Manage e-mail subscriptions to RSS feeds."),
-    command = Command("feedletter").subcommands( admin, crank, daemon, db, sendmail )
-  ){
-    case cc : CommandConfig =>
-      cc.zcommand.provide( AppSetup.live, LayerDataSource )
-  }
+    val subcommands = Opts.subcommands(admin,crank,db)
+    Command(name="feedletter", header="Manage e-mail subscriptions to and other notifications from RSS feeds.")( subcommands )
 
+  def main( args : Array[String] ) : Unit =
+    feedletter.parse(args.toIndexedSeq, sys.env) match
+      case Left(help) =>
+        println(help)
+        System.exit(1)
+      case Right( cc : CommandConfig ) =>
+        val task = cc.zcommand.provide( AppSetup.live, LayerDataSource )
+        Unsafe.unsafely:
+          Runtime.default.unsafe.run(task).getOrThrow()

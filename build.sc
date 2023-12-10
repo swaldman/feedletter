@@ -11,7 +11,7 @@ object feedletter extends RootModule with ScalaModule with BuildInfo {
   def scalaVersion = "3.3.1"
   def ivyDeps = Agg(
     ivy"dev.zio::zio:2.0.18",
-    ivy"dev.zio::zio-cli:0.5.0",
+    ivy"com.monovore::decline:2.4.1",
     ivy"org.postgresql:postgresql:42.6.0",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
     ivy"com.lihaoyi::os-lib:0.9.1",
