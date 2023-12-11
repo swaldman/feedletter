@@ -38,45 +38,45 @@ object Main:
           Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes").withDefault(180)
         val feedUrl = Opts.argument[String](metavar="feed-url")  
         (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, feedUrl) mapN: (mindm, asm, maxdm, fu) =>
-          val fi = FeedInfo.forNewFeed(fu, mindm, asm, maxdm )
+          val fi = FeedInfo.forNewFeed(FeedUrl(fu), mindm, asm, maxdm )
           CommandConfig.Admin.AddFeed( fi )
       Command("add-feed",header=header)( opts )
-    val defineSubscriptionType =
-      val header = "Define a new subscription type."
-      val email =
-        val header = "Define an e-mail subscription type."
-        val opts =
-          val name =
-            val help = "A name for the new subscripion type."
-            Opts.option[String]("name",help=help,metavar="name")
-          val from =
-            val help = "The email address from which emails should be sent."
-            Opts.option[String]("from",help=help,metavar="e-mail address")
-          val replyTo =
-            val help = "E-mail address to which recipients should reply."
-            Opts.option[String]("reply-to",help=help,metavar="e-mail address").orNone
-           // modified from decline's docs
-          val kind =
-            val each = Opts.flag("each",help="E-mail each item").map( _ => "Each" )
-            val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => "Weekly")
-            (each orElse weekly).withDefault("Each")
-          val extraParams =
-            def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
-              strings.map{ s =>
-                s.split(":", 2) match
-                  case Array(key, value) => Validated.valid(Tuple2(key, value))
-                  case _ => Validated.invalidNel(s"Invalid key:value pair: ${s}")
-              }.sequence
-            Opts.options[String]("extra-params", "Extra params your subscription type might support, or that renderers might use.", metavar = "key:value")
-              .map( _.toList)
-              .withDefault(Nil)
-              .mapValidated( validate )
-              .map( Map.from )
-          end extraParams
-          ( name, from, replyTo, kind, extraParams ) mapN: ( n, f, rt, k, ep ) =>
-            CommandConfig.Admin.CreateSubscriptionTypeEmail( n, f, rt, k, ep )
-        Command("e-mail", header=header)( opts )
-      Command("define-subscription-type",header=header)( Opts.subcommands(email) )
+    val defineEmailSubscription =
+      val header = "Define a kind of e-mail subscription."
+      val opts =
+        val feedUrl =
+          val help = "The URL of the RSS feed to be subscribed."
+          Opts.option[String]("feed-url", help=help, metavar="url").map( FeedUrl.apply )
+        val name =
+          val help = "A name for the new kind of email subscription."
+          Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
+        val from =
+          val help = "The email address from which emails should be sent."
+          Opts.option[String]("from",help=help,metavar="e-mail address")
+        val replyTo =
+          val help = "E-mail address to which recipients should reply (if different from the 'from' address)."
+          Opts.option[String]("reply-to",help=help,metavar="e-mail address").orNone
+         // modified from decline's docs
+        val kind =
+          val each = Opts.flag("each",help="E-mail each item").map( _ => "Each" )
+          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => "Weekly")
+          (each orElse weekly).withDefault("Each")
+        val extraParams =
+          def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
+            strings.map{ s =>
+              s.split(":", 2) match
+                case Array(key, value) => Validated.valid(Tuple2(key, value))
+                case _ => Validated.invalidNel(s"Invalid key:value pair: ${s}")
+            }.sequence
+          Opts.options[String]("extra-params", "Extra params your subscription type might support, or that renderers might use.", metavar = "key:value")
+            .map( _.toList)
+            .withDefault(Nil)
+            .mapValidated( validate )
+            .map( Map.from )
+        end extraParams
+        ( feedUrl, name, from, replyTo, kind, extraParams ) mapN: ( fu, n, f, rt, k, ep ) =>
+          CommandConfig.Admin.DefineEmailSubscription( fu, n, f, rt, k, ep )
+      Command("define-email-subscription",header=header)( opts )
     val listConfig =
       val header = "List all configuration parameters."
       val opts = Opts( CommandConfig.Admin.ListConfig )
@@ -141,7 +141,7 @@ object Main:
       val header = "Administer and configure an installation."
       val opts =
         import Admin.*
-        Opts.subcommands(addFeed, defineSubscriptionType, listConfig, listExcludedItems, setConfig)
+        Opts.subcommands(addFeed, defineEmailSubscription, listConfig, listExcludedItems, setConfig)
       Command( name="admin", header=header )( opts )
     val crank =
       val header = "Run a usually recurring operation a single time."

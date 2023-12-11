@@ -31,18 +31,19 @@ val ExcludedItemsColumns = Seq(
 )
 
 def extractExcludedItem( ei : ExcludedItem ) : Seq[String] =
-  ei.feedUrl :: ei.guid :: ei.title.getOrElse("") :: ei.author.getOrElse("") :: ei.publicationDate.map( ISO_INSTANT.format ).getOrElse("") :: Nil
+  ei.feedUrl.toString() :: ei.guid.toString() :: ei.title.getOrElse("") :: ei.author.getOrElse("") :: ei.publicationDate.map( ISO_INSTANT.format ).getOrElse("") :: Nil
 
 def printExcludedItemsTable( eis : Set[ExcludedItem] ) : Task[Unit] =
   ZIO.attempt( texttable.printTable( ExcludedItemsColumns, extractExcludedItem )( eis.map(texttable. Row.apply) ) )
 
-val SubscriptionTypeColumns = Seq(
+val SubscribableColumns = Seq(
+  texttable.Column("Feed URL"),
   texttable.Column("Name"),
   texttable.Column("Subscription Type")
 )
 
-def printSubscriptionTypeTable( tups : Set[(String,SubscriptionType)] ) : Task[Unit] =
-  ZIO.attempt( texttable.printProductTable( SubscriptionTypeColumns )( tups.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
+def printSubscribablesTable( tups : Set[(FeedUrl,SubscribableName,SubscriptionType)] ) : Task[Unit] =
+  ZIO.attempt( texttable.printProductTable( SubscribableColumns )( tups.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
 
 
 

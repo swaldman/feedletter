@@ -31,32 +31,32 @@ object SubscriptionType:
   object Email:
     class Each( params : Seq[(String,String)] ) extends Email("Each", params):
 
-      override def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus], guid : String, content : ItemContent, status : ItemStatus ) : Option[String] =
-        Some( guid )
+      override def withinTypeId( feedUrl : FeedUrl, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus], guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+        Some( guid.toString() )
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         assert( contents.size == 1, s"Email.Each expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
-        val computedSubject = subject( assignableKey.stypeName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
+        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
         val fullContents = composeSingleItemHtmlMailContent( assignableKey, this, contents.head )
         PgDatabase.queueForMailing( conn, fullContents, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, destinations, computedSubject)
 
-      override def defaultSubject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String =
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
-        s"""[${subscriptionTypeName}] New Post: ${contents.head.title.getOrElse("(untitled post)")}"""
+        s"""[${subscribableName}] New Post: ${contents.head.title.getOrElse("(untitled post)")}"""
 
     class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
-        feedUrl : String,
-        lastCompleted : Option[AssignableWithinTypeStatus],
+        feedUrl        : FeedUrl,
+        lastCompleted  : Option[AssignableWithinTypeStatus],
         mostRecentOpen : Option[AssignableWithinTypeStatus],
-        guid : String,
-        content : ItemContent,
-        status : ItemStatus
+        guid           : Guid,
+        content        : ItemContent,
+        status         : ItemStatus
       ) : Option[String] =
         Some( WtiFormatter.format( status.lastChecked ) ) 
 
@@ -75,36 +75,36 @@ object SubscriptionType:
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         if contents.nonEmpty then
-          val computedSubject = subject( assignableKey.stypeName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
+          val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
           val fullContents = composeMultipleItemHtmlMailContent( assignableKey, this, contents )
           PgDatabase.queueForMailing( conn, fullContents, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, destinations, computedSubject)
 
-      override def defaultSubject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String =
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
         val weekStart = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 1 )
         val weekEnd = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 7 )
-        s"[${subscriptionTypeName}] All posts, ${ISO_LOCAL_DATE.format(weekStart)} to ${ISO_LOCAL_DATE.format(weekEnd)}"
+        s"[${subscribableName}] All posts, ${ISO_LOCAL_DATE.format(weekStart)} to ${ISO_LOCAL_DATE.format(weekEnd)}"
 
   abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params):
     val from    : Seq[String] = wwwFormFindAllValues("from", params)
     val replyTo : Seq[String] = wwwFormFindAllValues("replyTo", params)
 
-    def subject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String =
-      val args = ( subscriptionTypeName, withinTypeId, feedUrl, contents )
-      config.SubjectCustomizers.get( subscriptionTypeName ).fold( defaultSubject.tupled(args) ): customizer =>
+    def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+      val args = ( subscribableName, withinTypeId, feedUrl, contents )
+      config.SubjectCustomizers.get( subscribableName ).fold( defaultSubject.tupled(args) ): customizer =>
         customizer.tupled( args )
 
-    def defaultSubject( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) : String
+    def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String
 
-    override def validateDestination( conn : Connection, stypeName : String, destination : String, feedUrl : String ) : Boolean =
+    override def validateDestination( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Boolean =
       try
-        Smtp.Address.parseSingle( destination, strict = true  )
+        Smtp.Address.parseSingle( destination.toString(), strict = true  )
         true
       catch
         case failure : SmtpAddressParseFailed =>
-          WARNING.log( s"[${stypeName}] Could not validate destination for email subscription '${destination}'. Rejecting." )
+          WARNING.log( s"[${subscribableName}] Could not validate destination for email subscription '${destination}'. Rejecting." )
           false
 
     if from.isEmpty then
@@ -130,10 +130,10 @@ object SubscriptionType:
         throw new InvalidSubscriptionType(s"'${str}' could not be parsed into a valid subscription type.")
 
 sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
-  def withinTypeId( feedUrl : String, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus], guid : String, content : ItemContent, status : ItemStatus ) : Option[String]
+  def withinTypeId( feedUrl : FeedUrl, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus], guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
-  def validateDestination( conn : Connection, stypeName : String, destination : String, feedUrl : String ) : Boolean
-  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[String] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
+  def validateDestination( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Boolean
+  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
   override def toString() : String = s"${category}.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
   override def equals( other : Any ) : Boolean =
     other match

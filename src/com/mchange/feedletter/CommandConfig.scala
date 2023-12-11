@@ -21,18 +21,18 @@ object CommandConfig:
           _   <- printFeedInfoTable(fis)
         yield ()
       end zcommand
-    case class CreateSubscriptionTypeEmail( name : String, from : String, replyTo : Option[String], subtype : String, extraParams : Map[String,String]  ) extends CommandConfig:
+    case class DefineEmailSubscription( feedUrl : FeedUrl, subscribableName : SubscribableName, from : String, replyTo : Option[String], subtype : String, extraParams : Map[String,String]  ) extends CommandConfig:
       override def zcommand : ZCommand =
         val params = Seq( ("from", from) ) ++ replyTo.map( rt => ("replyTo",rt) ) ++ extraParams.toSeq
         val mbStype = SubscriptionType.dispatch( "Email", subtype, params )
-        mbStype.fold( ZIO.fail( new InvalidSubscriptionType( "Failed to interpret command line args into valid subscription type." ) ) ): subscriptionType =>  
+        mbStype.fold( ZIO.fail( new InvalidSubscriptionType( s"Failed to interpret command line args into valid subscription type. ('Email', '${subtype}', '${params}')" ) ) ): subscriptionType =>  
           for
             ds   <- ZIO.service[DataSource]
             _    <- PgDatabase.ensureDb( ds )
-            _    <- PgDatabase.addSubscriptionType( ds, name, subscriptionType )
-            tups <- PgDatabase.listSubscriptionTypes(ds)
-            _    <- printSubscriptionTypeTable(tups)
-            _    <- Console.printLine(s"SubscriptionType '${name}' created.")
+            _    <- PgDatabase.addSubscribable( ds, feedUrl, subscribableName, subscriptionType )
+            tups <- PgDatabase.listSubscribables(ds)
+            _    <- printSubscribablesTable(tups)
+            _    <- Console.printLine(s"An email subscribable to '${feedUrl}' named '${subscribableName}' has been created.")
           yield ()
       end zcommand
     case object ListConfig extends CommandConfig:
@@ -76,7 +76,7 @@ object CommandConfig:
         for
           ds <- ZIO.service[DataSource]
           _  <- PgDatabase.ensureDb( ds )
-          _  <- PgDatabase.addSubscription( ds, aso.stypeName, aso.destination, aso.feedUrl )
+          _  <- PgDatabase.addSubscription( ds, aso.feedUrl, aso.subscribableName, aso.destination )
         yield ()
       end zcommand
   object Crank:

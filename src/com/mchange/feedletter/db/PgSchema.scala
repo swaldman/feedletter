@@ -4,10 +4,9 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.{ConfigKey,ExcludedItem,FeedInfo,ItemContent}
+import com.mchange.feedletter.{ConfigKey,Destination,ExcludedItem,FeedInfo,FeedUrl,Guid,InvalidSubscriptionType,ItemContent,SubscribableName,SubscriptionType}
 
 import com.mchange.cryptoutil.{Hash, given}
-import com.mchange.feedletter.InvalidSubscriptionType
 
 object PgSchema:
   trait Creatable:
@@ -114,9 +113,9 @@ object PgSchema:
                |WHERE url = ?""".stripMargin
           def insert( conn : Connection, fi : FeedInfo ) : Int =
             insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.subscribed, fi.lastAssigned)
-          def insert( conn : Connection, url : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant, lastAssigned : Instant ) : Int =
+          def insert( conn : Connection, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant, lastAssigned : Instant ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
-              ps.setString    (1, url)
+              ps.setString    (1, feedUrl.toString())
               ps.setInt       (2, minDelayMinutes )
               ps.setInt       (3, awaitStabilizationMinutes)
               ps.setInt       (4, maxDelayMinutes )
@@ -126,16 +125,16 @@ object PgSchema:
           def selectAll( conn : Connection ) : Set[FeedInfo] =
             Using.resource( conn.prepareStatement( this.SelectAll ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => FeedInfo( rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getTimestamp(5).toInstant, rs.getTimestamp(6).toInstant ) )
-          def selectLastAssigned( conn : Connection, feedUrl : String ) : Option[Instant] =
+                toSet(rs)( rs => FeedInfo( FeedUrl( rs.getString(1) ), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getTimestamp(5).toInstant, rs.getTimestamp(6).toInstant ) )
+          def selectLastAssigned( conn : Connection, feedUrl : FeedUrl ) : Option[Instant] =
             Using.resource(conn.prepareStatement(this.SelectLastAssigned)): ps =>
-              ps.setString(1, feedUrl)
+              ps.setString(1, feedUrl.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("select-when-feed-last-assigned", rs)( _.getTimestamp(1).toInstant() )
 
           def upsert( conn : Connection, fi : FeedInfo ) =
             Using.resource( conn.prepareStatement(this.Upsert) ): ps =>
-              ps.setString    (1, fi.feedUrl)
+              ps.setString    (1, fi.feedUrl.toString())
               ps.setInt       (2, fi.minDelayMinutes )
               ps.setInt       (3, fi.awaitStabilizationMinutes)
               ps.setInt       (4, fi.maxDelayMinutes )
@@ -145,10 +144,10 @@ object PgSchema:
               ps.setInt       (8, fi.awaitStabilizationMinutes)
               ps.setInt       (9, fi.maxDelayMinutes )
               ps.executeUpdate()
-          def updateLastAssigned( conn : Connection, feedUrl : String, lastAssigned : Instant ) =
+          def updateLastAssigned( conn : Connection, feedUrl : FeedUrl, lastAssigned : Instant ) =
             Using.resource( conn.prepareStatement(this.UpdateLastAssigned) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastAssigned))
-              ps.setString   (2, feedUrl)
+              ps.setString   (2, feedUrl.toString())
               ps.executeUpdate()
 
         object Item extends Creatable:
@@ -157,18 +156,18 @@ object PgSchema:
               protected val Create = "CREATE TYPE ItemAssignability AS ENUM ('Unassigned', 'Assigned', 'Excluded')"
           protected val Create =
             """|CREATE TABLE item(
-               |  feed_url VARCHAR(1024),
-               |  guid VARCHAR(1024),
-               |  title VARCHAR(1024),
-               |  author VARCHAR(1024),
-               |  article TEXT,
+               |  feed_url         VARCHAR(1024),
+               |  guid             VARCHAR(1024),
+               |  title            VARCHAR(1024),
+               |  author           VARCHAR(1024),
+               |  article          TEXT,
                |  publication_date TIMESTAMP,
-               |  link VARCHAR(1024),
-               |  content_hash INTEGER NOT NULL, -- ItemContent.## (hashCode)
-               |  first_seen TIMESTAMP NOT NULL,
-               |  last_checked TIMESTAMP NOT NULL,
-               |  stable_since TIMESTAMP NOT NULL,
-               |  assignability ItemAssignability NOT NULL,
+               |  link             VARCHAR(1024),
+               |  content_hash     INTEGER NOT NULL,   -- ItemContent.## (hashCode)
+               |  first_seen       TIMESTAMP NOT NULL,
+               |  last_checked     TIMESTAMP NOT NULL,
+               |  stable_since     TIMESTAMP NOT NULL,
+               |  assignability    ItemAssignability NOT NULL,
                |  PRIMARY KEY(feed_url, guid),
                |  FOREIGN KEY(feed_url) REFERENCES feed(url)
                |)""".stripMargin
@@ -195,24 +194,24 @@ object PgSchema:
             """|UPDATE item
                |SET assignability = CAST( ? AS ItemAssignability )
                |WHERE feed_url = ? AND guid = ?""".stripMargin
-          def checkStatus( conn : Connection, feedUrl : String, guid : String ) : Option[ItemStatus] =
+          def checkStatus( conn : Connection, feedUrl : FeedUrl, guid : Guid ) : Option[ItemStatus] =
             Using.resource( conn.prepareStatement( SelectCheck ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, guid)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, guid.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("item-check-select", rs): rs =>
                   ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), ItemAssignability.valueOf(rs.getString(5)) )
           def selectExcluded( conn : Connection ) : Set[ExcludedItem] =
             Using.resource( conn.prepareStatement(SelectExcluded) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => ExcludedItem( rs.getString(1), rs.getString(2), Option( rs.getString(3) ), Option( rs.getString(4) ), Option( rs.getTimestamp(5) ).map( _.toInstant ), Option( rs.getString(6) ) ) )
-          def updateStable( conn : Connection, feedUrl : String, guid : String, lastChecked : Instant ) =
+                toSet(rs)( rs => ExcludedItem( FeedUrl( rs.getString(1) ), rs.getString(2), Option( rs.getString(3) ), Option( rs.getString(4) ), Option( rs.getTimestamp(5) ).map( _.toInstant ), Option( rs.getString(6) ) ) )
+          def updateStable( conn : Connection, feedUrl : FeedUrl, guid : Guid, lastChecked : Instant ) =
             Using.resource( conn.prepareStatement( this.UpdateStable) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastChecked))
-              ps.setString(2, feedUrl)
-              ps.setString(3, guid)
+              ps.setString(2, feedUrl.toString())
+              ps.setString(3, guid.toString())
               ps.executeUpdate()
-          def updateChanged( conn : Connection, feedUrl : String, guid : String, newContent : ItemContent, newStatus : ItemStatus ) =
+          def updateChanged( conn : Connection, feedUrl : FeedUrl, guid : Guid, newContent : ItemContent, newStatus : ItemStatus ) =
             Using.resource( conn.prepareStatement( this.UpdateChanged ) ): ps =>
               setStringOptional(ps, 1, Types.VARCHAR, newContent.title )
               setStringOptional(ps, 2, Types.VARCHAR, newContent.author )
@@ -223,20 +222,20 @@ object PgSchema:
               ps.setTimestamp(7, Timestamp.from(newStatus.lastChecked))
               ps.setTimestamp(8, Timestamp.from(newStatus.stableSince))
               ps.setString(9, newStatus.assignability.toString())
-              ps.setString(10, feedUrl)
-              ps.setString(11, guid)
+              ps.setString(10, feedUrl.toString())
+              ps.setString(11, guid.toString())
               ps.executeUpdate()
-          def updateAssignability( conn : Connection, feedUrl : String, guid : String, assignability : ItemAssignability ) =
+          def updateAssignability( conn : Connection, feedUrl : FeedUrl, guid : Guid, assignability : ItemAssignability ) =
             Using.resource( conn.prepareStatement( this.UpdateAssignability) ): ps =>
               ps.setString(1, assignability.toString())
-              ps.setString(2, feedUrl)
-              ps.setString(3, guid)
+              ps.setString(2, feedUrl.toString())
+              ps.setString(3, guid.toString())
               ps.executeUpdate()
-          def insertNew( conn : Connection, feedUrl : String, guid : String, itemContent : ItemContent, assignability : ItemAssignability ) : Int =
+          def insertNew( conn : Connection, feedUrl : FeedUrl, guid : Guid, itemContent : ItemContent, assignability : ItemAssignability ) : Int =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               val now = Instant.now
-              ps.setString( 1, feedUrl )
-              ps.setString( 2, guid )
+              ps.setString( 1, feedUrl.toString() )
+              ps.setString( 2, guid.toString() )
               setStringOptional(ps, 3, Types.VARCHAR, itemContent.title)
               setStringOptional(ps, 4, Types.VARCHAR, itemContent.author)
               setStringOptional(ps, 5, Types.CLOB, itemContent.article)
@@ -248,52 +247,54 @@ object PgSchema:
               ps.setTimestamp( 11, Timestamp.from( now ) )
               ps.setString( 12, assignability.toString() )
               ps.executeUpdate()
-        object SubscriptionType extends Creatable:
-          import com.mchange.feedletter.{SubscriptionType as SubscriptionTypeNotTable}
+        object Subscribable extends Creatable:
           protected val Create =
-            """|CREATE TABLE subscription_type(
-               |  stype_name VARCHAR(64),
-               |  stype      VARCHAR(1024),
-               |  PRIMARY KEY (stype_name)
+            """|CREATE TABLE subscribable(
+               |  feed_url          VARCHAR(1024),
+               |  subscribable_name VARCHAR(64),
+               |  subscription_type VARCHAR(1024),
+               |  PRIMARY KEY (feed_url, subscribable_name),
+               |  FOREIGN KEY (feed_url) REFERENCES feed(url)
                |)""".stripMargin
-          private val Select = "SELECT stype_name, stype FROM subscription_type"
-          private val SelectByName =
-            """|SELECT stype
-               |FROM subscription_type
-               |WHERE stype_name = ?""".stripMargin
-          private val Insert = "INSERT INTO subscription_type VALUES ( ?, ? )"
-          def select( conn : Connection ) : Set[(String,SubscriptionTypeNotTable)] =
+          private val Select = "SELECT feed_url, subscribable_name, subscription_type FROM subscribable"
+          private val SelectType =
+            """|SELECT subscribable_type
+               |FROM subscribable
+               |WHERE feed_url = ? AND subscribable_name = ?""".stripMargin
+          private val Insert = "INSERT INTO subscribable VALUES ( ?, ?, ? )"
+          def select( conn : Connection ) : Set[(FeedUrl, SubscribableName, SubscriptionType)] =
             Using.resource( conn.prepareStatement( Select ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => ( rs.getString(1), SubscriptionTypeNotTable.parse( rs.getString(2) ) ) )
-          def selectByName( conn : Connection, stypeName : String ) : SubscriptionTypeNotTable =
-            Using.resource( conn.prepareStatement( SelectByName ) ): ps =>
-              ps.setString(1, stypeName)
+                toSet(rs)( rs => ( FeedUrl( rs.getString(1) ), SubscribableName( rs.getString(2) ), SubscriptionType.parse( rs.getString(3) ) ) )
+          def selectType( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName ) : SubscriptionType =
+            Using.resource( conn.prepareStatement( SelectType ) ): ps =>
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
-                uniqueResult("select-stype-by-name", rs)( rs => SubscriptionTypeNotTable.parse( rs.getString(1) ) )
-          def insert( conn : Connection, stypeName : String, stype : SubscriptionTypeNotTable ) =
+                uniqueResult("select-subscription-type", rs)( rs => SubscriptionType.parse( rs.getString(1) ) )
+          def insert( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionType : SubscriptionType ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
-              ps.setString(1, stypeName)
-              ps.setString(2, stype.toString())
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
+              ps.setString(3, subscriptionType.toString())
               ps.executeUpdate()
         object Assignable extends Creatable:
           protected val Create = // an assignable represents a collection of posts for a single mail
             """|CREATE TABLE assignable(
-               |  feed_url VARCHAR(1024),
-               |  stype_name VARCHAR(64),
-               |  within_type_id VARCHAR(1024),
-               |  opened TIMESTAMP NOT NULL,
-               |  completed TIMESTAMP,
-               |  PRIMARY KEY(feed_url, stype_name, within_type_id),
-               |  FOREIGN KEY(feed_url) REFERENCES feed(url),
-               |  FOREIGN KEY(stype_name) REFERENCES subscription_type(stype_name)
+               |  feed_url          VARCHAR(1024),
+               |  subscribable_name VARCHAR(64),
+               |  within_type_id    VARCHAR(1024),
+               |  opened            TIMESTAMP NOT NULL,
+               |  completed         TIMESTAMP,
+               |  PRIMARY KEY(feed_url, subscribable_name, within_type_id),
+               |  FOREIGN KEY(feed_url, subscribable_name) REFERENCES subscribable(feed_url, subscribable_name)
                |)""".stripMargin
           private val SelectIsCompleted =
             """|SELECT completed IS NOT NULL
                |FROM assignable
-               |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
+               |WHERE feed_url = ? AND subscribable_name = ? AND within_type_id = ?""".stripMargin
           private val SelectOpen =
-            """|SELECT feed_url, stype_name, within_type_id
+            """|SELECT feed_url, subscribable_name, within_type_id
                |FROM assignable
                |WHERE completed IS NULL""".stripMargin
           // should I make indexes for these next two? should I try some more clever/efficient form of query?
@@ -304,129 +305,128 @@ object PgSchema:
           private val SelectWithinTypeIdMostRecentOpen =
             """|SELECT within_type_id
                |FROM assignable
-               |WHERE feed_url = ? AND stype_name = ?
+               |WHERE feed_url = ? AND subscribable_name = ?
                |ORDER BY opened DESC
                |LIMIT 1""".stripMargin
           private val SelectWithinTypeIdLastCompleted =
             """|SELECT within_type_id
                |FROM assignable
-               |WHERE feed_url = ? AND stype_name = ?
+               |WHERE feed_url = ? AND subscribable_name = ?
                |ORDER BY completed DESC NULLS LAST
                |LIMIT 1""".stripMargin
           private val Insert =
-            """|INSERT INTO assignable( feed_url, stype_name, within_type_id, opened, completed )
+            """|INSERT INTO assignable( feed_url, subscribable_name, within_type_id, opened, completed )
                |VALUES ( ?, ?, ?, ?, ? )""".stripMargin
           private val UpdateCompleted =
             """|UPDATE assignable
                |SET completed = ?
-               |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
+               |WHERE feed_url = ? AND subscribable_name = ? AND within_type_id = ?""".stripMargin
           def selectOpen( conn : Connection ) : Set[AssignableKey] =
             Using.resource( conn.prepareStatement( this.SelectOpen ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => AssignableKey( rs.getString(1), rs.getString(2), rs.getString(3) ) )
-          def selectIsCompleted( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String ) : Option[Boolean] =
+                toSet(rs)( rs => AssignableKey( FeedUrl( rs.getString(1) ), SubscribableName( rs.getString(2) ), rs.getString(3) ) )
+          def selectIsCompleted( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String ) : Option[Boolean] =
             Using.resource( conn.prepareStatement( this.SelectIsCompleted ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, stypeName)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               ps.setString(3, withinTypeId)
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-completed", rs)( _.getBoolean(1) )
-          def selectWithinTypeIdMostRecentOpen( conn : Connection, feedUrl : String, stypeName : String ) : Option[String] =
+          def selectWithinTypeIdMostRecentOpen( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Option[String] =
             Using.resource( conn.prepareStatement( this.SelectWithinTypeIdMostRecentOpen ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, stypeName)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-most-recent-open-within-type-id", rs)( _.getString(1) )
-          def selectWithinTypeIdLastCompleted( conn : Connection, feedUrl : String, stypeName : String ) : Option[String] =
+          def selectWithinTypeIdLastCompleted( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Option[String] =
             Using.resource( conn.prepareStatement( this.SelectWithinTypeIdLastCompleted ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, stypeName)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-last-completed-within-type-id", rs)( _.getString(1) )
-          def insert( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String, opened : Instant, completed : Option[Instant] ) =
+          def insert( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String, opened : Instant, completed : Option[Instant] ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, stypeName)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               ps.setString(3, withinTypeId)
               ps.setTimestamp(4, Timestamp.from(opened))
               setTimestampOptional(ps, 5, completed.map( Timestamp.from ))
               ps.executeUpdate()
-          def updateCompleted( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String, completed : Option[Instant] ) =
+          def updateCompleted( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String, completed : Option[Instant] ) =
             Using.resource( conn.prepareStatement( this.UpdateCompleted ) ): ps =>
               completed.fold( ps.setNull(1, Types.TIMESTAMP) )( instant => ps.setTimestamp(1, Timestamp.from(instant)) )
-              ps.setString(2, feedUrl)
-              ps.setString(3, stypeName)
+              ps.setString(2, feedUrl.toString())
+              ps.setString(3, subscribableName.toString())
               ps.setString(4, withinTypeId)
               ps.executeUpdate()
         object Assignment extends Creatable:
           protected val Create = // an assignment represents a membership of a post in a collection
             """|CREATE TABLE assignment(
-               |  feed_url VARCHAR(1024),
-               |  stype_name VARCHAR(64),
-               |  within_type_id VARCHAR(1024),
-               |  guid VARCHAR(1024),
-               |  PRIMARY KEY( feed_url, stype_name, within_type_id, guid ),
+               |  feed_url          VARCHAR(1024),
+               |  subscribable_name VARCHAR(64),
+               |  within_type_id    VARCHAR(1024),
+               |  guid              VARCHAR(1024),
+               |  PRIMARY KEY( feed_url, subscribable_name, within_type_id, guid ),
                |  FOREIGN KEY( feed_url, guid ) REFERENCES item( feed_url, guid ),
-               |  FOREIGN KEY( feed_url, stype_name, within_type_id ) REFERENCES assignable( feed_url, stype_name, within_type_id )
+               |  FOREIGN KEY( feed_url, subscribable_name, within_type_id ) REFERENCES assignable( feed_url, subscribable_name, within_type_id )
                |)""".stripMargin
           private val SelectCountWithinAssignable =
             """|SELECT COUNT(*)
                |FROM assignment
-               |WHERE feed_url = ? AND stype_name = ? AND within_type_id = ?""".stripMargin
+               |WHERE feed_url = ? AND subscribable_name = ? AND within_type_id = ?""".stripMargin
           private val Insert =
-            """|INSERT INTO assignment( feed_url, stype_name, within_type_id, guid )
+            """|INSERT INTO assignment( feed_url, subscribable_name, within_type_id, guid )
                |VALUES ( ?, ?, ?, ? )""".stripMargin
-          def selectCountWithinAssignable( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String ) : Int =
+          def selectCountWithinAssignable( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String ) : Int =
             Using.resource( conn.prepareStatement( this.SelectCountWithinAssignable ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, stypeName)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               ps.setString(3, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult( "select-count-within-assignable", rs )( _.getInt(1) )
-          def insert( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String, guid : String ) =
+          def insert( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String, guid : Guid ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, stypeName)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               ps.setString(3, withinTypeId)
-              ps.setString(4, guid)
+              ps.setString(4, guid.toString())
               ps.executeUpdate()
         object Subscription extends Creatable:
           protected val Create =
             """|CREATE TABLE subscription(
-               |  destination VARCHAR(1024),
-               |  feed_url VARCHAR(1024),
-               |  stype_name VARCHAR(64),
-               |  PRIMARY KEY( destination, feed_url ),
-               |  FOREIGN KEY( feed_url ) REFERENCES feed(url),
-               |  FOREIGN KEY( stype_name ) REFERENCES subscription_type( stype_name )
+               |  destination       VARCHAR(1024),
+               |  feed_url          VARCHAR(1024),
+               |  subscribable_name VARCHAR(64),
+               |  PRIMARY KEY( destination, feed_url, subscribable_name ),
+               |  FOREIGN KEY( feed_url, subscribable_name ) REFERENCES subscribable( feed_url, subscribable_name )
                |)""".stripMargin
           private val SelectSubscriptionTypesByFeedUrl =
-            """|SELECT DISTINCT stype_name
+            """|SELECT DISTINCT subscribable_name
                |FROM subscription
                |WHERE feed_url = ?""".stripMargin
           private val SelectDestination =
             """|SELECT destination
                |FROM subscription
-               |WHERE feed_url = ? AND stype_name = ?""".stripMargin
+               |WHERE feed_url = ? AND subscribable_name = ?""".stripMargin
           private val Insert =
-            """|INSERT INTO subscription(destination, feed_url, stype_name)
+            """|INSERT INTO subscription(destination, feed_url, subscribable_name)
                |VALUES ( ?, ?, ? )""".stripMargin
-          def selectSubscriptionTypeNamesByFeedUrl( conn : Connection, feedUrl : String ) : Set[String] =
+          def selectSubscriptionTypeNamesByFeedUrl( conn : Connection, feedUrl : FeedUrl ) : Set[SubscribableName] =
             Using.resource( conn.prepareStatement( this.SelectSubscriptionTypesByFeedUrl ) ): ps =>
-              ps.setString(1, feedUrl)
+              ps.setString(1, feedUrl.toString())
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => rs.getString(1) )
-          def selectDestination( conn : Connection, feedUrl : String, stypeName : String ) : Set[String] =
+                toSet(rs)( rs => SubscribableName( rs.getString(1) ) )
+          def selectDestination( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Set[Destination] =
             Using.resource( conn.prepareStatement( this.SelectDestination ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, stypeName)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => rs.getString(1) )
-          def insert( conn : Connection, destination : String, feedUrl : String, stypeName : String ) =
+                toSet(rs)( rs => Destination( rs.getString(1) ) )
+          def insert( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
-              ps.setString(1, destination)
-              ps.setString(2, feedUrl)
-              ps.setString(3, stypeName)
+              ps.setString(1, destination.toString())
+              ps.setString(2, feedUrl.toString())
+              ps.setString(3, subscribableName.toString())
               ps.executeUpdate()
 
         // publication-related tables should be decoupled from, unrelated to the
@@ -464,13 +464,13 @@ object PgSchema:
         object Mailable extends Creatable:
           protected val Create =
             """|CREATE TABLE mailable(
-               |  seqnum BIGINT,
-               |  sha3_256 CHAR(64) NOT NULL,
-               |  mail_from VARCHAR(256) NOT NULL,
+               |  seqnum        BIGINT,
+               |  sha3_256      CHAR(64) NOT NULL,
+               |  mail_from     VARCHAR(256) NOT NULL,
                |  mail_reply_to VARCHAR(256),           -- mail_reply_to could be NULL!
-               |  mail_to VARCHAR(256) NOT NULL,
-               |  mail_subject VARCHAR(256) NOT NULL,
-               |  retried INTEGER,
+               |  mail_to       VARCHAR(256) NOT NULL,
+               |  mail_subject  VARCHAR(256) NOT NULL,
+               |  retried       INTEGER NOT NULL,
                |  PRIMARY KEY(seqnum),
                |  FOREIGN KEY(sha3_256) REFERENCES mailable_contents(sha3_256)
                |)""".stripMargin
@@ -489,23 +489,23 @@ object PgSchema:
             Using.resource( conn.prepareStatement( this.SelectForDelivery ) ): ps =>
               ps.setInt( 1, batchSize )
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => MailSpec.WithHash( rs.getLong(1), Hash.SHA3_256.withHexBytes( rs.getString(2) ), rs.getString(3), Option(rs.getString(4)), rs.getString(5), rs.getString(6), rs.getInt(7) ) )
-          def insert( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], to : String, subject : String, retried : Int ) =
+                toSet(rs)( rs => MailSpec.WithHash( rs.getLong(1), Hash.SHA3_256.withHexBytes( rs.getString(2) ), rs.getString(3), Option(rs.getString(4)), Destination(rs.getString(5)), rs.getString(6), rs.getInt(7) ) )
+          def insert( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], to : Destination, subject : String, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString         (1, hash.hex)
               ps.setString         (2, from)
               setStringOptional(ps, 3, Types.VARCHAR, replyTo)
-              ps.setString         (4, to)
+              ps.setString         (4, to.toString())
               ps.setString         (5, subject)
               ps.setInt            (6, retried)
               ps.executeUpdate()
-          def insertBatch( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], tos : Set[String], subject : String, retried : Int ) =
+          def insertBatch( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], tos : Set[Destination], subject : String, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               tos.foreach: to =>
                 ps.setString         (1, hash.hex)
                 ps.setString         (2, from)
                 setStringOptional(ps, 3, Types.VARCHAR, replyTo)
-                ps.setString         (4, to)
+                ps.setString         (4, to.toString())
                 ps.setString         (5, subject)
                 ps.setInt            (6, retried)
                 ps.addBatch()
@@ -525,11 +525,11 @@ object PgSchema:
                |FROM item
                |INNER JOIN assignment
                |ON item.feed_url = assignment.feed_url AND item.guid = assignment.guid
-               |WHERE item.feed_url = ? AND assignment.stype_name = ? AND assignment.within_type_id = ?""".stripMargin
-          def selectItemContentsForAssignable( conn : Connection, feedUrl : String, stypeName : String, withinTypeId : String ) : Set[ItemContent] =
+               |WHERE item.feed_url = ? AND assignment.subscribable_name = ? AND assignment.within_type_id = ?""".stripMargin
+          def selectItemContentsForAssignable( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String ) : Set[ItemContent] =
             Using.resource( conn.prepareStatement( SelectItemContentsForAssignable ) ): ps =>
-              ps.setString(1, feedUrl)
-              ps.setString(2, stypeName)
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
               ps.setString(3, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
                 toSet( rs )( rs => ItemContent( Option( rs.getString(1) ), Option( rs.getString(2) ), Option( rs.getString(3) ), Option( rs.getTimestamp(4) ).map( _.toInstant ), Option( rs.getString(5) ) ) )

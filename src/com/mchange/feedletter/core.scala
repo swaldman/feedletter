@@ -23,17 +23,33 @@ enum ConfigKey:
   case MailMaxRetries
   case TimeZone
 
-type SubjectCustomizer = ( subscriptionTypeName : String, withinTypeId : String, feedUrl : String, contents : Set[ItemContent] ) => String
+type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 
 object FeedInfo:
-  def forNewFeed( feedUrl : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int ): FeedInfo =
+  def forNewFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int ): FeedInfo =
     val startTime = Instant.now()
     FeedInfo( feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, startTime, startTime )
-final case class FeedInfo( feedUrl : String, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant, lastAssigned : Instant )
+final case class FeedInfo( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant, lastAssigned : Instant )
 
-final case class ExcludedItem( feedUrl : String, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
+final case class ExcludedItem( feedUrl : FeedUrl, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 
-final case class AdminSubscribeOptions( stypeName : String, destination : String, feedUrl : String )
+final case class AdminSubscribeOptions( feedUrl : FeedUrl, subscribableName : SubscribableName, destination : Destination )
+
+object Destination:
+  def apply( s : String ) : Destination = s
+opaque type Destination = String
+
+object FeedUrl:
+  def apply( s : String ) : FeedUrl = s
+opaque type FeedUrl = String
+
+object Guid:
+  def apply( s : String ) : Guid = s
+opaque type Guid = String
+
+object SubscribableName:
+  def apply( s : String ) : SubscribableName = s
+opaque type SubscribableName = String
 
 def composeMultipleItemHtmlMailContent( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
 

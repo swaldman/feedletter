@@ -3,6 +3,9 @@ package com.mchange.feedletter.db
 import com.mchange.feedletter.{
   ConfigKey,
   FeedletterException,
+  FeedUrl,
+  Guid,
+  SubscribableName,
   SubscriptionType
 }
 
@@ -20,12 +23,12 @@ class AlreadyAssignedCantExclude( msg : String, cause : Throwable = null )      
 class ConfigurationMissing( key : ConfigKey, cause : Throwable = null ) extends FeedletterDbException(s"No ${key} configured. Please configure ${key}.", cause)
 
 class AssignableCompleted(
-  val feedUrl      : String,
-  val stypeName    : String,
-  val withinTypeId : String,
-  val forGuid      : Option[String]
+  val feedUrl          : FeedUrl,
+  val subscribableName : SubscribableName,
+  val withinTypeId     : String,
+  val forGuid          : Option[Guid]
 ) extends FeedletterDbException(
   msg =
-    s"Assignable ('${feedUrl}', '${stypeName}', '${withinTypeId}') has already been completed and cannot be further assigned to." +
-    forGuid.fold("")(guid => s" (Item '${guid}' could not be included in this assignable.)")
+    s"Assignable ('${feedUrl}', '${subscribableName}', '${withinTypeId}') has already been completed and cannot be further assigned to." +
+    forGuid.fold("")(guid => s" (Item '${guid.toString()}' could not be included in this assignable.)")
 )
