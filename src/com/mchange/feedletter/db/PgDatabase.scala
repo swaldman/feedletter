@@ -197,6 +197,7 @@ object PgDatabase extends Migratory:
         LatestSchema.Table.Assignable.insert( conn, feedUrl, subscribableName, withinTypeId, Instant.now, None )
 
   private def assignForSubscriptionType( conn : Connection, subscribableName : SubscribableName, feedUrl : FeedUrl, guid : Guid, content : ItemContent, status : ItemStatus ) : Unit =
+    TRACE.log( s"assignForSubscriptionType( $conn, $subscribableName, $feedUrl, $guid, $content, $status )" )
     val lastCompleted = lastCompletedAssignableWithinTypeStatus( conn, feedUrl, subscribableName )
     val mostRecentOpen = mostRecentOpenAssignableWithinTypeStatus( conn, feedUrl, subscribableName )
     val subscriptionType = LatestSchema.Table.Subscribable.selectType( conn, feedUrl, subscribableName )
@@ -205,11 +206,13 @@ object PgDatabase extends Migratory:
       LatestSchema.Table.Assignment.insert( conn, feedUrl, subscribableName, wti, guid )
 
   private def assign( conn : Connection, feedUrl : FeedUrl, guid : Guid, content : ItemContent, status : ItemStatus ) : Unit =
+    TRACE.log( s"assign( $conn, $feedUrl, $guid, $content, $status )" )
     val subscriptionTypeNames = LatestSchema.Table.Subscription.selectSubscriptionTypeNamesByFeedUrl( conn, feedUrl )
     subscriptionTypeNames.foreach( stypeName => assignForSubscriptionType( conn, stypeName, feedUrl, guid, content, status ) )
     LatestSchema.Table.Item.updateAssignability( conn, feedUrl, guid, ItemAssignability.Assigned )
 
   private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : Guid, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
+    TRACE.log( s"updateAssignItem( $conn, $fi, $guid, $dbStatus, $freshContent, $now )" )
     dbStatus match
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Unassigned ) ) =>
         val newContentHash = freshContent.##
@@ -217,8 +220,8 @@ object PgDatabase extends Migratory:
         if newContentHash == contentHash || newContentHash == ItemContent.EmptyHashCode then
           val newLastChecked = now
           LatestSchema.Table.Item.updateStable( conn, fi.feedUrl, guid, newLastChecked )
-          val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.MINUTES )
-          val stableMinutes = JDuration.between(stableSince, now).get( ChronoUnit.MINUTES )
+          val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.SECONDS ) / 60     // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
+          val stableMinutes = JDuration.between(stableSince, now).get( ChronoUnit.SECONDS ) / 60 // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
           def afterMinDelay = seenMinutes > fi.minDelayMinutes
           def sufficientlyStable = stableMinutes > fi.awaitStabilizationMinutes
           def pastMaxDelay = seenMinutes > fi.maxDelayMinutes
@@ -231,7 +234,12 @@ object PgDatabase extends Migratory:
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Assigned ) ) => /* ignore, already assigned */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
-        def doInsert() = LatestSchema.Table.Item.insertNew(conn, fi.feedUrl, guid, freshContent, ItemAssignability.Unassigned)
+        def doInsert() =
+          LatestSchema.Table.Item.insertNew(conn, fi.feedUrl, guid, freshContent, ItemAssignability.Unassigned)
+          val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedUrl, guid ).getOrElse:
+            throw new AssertionError("Just inserted row is not found???")
+          if fi.minDelayMinutes <= 0 && fi.awaitStabilizationMinutes <= 0 then // if eligible for immediate assignment...
+            assign( conn, fi.feedUrl, guid, freshContent, dbStatus )
         freshContent.pubDate match
           case Some( pd ) =>
             if fi.subscribed.compareTo(pd) <= 0 then doInsert() // skip items known to be published prior to subscription

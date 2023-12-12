@@ -258,7 +258,7 @@ object PgSchema:
                |)""".stripMargin
           private val Select = "SELECT feed_url, subscribable_name, subscription_type FROM subscribable"
           private val SelectType =
-            """|SELECT subscribable_type
+            """|SELECT subscription_type
                |FROM subscribable
                |WHERE feed_url = ? AND subscribable_name = ?""".stripMargin
           private val Insert = "INSERT INTO subscribable VALUES ( ?, ?, ? )"
@@ -400,7 +400,7 @@ object PgSchema:
                |  PRIMARY KEY( destination, feed_url, subscribable_name ),
                |  FOREIGN KEY( feed_url, subscribable_name ) REFERENCES subscribable( feed_url, subscribable_name )
                |)""".stripMargin
-          private val SelectSubscriptionTypesByFeedUrl =
+          private val SelectSubscriptionTypeNamesByFeedUrl =
             """|SELECT DISTINCT subscribable_name
                |FROM subscription
                |WHERE feed_url = ?""".stripMargin
@@ -412,7 +412,7 @@ object PgSchema:
             """|INSERT INTO subscription(destination, feed_url, subscribable_name)
                |VALUES ( ?, ?, ? )""".stripMargin
           def selectSubscriptionTypeNamesByFeedUrl( conn : Connection, feedUrl : FeedUrl ) : Set[SubscribableName] =
-            Using.resource( conn.prepareStatement( this.SelectSubscriptionTypesByFeedUrl ) ): ps =>
+            Using.resource( conn.prepareStatement( this.SelectSubscriptionTypeNamesByFeedUrl ) ): ps =>
               ps.setString(1, feedUrl.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => SubscribableName( rs.getString(1) ) )
