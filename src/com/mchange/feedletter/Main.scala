@@ -123,6 +123,10 @@ object Main:
       val header = "Mark groups of assigned items as complete, and queue them for notification."
       val opts = Opts( CommandConfig.Crank.Complete )
       Command("complete", header=header )( opts )
+    val sendMailGroup =
+      val header = "Send one batch of queued mail."
+      val opts = Opts( CommandConfig.Crank.SendMailGroup )
+      Command("send-mail-group", header=header )( opts )
 
   object Db:
     val init =
@@ -147,7 +151,7 @@ object Main:
       val header = "Run a usually recurring operation a single time."
       val opts =
         import Crank.*
-        Opts.subcommands(assign, complete)
+        Opts.subcommands(assign, complete, sendMailGroup)
       Command( name="crank", header=header )( opts )
     val db =
       val header = "Manage the database and database schema."

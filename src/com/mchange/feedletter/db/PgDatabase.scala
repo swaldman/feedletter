@@ -344,6 +344,10 @@ object PgDatabase extends Migratory:
     val mswcs   = pullMailGroup( conn )
     mswcs.foreach( mswc => attemptMail( conn, retries, mswc ) )
 
+  def mailNextGroup( ds : DataSource ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      mailNextGroup( conn )
+
   def ensureDb( ds : DataSource ) : Task[Unit] =
     withConnectionZIO( ds ): conn =>
       for

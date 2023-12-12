@@ -82,20 +82,26 @@ object CommandConfig:
   object Crank:
     case object Assign extends CommandConfig:
       override def zcommand: ZCommand =
-        def doAssign( ds : DataSource ) = PgDatabase.updateAssignItems(ds)
         for
           ds <- ZIO.service[DataSource]
           _ <- PgDatabase.ensureDb( ds )
-          _ <- doAssign( ds )
+          _ <- PgDatabase.updateAssignItems(ds)
         yield ()
       end zcommand
     case object Complete extends CommandConfig:
       override def zcommand: ZCommand =
-        def doComplete( ds : DataSource ) = PgDatabase.completeAssignables( ds )
         for
           ds <- ZIO.service[DataSource]
           _ <- PgDatabase.ensureDb( ds )
-          _ <- doComplete( ds )
+          _ <- PgDatabase.completeAssignables( ds )
+        yield ()
+      end zcommand
+    case object SendMailGroup extends CommandConfig:
+      override def zcommand: ZCommand =
+        for
+          ds <- ZIO.service[DataSource]
+          _ <- PgDatabase.ensureDb( ds )
+          _ <- PgDatabase.mailNextGroup( ds )
         yield ()
       end zcommand
   object Db:
