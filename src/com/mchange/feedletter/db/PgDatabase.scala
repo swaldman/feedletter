@@ -16,7 +16,7 @@ import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.{BuildInfo, ConfigKey, Destination, ExcludedItem, FeedDigest, FeedInfo, FeedUrl, Guid, ItemContent, SubscribableName, SubscriptionType}
+import com.mchange.feedletter.{BuildInfo, ConfigKey, Destination, ExcludedItem, FeedDigest, FeedInfo, FeedUrl, Guid, ItemContent, SubscribableName, SubscriptionType,TemplateParams}
 import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}
 
@@ -124,7 +124,7 @@ object PgDatabase extends Migratory:
           PgSchema.V1.Table.Assignable.create( stmt )
           PgSchema.V1.Table.Assignment.create( stmt )
           PgSchema.V1.Table.Subscription.create( stmt )
-          PgSchema.V1.Table.MailableContents.create( stmt )
+          PgSchema.V1.Table.MailableTemplate.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
         insertConfigKeys(
@@ -266,10 +266,10 @@ object PgDatabase extends Migratory:
     val destinations = LatestSchema.Table.Subscription.selectDestination( conn, feedUrl, subscribableName )
     stype.route(conn, assignableKey, contents, destinations )
 
-  def queueForMailing( conn : Connection, contents : String, from : String, replyTo : Option[String], tos : Set[Destination], subject : String ) : Unit = 
+  def queueForMailing( conn : Connection, contents : String, from : String, replyTo : Option[String], tosWithParams : Set[(Destination,TemplateParams)], subject : String ) : Unit = 
     val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
-    LatestSchema.Table.MailableContents.ensure( conn, hash, contents )
-    LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tos, subject, 0 )
+    LatestSchema.Table.MailableTemplate.ensure( conn, hash, contents )
+    LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tosWithParams, subject, 0 )
 
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
@@ -324,33 +324,34 @@ object PgDatabase extends Migratory:
   def timeZone( conn : Connection ) : ZoneId =
     fetchConfigValue( conn, ConfigKey.TimeZone ).map( str => ZoneId.of(str) ).getOrElse( ZoneId.systemDefault() )
 
-  def pullMailGroup( conn : Connection ) : Set[MailSpec.WithContents] =
+  def pullMailGroup( conn : Connection ) : Set[MailSpec.WithTemplate] =
     val batchSize = fetchConfigValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( DefaultMailBatchSize )
     val withHashes : Set[MailSpec.WithHash] = LatestSchema.Table.Mailable.selectForDelivery(conn, batchSize)
     val contentMap = mutable.Map.empty[Hash.SHA3_256,String]
-    def contentsFromHash( hash : Hash.SHA3_256 ) : String =
-      LatestSchema.Table.MailableContents.selectByHash( conn, hash ).getOrElse:
+    def templateFromHash( hash : Hash.SHA3_256 ) : String =
+      LatestSchema.Table.MailableTemplate.selectByHash( conn, hash ).getOrElse:
         throw new AssertionError(s"Database consistency issue, we should only be trying to load contents from extant hashes. (${hash.hex})")
     withHashes.foreach: mswh =>
-      contentMap.getOrElseUpdate( mswh.contentsHash, contentsFromHash(mswh.contentsHash) )
-    withHashes.map( mswh => MailSpec.WithContents( mswh.seqnum, mswh.contentsHash, contentsFromHash( mswh.contentsHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject, mswh.retried ) )
+      contentMap.getOrElseUpdate( mswh.templateHash, templateFromHash(mswh.templateHash) )
+    withHashes.map( mswh => MailSpec.WithTemplate( mswh.seqnum, mswh.templateHash, templateFromHash( mswh.templateHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject, mswh.templateParams, mswh.retried ) )
 
   def maxRetries( conn : Connection ) : Int = fetchConfigValue( conn, ConfigKey.MailMaxRetries ).map( _.toInt ).getOrElse( DefaultMailMaxRetries )
 
-  def attemptMail( conn : Connection, maxRetries : Int, mswc : MailSpec.WithContents ) : Unit =
-    LatestSchema.Table.Mailable.deleteSingle( conn, mswc.seqnum )
+  def attemptMail( conn : Connection, maxRetries : Int, mswt : MailSpec.WithTemplate ) : Unit =
+    LatestSchema.Table.Mailable.deleteSingle( conn, mswt.seqnum )
     try
-      Smtp.sendSimpleHtmlOnly( mswc.contents, subject = mswc.subject, from = mswc.from, to = mswc.to.toString(), replyTo = mswc.replyTo.toSeq )
+      val contents = mswt.templateParams.fill( mswt.template )
+      Smtp.sendSimpleHtmlOnly( contents, subject = mswt.subject, from = mswt.from, to = mswt.to.toString(), replyTo = mswt.replyTo.toSeq )
     catch
       case NonFatal(t) =>
-        val lastRetryMessage = if mswc.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
-        WARNING.log( s"Failed email attempt: subject = ${mswc.subject}, from = ${mswc.from}, to = ${mswc.to}, replyTo = ${mswc.replyTo} ), retried = ${mswc.retried} ${lastRetryMessage}", t )
-        LatestSchema.Table.Mailable.insert( conn, mswc.contentsHash, mswc.from, mswc.replyTo, mswc.to, mswc.subject, mswc.retried + 1)
+        val lastRetryMessage = if mswt.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
+        WARNING.log( s"Failed email attempt: subject = ${mswt.subject}, from = ${mswt.from}, to = ${mswt.to}, replyTo = ${mswt.replyTo} ), retried = ${mswt.retried} ${lastRetryMessage}", t )
+        LatestSchema.Table.Mailable.insert( conn, mswt.templateHash, mswt.from, mswt.replyTo, mswt.to, mswt.subject, mswt.templateParams, mswt.retried + 1)
 
   def mailNextGroup( conn : Connection ) =
     val retries = maxRetries( conn )
-    val mswcs   = pullMailGroup( conn )
-    mswcs.foreach( mswc => attemptMail( conn, retries, mswc ) )
+    val mswts   = pullMailGroup( conn )
+    mswts.foreach( mswt => attemptMail( conn, retries, mswt ) )
 
   def mailNextGroup( ds : DataSource ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>

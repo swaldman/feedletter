@@ -4,7 +4,7 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.{ConfigKey,Destination,ExcludedItem,FeedInfo,FeedUrl,Guid,InvalidSubscriptionType,ItemContent,SubscribableName,SubscriptionType}
+import com.mchange.feedletter.{ConfigKey,Destination,ExcludedItem,FeedInfo,FeedUrl,Guid,InvalidSubscriptionType,ItemContent,SubscribableName,SubscriptionType,TemplateParams}
 
 import com.mchange.cryptoutil.{Hash, given}
 
@@ -433,55 +433,56 @@ object PgSchema:
         // tables above. logically, we should be listening for "completion" above
         // as a kind of event, which would trigger SubscriptionType route potentially
         // in a distinct process with a distinct database
-        object MailableContents extends Creatable:
+        object MailableTemplate extends Creatable:
           protected val Create =
-            """|CREATE TABLE mailable_contents(
+            """|CREATE TABLE mailable_template(
                |  sha3_256 CHAR(64),
-               |  contents TEXT,
+               |  template TEXT,
                |  PRIMARY KEY(sha3_256)
                |)""".stripMargin
           private val Insert =
-            """|INSERT INTO mailable_contents(sha3_256, contents)
+            """|INSERT INTO mailable_template(sha3_256, template)
                |VALUES ( ?, ? )""".stripMargin
           private val Ensure =
-            """|INSERT INTO mailable_contents(sha3_256, contents)
+            """|INSERT INTO mailable_template(sha3_256, template)
                |VALUES ( ?, ? )
                |ON CONFLICT(sha3_256) DO NOTHING""".stripMargin
           private val SelectByHash =
-            """|SELECT contents
-               |FROM mailable_contents
+            """|SELECT template
+               |FROM mailable_template
                |WHERE sha3_256 = ?""".stripMargin
-          def ensure( conn : Connection, hash : Hash.SHA3_256, contents : String ) =
+          def ensure( conn : Connection, hash : Hash.SHA3_256, template : String ) =
             Using.resource( conn.prepareStatement(Ensure) ): ps =>
               ps.setString(1, hash.hex )
-              ps.setString(2, contents )
+              ps.setString(2, template )
               ps.executeUpdate()
           def selectByHash( conn : Connection, hash : Hash.SHA3_256 ) : Option[String] =
             Using.resource( conn.prepareStatement( SelectByHash ) ): ps =>
               ps.setString( 1, hash.hex )
               Using.resource( ps.executeQuery() ): rs =>
-                zeroOrOneResult("select-mailable-contents-by-hash",rs)( _.getString(1) )
+                zeroOrOneResult("select-mailable-template-by-hash",rs)( _.getString(1) )
         object Mailable extends Creatable:
           protected val Create =
             """|CREATE TABLE mailable(
-               |  seqnum        BIGINT,
-               |  sha3_256      CHAR(64) NOT NULL,
-               |  mail_from     VARCHAR(256) NOT NULL,
-               |  mail_reply_to VARCHAR(256),           -- mail_reply_to could be NULL!
-               |  mail_to       VARCHAR(256) NOT NULL,
-               |  mail_subject  VARCHAR(256) NOT NULL,
-               |  retried       INTEGER NOT NULL,
+               |  seqnum          BIGINT,
+               |  sha3_256        CHAR(64) NOT NULL,
+               |  mail_from       VARCHAR(256) NOT NULL,
+               |  mail_reply_to   VARCHAR(256),           -- mail_reply_to could be NULL!
+               |  mail_to         VARCHAR(256) NOT NULL,
+               |  mail_subject    VARCHAR(256) NOT NULL,
+               |  template_params TEXT,                   -- www-form-encoded
+               |  retried         INTEGER NOT NULL,
                |  PRIMARY KEY(seqnum),
-               |  FOREIGN KEY(sha3_256) REFERENCES mailable_contents(sha3_256)
+               |  FOREIGN KEY(sha3_256) REFERENCES mailable_template(sha3_256)
                |)""".stripMargin
           private val SelectForDelivery =
-            """|SELECT seqnum, sha3_256, mail_from, mail_reply_to, mail_to, mail_subject, retried
+            """|SELECT seqnum, sha3_256, mail_from, mail_reply_to, mail_to, mail_subject, template_params, retried
                |FROM mailable
                |ORDER BY seqnum ASC
                |LIMIT ?""".stripMargin
           private val Insert =
-            """|INSERT INTO mailable(seqnum, sha3_256, mail_from, mail_reply_to, mail_to, mail_subject, retried)
-               |VALUES ( nextval('mailable_seq'), ?, ?, ?, ?, ?, ? )""".stripMargin
+            """|INSERT INTO mailable(seqnum, sha3_256, mail_from, mail_reply_to, mail_to, mail_subject, template_params, retried)
+               |VALUES ( nextval('mailable_seq'), ?, ?, ?, ?, ?, ?, ? )""".stripMargin
           private val DeleteSingle =
             """|DELETE FROM mailable
                |WHERE seqnum = ?""".stripMargin
@@ -489,25 +490,27 @@ object PgSchema:
             Using.resource( conn.prepareStatement( this.SelectForDelivery ) ): ps =>
               ps.setInt( 1, batchSize )
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => MailSpec.WithHash( rs.getLong(1), Hash.SHA3_256.withHexBytes( rs.getString(2) ), rs.getString(3), Option(rs.getString(4)), Destination(rs.getString(5)), rs.getString(6), rs.getInt(7) ) )
-          def insert( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], to : Destination, subject : String, retried : Int ) =
+                toSet(rs)( rs => MailSpec.WithHash( rs.getLong(1), Hash.SHA3_256.withHexBytes( rs.getString(2) ), rs.getString(3), Option(rs.getString(4)), Destination(rs.getString(5)), rs.getString(6), TemplateParams(rs.getString(7)), rs.getInt(8) ) )
+          def insert( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], to : Destination, subject : String, templateParams : TemplateParams, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString         (1, hash.hex)
               ps.setString         (2, from)
               setStringOptional(ps, 3, Types.VARCHAR, replyTo)
               ps.setString         (4, to.toString())
               ps.setString         (5, subject)
-              ps.setInt            (6, retried)
+              ps.setString         (6, templateParams.toString())
+              ps.setInt            (7, retried)
               ps.executeUpdate()
-          def insertBatch( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], tos : Set[Destination], subject : String, retried : Int ) =
+          def insertBatch( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], tosWithTemplateParams : Set[(Destination,TemplateParams)], subject : String, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-              tos.foreach: to =>
+              tosWithTemplateParams.foreach: (to, templateParams) =>
                 ps.setString         (1, hash.hex)
                 ps.setString         (2, from)
                 setStringOptional(ps, 3, Types.VARCHAR, replyTo)
                 ps.setString         (4, to.toString())
                 ps.setString         (5, subject)
-                ps.setInt            (6, retried)
+                ps.setString         (6, templateParams.toString())
+                ps.setInt            (7, retried)
                 ps.addBatch()
               ps.executeBatch()
           def deleteSingle( conn : Connection, seqnum : Long ) =

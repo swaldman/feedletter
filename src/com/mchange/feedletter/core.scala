@@ -13,6 +13,9 @@ import db.AssignableKey
 
 import scala.collection.immutable
 
+import com.mchange.conveniences.www.*
+import com.mchange.feedletter.config.TemplateParamCustomizers
+
 type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
 
 enum ConfigKey:
@@ -24,6 +27,7 @@ enum ConfigKey:
   case TimeZone
 
 type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
+type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) => Map[String,String]
 
 object FeedInfo:
   def forNewFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int ): FeedInfo =
@@ -51,9 +55,16 @@ object SubscribableName:
   def apply( s : String ) : SubscribableName = s
 opaque type SubscribableName = String
 
-def composeMultipleItemHtmlMailContent( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
+object TemplateParams:
+  def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )
+  val defaults : String => String = key => s"<i>&lt;oops! could not insert param '$key'&gt;</i>" 
+case class TemplateParams( toMap : Map[String,String] ):
+  override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
+  def fill( template : String ) = trivialtemplate.TrivialTemplate( template ).resolve(this.toMap, TemplateParams.defaults)
 
-def composeSingleItemHtmlMailContent( assignableKey : AssignableKey, stype : SubscriptionType, contents : ItemContent ) : String = ???
+def composeMultipleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
+
+def composeSingleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : ItemContent ) : String = ???
 
 def digestFeed( feedUrl : String ) : Task[FeedDigest] =
   ZIO.attemptBlocking( FeedDigest(feedUrl) )

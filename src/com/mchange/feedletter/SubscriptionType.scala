@@ -39,8 +39,11 @@ object SubscriptionType:
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         assert( contents.size == 1, s"Email.Each expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
-        val fullContents = composeSingleItemHtmlMailContent( assignableKey, this, contents.head )
-        PgDatabase.queueForMailing( conn, fullContents, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, destinations, computedSubject)
+        val fullTemplate = composeSingleItemHtmlMailTemplate( assignableKey, this, contents.head )
+          val tosWithTemplateParams =
+            destinations.map: destination =>
+              ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, destination, contents ) )
+        PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -78,14 +81,26 @@ object SubscriptionType:
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         if contents.nonEmpty then
           val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
-          val fullContents = composeMultipleItemHtmlMailContent( assignableKey, this, contents )
-          PgDatabase.queueForMailing( conn, fullContents, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, destinations, computedSubject)
+          val fullTemplate = composeMultipleItemHtmlMailTemplate( assignableKey, this, contents )
+          val tosWithTemplateParams =
+            destinations.map: destination =>
+              ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, destination, contents ) )
+          PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, tosWithTemplateParams, computedSubject)
 
-      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+      private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
         val weekStart = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 1 )
         val weekEnd = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 7 )
-        s"[${subscribableName}] All posts, ${ISO_LOCAL_DATE.format(weekStart)} to ${ISO_LOCAL_DATE.format(weekEnd)}"
+        (ISO_LOCAL_DATE.format(weekStart),ISO_LOCAL_DATE.format(weekEnd))
+
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+        val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
+        s"[${subscribableName}] All posts, ${weekStart} to ${weekEnd}"
+
+      override def defaultTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : Map[String,String] =
+        val mainDefaultTemplateParams = super.defaultTemplateParams(subscribableName, withinTypeId, feedUrl, destination, contents)
+        val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
+        mainDefaultTemplateParams ++ (("weekStart", weekStart)::("weekEnd", weekEnd)::Nil)
 
   abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params):
     val from    : Seq[String] = wwwFormFindAllValues("from", params)
@@ -97,6 +112,26 @@ object SubscriptionType:
         customizer.tupled( args )
 
     def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String
+
+    def templateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : TemplateParams =
+      val args = ( subscribableName, withinTypeId, feedUrl, destination, contents )
+      TemplateParams( defaultTemplateParams.tupled( args ) ++ config.TemplateParamCustomizers.get( subscribableName ).fold(Nil)( _.tupled.apply(args) ) )
+
+    def defaultTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : Map[String,String] =
+      val toFull = destination.toString()
+      val toAddress = Smtp.Address.parseSingle( toFull )
+      val toNickname = toAddress.displayName
+      val toEmail  = toAddress.email
+      params.toMap ++ Map(
+        "from"              -> from.mkString(", "),
+        "replyTo"           -> replyTo.mkString(", "),
+        "to"                -> toFull,
+        "toFull"            -> toFull,
+        "toNickname"        -> toNickname.getOrElse(""),
+        "toEmail"           -> toEmail,
+        "toNicknameOrEmail" -> toNickname.getOrElse( toEmail ),
+        "numItems"          -> contents.size.toString()
+      )
 
     override def validateDestination( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Boolean =
       try

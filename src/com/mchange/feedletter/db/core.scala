@@ -7,8 +7,7 @@ import javax.sql.DataSource
 import scala.util.control.NonFatal
 import java.lang.System
 
-import com.mchange.feedletter.{Destination,FeedUrl,SubscribableName,SubscriptionType}
-import javax.print.attribute.standard.OutputDeviceAssigned
+import com.mchange.feedletter.{Destination,FeedUrl,SubscribableName,SubscriptionType,TemplateParams}
 
 import com.mchange.cryptoutil.*
 
@@ -17,8 +16,8 @@ final case class AssignableWithinTypeStatus( withinTypeId : String, count : Int 
 final case class AssignableKey( feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String )
 
 object MailSpec:
-  final case class WithHash( seqnum : Long, contentsHash : Hash.SHA3_256, from : String, replyTo : Option[String], to : Destination, subject : String, retried : Int )
-  final case class WithContents( seqnum : Long, contentsHash : Hash.SHA3_256, contents : String, from : String, replyTo : Option[String], to : Destination, subject : String, retried : Int )
+  final case class WithHash( seqnum : Long, templateHash : Hash.SHA3_256, from : String, replyTo : Option[String], to : Destination, subject : String, templateParams : TemplateParams, retried : Int )
+  final case class WithTemplate( seqnum : Long, templateHash : Hash.SHA3_256, template : String, from : String, replyTo : Option[String], to : Destination, subject : String, templateParams : TemplateParams, retried : Int )
 
 enum MetadataKey:
   case SchemaVersion
