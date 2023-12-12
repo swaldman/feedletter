@@ -14,7 +14,7 @@ import db.AssignableKey
 import scala.collection.immutable
 
 import com.mchange.conveniences.www.*
-import com.mchange.feedletter.config.TemplateParamCustomizers
+import trivialtemplate.TrivialTemplate
 
 type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
 
@@ -57,10 +57,10 @@ opaque type SubscribableName = String
 
 object TemplateParams:
   def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )
-  val defaults : String => String = key => s"<i>&lt;oops! could not insert param '$key'&gt;</i>" 
+  //val defaults : String => String = key => s"<i>&lt;oops! could not insert param '$key'&gt;</i>" 
 case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
-  def fill( template : String ) = trivialtemplate.TrivialTemplate( template ).resolve(this.toMap, TemplateParams.defaults)
+  def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
 
 def composeMultipleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
 
