@@ -62,6 +62,15 @@ object CommandConfig:
           _   <- printFeedInfoTable(fis)
         yield ()
       end zcommand
+    case object ListSubscribables extends CommandConfig:
+      override def zcommand : ZCommand =
+        for
+          ds  <- ZIO.service[DataSource]
+          _   <- PgDatabase.ensureDb( ds )
+          tups <- PgDatabase.listSubscribables(ds)
+          _    <- printSubscribablesTable(tups)
+        yield ()
+      end zcommand
     case class SetConfig( settings : Map[ConfigKey,String] ) extends CommandConfig:
       override def zcommand : ZCommand =
         for

@@ -89,6 +89,10 @@ object Main:
       val header = "List all feeds the application is watching."
       val opts = Opts( CommandConfig.Admin.ListFeeds )
       Command("list-feeds",header=header)( opts )
+    val listSubscriptionDefinitions =
+      val header = "List all subscription definitions."
+      val opts = Opts( CommandConfig.Admin.ListSubscribables )
+      Command("list-subscription-definitions",header=header)( opts )
     val setConfig =
       val header = "Set configuration parameters."
       val opts =
@@ -113,6 +117,19 @@ object Main:
           val settings = (Vector.empty ++ ddr ++ mbs ++ mbds).toMap
           CommandConfig.Admin.SetConfig( settings )
       Command("set-config", header=header)( opts )
+    val subscribe =
+      val header = "Subscribe to a defined subscription."
+      val opts =
+        val feedUrl =
+          val help = "The URL of the RSS feed to be subscribed."
+          Opts.option[String]("feed-url", help=help, metavar="url").map( FeedUrl.apply )
+        val name =
+          val help = "The name of the defined subscription."
+          Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
+        val destination = Opts.argument[String](metavar="<destination-to-be-subscribed>").map( Destination.apply )
+        ( feedUrl, name, destination ) mapN: (fu, n, d) =>
+          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(fu, n, d) )
+      Command("subscribe", header=header)( opts )
 
   object Crank:
     val assign =
@@ -145,7 +162,7 @@ object Main:
       val header = "Administer and configure an installation."
       val opts =
         import Admin.*
-        Opts.subcommands(addFeed, defineEmailSubscription, listConfig, listExcludedItems, setConfig)
+        Opts.subcommands(addFeed, defineEmailSubscription, listConfig, listExcludedItems, listSubscriptionDefinitions, setConfig, subscribe)
       Command( name="admin", header=header )( opts )
     val crank =
       val header = "Run a usually recurring operation a single time."
