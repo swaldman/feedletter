@@ -252,7 +252,7 @@ object PgSchema:
             """|CREATE TABLE subscribable(
                |  feed_url          VARCHAR(1024),
                |  subscribable_name VARCHAR(64),
-               |  subscription_type VARCHAR(1024),
+               |  subscription_type TEXT,
                |  PRIMARY KEY (feed_url, subscribable_name),
                |  FOREIGN KEY (feed_url) REFERENCES feed(url)
                |)""".stripMargin
