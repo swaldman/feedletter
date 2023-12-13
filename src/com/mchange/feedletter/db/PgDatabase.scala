@@ -242,7 +242,7 @@ object PgDatabase extends Migratory:
             assign( conn, fi.feedUrl, guid, freshContent, dbStatus )
         freshContent.pubDate match
           case Some( pd ) =>
-            if fi.subscribed.compareTo(pd) <= 0 then doInsert() // skip items known to be published prior to subscription
+            if fi.added.compareTo(pd) <= 0 then doInsert() // skip items known to be published prior to subscription
           case None =>
             doInsert()
 

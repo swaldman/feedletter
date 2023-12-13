@@ -33,7 +33,7 @@ object FeedInfo:
   def forNewFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int ): FeedInfo =
     val startTime = Instant.now()
     FeedInfo( feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, startTime, startTime )
-final case class FeedInfo( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant, lastAssigned : Instant )
+final case class FeedInfo( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, added : Instant, lastAssigned : Instant )
 
 final case class ExcludedItem( feedUrl : FeedUrl, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 

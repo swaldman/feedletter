@@ -89,37 +89,37 @@ object PgSchema:
                |  min_delay_minutes           INTEGER NOT NULL,
                |  await_stabilization_minutes INTEGER NOT NULL,
                |  max_delay_minutes           INTEGER NOT NULL,
-               |  subscribed                  TIMESTAMP NOT NULL,
-               |  last_assigned               TIMESTAMP NOT NULL,     -- we'll start at subscribed
+               |  added                       TIMESTAMP NOT NULL,
+               |  last_assigned               TIMESTAMP NOT NULL,     -- we'll start at added
                |  PRIMARY KEY(url)
                |)""".stripMargin
           private val Insert =
-            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed, last_assigned)
+            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, added, last_assigned)
                |VALUES( ?, ?, ?, ?, ?, ? )""".stripMargin
           private val SelectAll =
-            "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed, last_assigned FROM feed"
+            "SELECT url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, added, last_assigned FROM feed"
           private val SelectLastAssigned =
             """|SELECT last_assigned
                |FROM feed
                |WHERE url = ?""".stripMargin
           private val Upsert =
-            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, subscribed, last_assigned)
+            """|INSERT INTO feed(url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, added, last_assigned)
                |VALUES ( ?, ?, ?, ?, ?, ? )
                |ON CONFLICT(url) DO UPDATE
-               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ? """.stripMargin // leave subscribed and last_assigned unchange
+               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ? """.stripMargin // leave added and last_assigned unchanged
           private def UpdateLastAssigned =
             """|UPDATE feed
                |SET last_assigned = ?
                |WHERE url = ?""".stripMargin
           def insert( conn : Connection, fi : FeedInfo ) : Int =
-            insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.subscribed, fi.lastAssigned)
-          def insert( conn : Connection, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, subscribed : Instant, lastAssigned : Instant ) : Int =
+            insert(conn, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.added, fi.lastAssigned)
+          def insert( conn : Connection, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, added : Instant, lastAssigned : Instant ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
               ps.setString    (1, feedUrl.toString())
               ps.setInt       (2, minDelayMinutes )
               ps.setInt       (3, awaitStabilizationMinutes)
               ps.setInt       (4, maxDelayMinutes )
-              ps.setTimestamp (5, Timestamp.from(subscribed) )
+              ps.setTimestamp (5, Timestamp.from(added) )
               ps.setTimestamp (6, Timestamp.from(lastAssigned) )
               ps.executeUpdate()
           def selectAll( conn : Connection ) : Set[FeedInfo] =
@@ -138,7 +138,7 @@ object PgSchema:
               ps.setInt       (2, fi.minDelayMinutes )
               ps.setInt       (3, fi.awaitStabilizationMinutes)
               ps.setInt       (4, fi.maxDelayMinutes )
-              ps.setTimestamp (5, Timestamp.from(fi.subscribed))
+              ps.setTimestamp (5, Timestamp.from(fi.added))
               ps.setTimestamp (6, Timestamp.from(fi.lastAssigned))
               ps.setInt       (7, fi.minDelayMinutes )
               ps.setInt       (8, fi.awaitStabilizationMinutes)
