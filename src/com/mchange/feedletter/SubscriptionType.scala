@@ -103,8 +103,8 @@ object SubscriptionType:
         mainDefaultTemplateParams ++ (("weekStart", weekStart)::("weekEnd", weekEnd)::Nil)
 
   abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params):
-    val from    : Seq[String] = wwwFormFindAllValues("from", params)
-    val replyTo : Seq[String] = wwwFormFindAllValues("replyTo", params)
+    val from    : Seq[String] = paramsAllValues("from")
+    val replyTo : Seq[String] = paramsAllValues("replyTo")
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
       val args = ( subscribableName, withinTypeId, feedUrl, contents )
@@ -165,6 +165,8 @@ object SubscriptionType:
         throw new InvalidSubscriptionType(s"'${str}' could not be parsed into a valid subscription type.")
 
 sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
+  def paramsFirstValue( key : String ) : Option[String] = wwwFormFindFirstValue( key, params )
+  def paramsAllValues( key : String ) : Seq[String] = wwwFormFindAllValues( key, params )
   def withinTypeId( feedUrl : FeedUrl, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestination( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Boolean
