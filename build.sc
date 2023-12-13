@@ -1,3 +1,5 @@
+import $meta._
+
 import mill._, scalalib._
 
 import $ivy.`com.lihaoyi::mill-contrib-buildinfo:`
@@ -7,8 +9,14 @@ import mill.contrib.buildinfo.BuildInfo
 import $ivy.`de.tototec::de.tobiasroeser.mill.vcs.version::0.4.0`
 import de.tobiasroeser.mill.vcs.version.VcsVersion
 
-object feedletter extends RootModule with ScalaModule with BuildInfo {
+import $ivy.`com.mchange::untemplate-mill:0.1.2-SNAPSHOT`
+import untemplate.mill._
+
+object feedletter extends RootModule with UntemplateModule with BuildInfo {
   def scalaVersion = "3.3.1"
+
+  val UnstaticVersion = "0.2.1-SNAPSHOT"
+
   def ivyDeps = Agg(
     ivy"dev.zio::zio:2.0.18",
     ivy"com.monovore::decline:2.4.1",
@@ -22,7 +30,9 @@ object feedletter extends RootModule with ScalaModule with BuildInfo {
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.2-SNAPSHOT",
     ivy"com.mchange::cryptoutil:0.0.2-SNAPSHOT",
-    ivy"com.mchange::conveniences:0.0.2-SNAPSHOT"
+    ivy"com.mchange::conveniences:0.0.2-SNAPSHOT",
+    ivy"com.mchange::unstatic:${UnstaticVersion}",
+    ivy"com.mchange::unstatic-ztapir:${UnstaticVersion}"
   )
 
   def buildInfoMembers = Seq(
