@@ -31,7 +31,7 @@ object SubscriptionType:
   object Email:
     class Each( params : Seq[(String,String)] ) extends Email("Each", params):
 
-      override def withinTypeId( feedUrl : FeedUrl, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus], guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+      override def withinTypeId( feedUrl : FeedUrl, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
@@ -55,11 +55,11 @@ object SubscriptionType:
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
         feedUrl        : FeedUrl,
-        lastCompleted  : Option[AssignableWithinTypeStatus],
-        mostRecentOpen : Option[AssignableWithinTypeStatus],
         guid           : Guid,
         content        : ItemContent,
-        status         : ItemStatus
+        status         : ItemStatus,
+        lastCompleted  : Option[AssignableWithinTypeStatus],
+        mostRecentOpen : Option[AssignableWithinTypeStatus]
       ) : Option[String] =
         Some( WtiFormatter.format( status.lastChecked ) ) 
 
@@ -165,7 +165,7 @@ object SubscriptionType:
         throw new InvalidSubscriptionType(s"'${str}' could not be parsed into a valid subscription type.")
 
 sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
-  def withinTypeId( feedUrl : FeedUrl, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus], guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
+  def withinTypeId( feedUrl : FeedUrl, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestination( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize

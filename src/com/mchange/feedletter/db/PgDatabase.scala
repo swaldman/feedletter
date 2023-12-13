@@ -201,7 +201,7 @@ object PgDatabase extends Migratory:
     val lastCompleted = lastCompletedAssignableWithinTypeStatus( conn, feedUrl, subscribableName )
     val mostRecentOpen = mostRecentOpenAssignableWithinTypeStatus( conn, feedUrl, subscribableName )
     val subscriptionType = LatestSchema.Table.Subscribable.selectType( conn, feedUrl, subscribableName )
-    subscriptionType.withinTypeId( feedUrl, lastCompleted, mostRecentOpen, guid, content, status ).foreach: wti =>
+    subscriptionType.withinTypeId( feedUrl, guid, content, status, lastCompleted, mostRecentOpen ).foreach: wti =>
       ensureOpenAssignable( conn, feedUrl, subscribableName, wti, Some(guid) )
       LatestSchema.Table.Assignment.insert( conn, feedUrl, subscribableName, wti, guid )
 
