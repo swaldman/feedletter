@@ -1,8 +1,8 @@
 package com.mchange.feedletter.trivialtemplate
 
 object TrivialTemplate:
-  private val KeyRegex        = """(?<!\\)\%(\w+)\%""".r
-  private val EscapedKeyRegex = """\\+\%\w+\%""".r
+  private val KeyRegex        = """(?i)(?<!\\)\%(\w+)\%""".r
+  private val EscapedKeyRegex = """(?i)\\+\%\w+\%""".r
 
   object Defaults:
     val Fail : String => String = k => throw new KeyNotFound(s"Key '$k' required by template, not found.")
