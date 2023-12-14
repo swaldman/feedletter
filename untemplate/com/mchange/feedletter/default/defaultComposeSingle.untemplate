@@ -1,0 +1,27 @@
+val title = s"""[${info.subscriptionName}] ${info.contents.title.getOrElse("(untitled post)")}"""
+
+( info : ComposeInfo.Single )[]~()>
+
+<html>
+  <head>
+    <title><( title )></title>
+  </head>
+  <body>
+    <p>Dear %ToNicknameOrEmail%,</p>
+
+    <p>A new post has been published to ${info.subscriptionName}:</p>
+
+    <div class="item-title">
+      <( info.contents.link.map(l => s"""<a href="$l">""").getOrElse("") )><( info.contents.title.getOrElse("(untitled)") )><( info.contents.link.map( _ => "</a>" ).getOrElse("") )>
+    </div>
+    <div class="item-author">
+      <( info.contents.author.map( a => "by " + a ).getOrElse("") )>
+    </div>
+    <div class="item-content">
+      <( info.contents.article.getOrElse("(no contents)") )>
+    </div>
+    <div class="item-date">
+      <( info.contents.pubDate.map( i => "Published at " + i ).getOrElse("") )>
+    </div>
+  </body>
+</html>

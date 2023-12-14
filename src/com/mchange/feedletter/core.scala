@@ -62,6 +62,17 @@ case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
   def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
 
+object ComposeInfo:
+  trait Universal:
+    def feedUrl          : String
+    def subscriptionName : String
+    def subscriptionType : SubscriptionType
+    def withinTypeId     : String
+    def contents         : ItemContent | Set[ItemContent]
+  end Universal  
+  case class Single( feedUrl : String, subscriptionName : String, subscriptionType: SubscriptionType, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal
+  case class Multiple( feedUrl : String, subscriptionName : String, subscriptionType: SubscriptionType, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal
+
 def composeMultipleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
 
 def composeSingleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : ItemContent ) : String = ???

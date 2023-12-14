@@ -39,10 +39,13 @@ object SubscriptionType:
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         assert( contents.size == 1, s"Email.Each expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
-        val fullTemplate = composeSingleItemHtmlMailTemplate( assignableKey, this, contents.head )
-          val tosWithTemplateParams =
-            destinations.map: destination =>
-              ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, destination, contents ) )
+        val fullTemplate =
+          val info = ComposeInfo.Single( assignableKey.feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
+          val compose = IndexedUntemplates( "com.mchange.feedletter.default.defaultComposeSingle" ).asInstanceOf[untemplate.Untemplate[ComposeInfo.Single,Nothing]]
+          compose( info ).text
+        val tosWithTemplateParams =
+          destinations.map: destination =>
+            ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, destination, contents ) )
         PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =

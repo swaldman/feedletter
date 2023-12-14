@@ -40,6 +40,22 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
   )
   def buildInfoPackageName = "com.mchange.feedletter"
 
+  // we'll build an index!
+  override def untemplateIndexNameFullyQualified : Option[String] = Some("com.mchange.feedletter.IndexedUntemplates")
+
+  override def untemplateSelectCustomizer: untemplate.Customizer.Selector = { key =>
+    var out = untemplate.Customizer.empty
+
+    // to customize, examine key and modify the customer
+    // with out = out.copy=...
+    //
+    // e.g. out = out.copy(extraImports=Seq("draft.*"))
+
+    out = out.copy(extraImports=Seq("com.mchange.feedletter.*"))
+
+    out
+  }
+
   /**
    * Update the millw script.
    * modified from https://github.com/lefou/millw
