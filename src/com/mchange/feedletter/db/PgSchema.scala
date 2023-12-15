@@ -153,7 +153,10 @@ object PgSchema:
         object Item extends Creatable:
           object Type:
             object ItemAssignability extends Creatable:
-              protected val Create = "CREATE TYPE ItemAssignability AS ENUM ('Unassigned', 'Assigned', 'Excluded')"
+              protected val Create = "CREATE TYPE ItemAssignability AS ENUM ('Unassigned', 'Assigned', 'Cleared', 'Excluded')"
+          object Index:
+            object ItemAssignability extends Creatable:
+              protected val Create = "CREATE INDEX item_assignability ON item(assignability)"
           protected val Create =
             """|CREATE TABLE item(
                |  feed_url         VARCHAR(1024),
@@ -311,15 +314,18 @@ object PgSchema:
           private val SelectWithinTypeIdLastCompleted =
             """|SELECT within_type_id
                |FROM assignable
-               |WHERE feed_url = ? AND subscribable_name = ?
-               |ORDER BY completed DESC NULLS LAST
-               |LIMIT 1""".stripMargin
+               |WHERE completed IS NOT NULL AND feed_url = ? AND subscribable_name = ?
+               |ORDER BY completed DESC
+               |LIMIT 1""".stripMargin // usually there will always be 1 !
           private val Insert =
             """|INSERT INTO assignable( feed_url, subscribable_name, within_type_id, opened, completed )
                |VALUES ( ?, ?, ?, ?, ? )""".stripMargin
           private val UpdateCompleted =
             """|UPDATE assignable
                |SET completed = ?
+               |WHERE feed_url = ? AND subscribable_name = ? AND within_type_id = ?""".stripMargin
+          private val Delete =     
+            """|DELETE FROM assignable
                |WHERE feed_url = ? AND subscribable_name = ? AND within_type_id = ?""".stripMargin
           def selectOpen( conn : Connection ) : Set[AssignableKey] =
             Using.resource( conn.prepareStatement( this.SelectOpen ) ): ps =>
@@ -359,6 +365,12 @@ object PgSchema:
               ps.setString(3, subscribableName.toString())
               ps.setString(4, withinTypeId)
               ps.executeUpdate()
+          def delete( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String ) =
+            Using.resource( conn.prepareStatement( Delete ) ): ps =>
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
+              ps.setString(3, withinTypeId)
+              ps.executeUpdate()
         object Assignment extends Creatable:
           protected val Create = // an assignment represents a membership of a post in a collection
             """|CREATE TABLE assignment(
@@ -377,6 +389,9 @@ object PgSchema:
           private val Insert =
             """|INSERT INTO assignment( feed_url, subscribable_name, within_type_id, guid )
                |VALUES ( ?, ?, ?, ? )""".stripMargin
+          private val CleanAwayAssignable =
+            """|DELETE FROM assignment
+               |WHERE feed_url = ? AND subscribable_name = ? AND within_type_id = ?""".stripMargin
           def selectCountWithinAssignable( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String ) : Int =
             Using.resource( conn.prepareStatement( this.SelectCountWithinAssignable ) ): ps =>
               ps.setString(1, feedUrl.toString())
@@ -391,6 +406,13 @@ object PgSchema:
               ps.setString(3, withinTypeId)
               ps.setString(4, guid.toString())
               ps.executeUpdate()
+          def cleanAwayAssignable( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName, withinTypeId : String ) =
+            Using.resource( conn.prepareStatement( CleanAwayAssignable ) ): ps =>
+              ps.setString(1, feedUrl.toString())
+              ps.setString(2, subscribableName.toString())
+              ps.setString(3, withinTypeId)
+              ps.executeUpdate()
+
         object Subscription extends Creatable:
           protected val Create =
             """|CREATE TABLE subscription(
@@ -451,6 +473,12 @@ object PgSchema:
             """|SELECT template
                |FROM mailable_template
                |WHERE sha3_256 = ?""".stripMargin
+          private val DeleteIfUnreferenced =
+            """|DELETE FROM mailable_template
+               |WHERE sha3_256 = ? AND NOT EXISTS (
+               |  SELECT 1 FROM mailable WHERE mailable.sha3_256 = ?
+               |)
+               |""".stripMargin
           def ensure( conn : Connection, hash : Hash.SHA3_256, template : String ) =
             Using.resource( conn.prepareStatement(Ensure) ): ps =>
               ps.setString(1, hash.hex )
@@ -461,6 +489,12 @@ object PgSchema:
               ps.setString( 1, hash.hex )
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("select-mailable-template-by-hash",rs)( _.getString(1) )
+          def deleteIfUnreferenced( conn : Connection, hash : Hash.SHA3_256 ) =
+            val hex = hash.hex
+            Using.resource( conn.prepareStatement( DeleteIfUnreferenced ) ): ps =>
+              ps.setString( 1, hex )
+              ps.setString( 2, hex )
+              ps.executeUpdate()
         object Mailable extends Creatable:
           protected val Create =
             """|CREATE TABLE mailable(
@@ -537,5 +571,18 @@ object PgSchema:
               Using.resource( ps.executeQuery() ): rs =>
                 toSet( rs )( rs => ItemContent( Option( rs.getString(1) ), Option( rs.getString(2) ), Option( rs.getString(3) ), Option( rs.getTimestamp(4) ).map( _.toInstant ), Option( rs.getString(5) ) ) )
         end ItemAssignment
+        object ItemAssignableAssignment:
+          val SelectLiveAssignedGuids =
+             """|SELECT guid
+                |FROM assignable
+                |INNER JOIN assignment
+                |ON assignable.feed_url = assignment.feed_url AND assignable.subscribable_name = assignment.subscribable_name AND assignable.within_type_id = assignment.within_type_id""".stripMargin
+          val ClearOldCache =
+             s"""|UPDATE item
+                 |SET title = NULL, author = NULL, article = NULL, publication_date = NULL, link = NULL, content_hash = ${ItemContent.EmptyHashCode}, assignability = 'Cleared'
+                 |WHERE assignability = 'Assigned' AND NOT item.guid IN ( ${SelectLiveAssignedGuids} )""".stripMargin
+          def clearOldCache( conn : Connection ) =
+            Using.resource( conn.prepareStatement( ClearOldCache ) )( _.executeUpdate() )
+        end ItemAssignableAssignment
       end Join
 

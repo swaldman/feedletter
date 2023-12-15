@@ -120,6 +120,7 @@ object PgDatabase extends Migratory:
           PgSchema.V1.Table.Feed.create( stmt )
           PgSchema.V1.Table.Item.Type.ItemAssignability.create( stmt )
           PgSchema.V1.Table.Item.create( stmt )
+          PgSchema.V1.Table.Item.Index.ItemAssignability.create( stmt )
           PgSchema.V1.Table.Subscribable.create( stmt )
           PgSchema.V1.Table.Assignable.create( stmt )
           PgSchema.V1.Table.Assignment.create( stmt )
@@ -231,7 +232,7 @@ object PgDatabase extends Migratory:
           val newStableSince = now
           val newLastChecked = now
           LatestSchema.Table.Item.updateChanged( conn, fi.feedUrl, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
-      case Some( ItemStatus( _, _, _, _, ItemAssignability.Assigned ) ) => /* ignore, already assigned */
+      case Some( ItemStatus( _, _, _, _, ItemAssignability.Assigned | ItemAssignability.Cleared ) ) => /* ignore, already assigned */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
         def doInsert() =
@@ -285,7 +286,15 @@ object PgDatabase extends Migratory:
           throw new AssertionError( s"DB constraints should have ensured a row for feed '${feedUrl}' with a NOT NULL lastAssigned, but did not?" )
         if subscriptionType.isComplete( conn, withinTypeId, count, lastAssigned ) then
           route( conn, ak, subscriptionType )
+          cleanUpPreviouslyCompleted( conn, feedUrl, subscribableName ) // we have to do this BEFORE updateCompleted, or we'll clean away the latest last completed.
           LatestSchema.Table.Assignable.updateCompleted( conn, feedUrl, subscribableName, withinTypeId, Some(Instant.now) )
+
+  def cleanUpPreviouslyCompleted( conn : Connection, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Unit =
+    val mbLastWithinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, feedUrl, subscribableName )
+    mbLastWithinTypeId.foreach: wti =>
+      LatestSchema.Table.Assignment.cleanAwayAssignable( conn, feedUrl, subscribableName, wti)
+      LatestSchema.Table.Assignable.delete( conn, feedUrl, subscribableName, wti )
+      LatestSchema.Join.ItemAssignableAssignment.clearOldCache( conn )
 
   def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
@@ -293,7 +302,7 @@ object PgDatabase extends Migratory:
       try
         val fd = FeedDigest( fi.feedUrl )
         fd.guidToItemContent.foreach: (guid, itemContent) =>
-          LatestSchema.Table.Item.insertNew( conn, fi.feedUrl, guid, itemContent, ItemAssignability.Excluded )
+          LatestSchema.Table.Item.insertNew( conn, fi.feedUrl, guid, ItemContent.Empty, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
       catch
         case NonFatal(t) =>
           WARNING.log(s"Failed to exclude existing content from assignment when adding feed '${fi.feedUrl}'. Existing content may be distributed.", t)
@@ -339,6 +348,7 @@ object PgDatabase extends Migratory:
 
   def attemptMail( conn : Connection, maxRetries : Int, mswt : MailSpec.WithTemplate ) : Unit =
     LatestSchema.Table.Mailable.deleteSingle( conn, mswt.seqnum )
+    var attemptDeleteContents = true
     try
       val contents = mswt.templateParams.fill( mswt.template )
       Smtp.sendSimpleHtmlOnly( contents, subject = mswt.subject, from = mswt.from, to = mswt.to.toString(), replyTo = mswt.replyTo.toSeq )
@@ -347,6 +357,9 @@ object PgDatabase extends Migratory:
         val lastRetryMessage = if mswt.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
         WARNING.log( s"Failed email attempt: subject = ${mswt.subject}, from = ${mswt.from}, to = ${mswt.to}, replyTo = ${mswt.replyTo} ), retried = ${mswt.retried} ${lastRetryMessage}", t )
         LatestSchema.Table.Mailable.insert( conn, mswt.templateHash, mswt.from, mswt.replyTo, mswt.to, mswt.subject, mswt.templateParams, mswt.retried + 1)
+        attemptDeleteContents = false
+    if attemptDeleteContents then
+      LatestSchema.Table.MailableTemplate.deleteIfUnreferenced( conn, mswt.templateHash )
 
   def mailNextGroup( conn : Connection ) =
     val retries = maxRetries( conn )

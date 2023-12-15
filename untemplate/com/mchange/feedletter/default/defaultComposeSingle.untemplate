@@ -9,7 +9,7 @@ val title = s"""[${info.subscriptionName}] ${info.contents.title.getOrElse("(unt
   <body>
     <p>Dear %ToNicknameOrEmail%,</p>
 
-    <p>A new post has been published to ${info.subscriptionName}:</p>
+    <p>A new post has been published to <b><( info.subscriptionName )></b>:</p>
 
     <div class="item-title">
       <( info.contents.link.map(l => s"""<a href="$l">""").getOrElse("") )><( info.contents.title.getOrElse("(untitled)") )><( info.contents.link.map( _ => "</a>" ).getOrElse("") )>

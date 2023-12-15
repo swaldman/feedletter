@@ -126,7 +126,7 @@ object Main:
         val name =
           val help = "The name of the defined subscription."
           Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
-        val destination = Opts.argument[String](metavar="<destination-to-be-subscribed>").map( Destination.apply )
+        val destination = Opts.argument[String](metavar="destination-to-be-subscribed").map( Destination.apply )
         ( feedUrl, name, destination ) mapN: (fu, n, d) =>
           CommandConfig.Admin.Subscribe( AdminSubscribeOptions(fu, n, d) )
       Command("subscribe", header=header)( opts )

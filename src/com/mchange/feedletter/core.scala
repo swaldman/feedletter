@@ -75,7 +75,7 @@ object ComposeInfo:
 
 def composeMultipleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
 
-def composeSingleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : ItemContent ) : String = ???
+// def composeSingleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : ItemContent ) : String = ???
 
 def digestFeed( feedUrl : String ) : Task[FeedDigest] =
   ZIO.attemptBlocking( FeedDigest(feedUrl) )

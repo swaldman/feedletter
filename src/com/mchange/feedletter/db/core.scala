@@ -30,6 +30,7 @@ enum MetadataKey:
 enum ItemAssignability:
   case Unassigned
   case Assigned
+  case Cleared
   case Excluded
 
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
@@ -86,11 +87,11 @@ def toSet[T]( rs : ResultSet )( extract : ResultSet => T ) : Set[T] =
 
 def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : T =
   if !rs.next() then
-    throw new UnexpectedlyEmptyResultSet("Expected a value for ${queryDesc}, none found.")
+    throw new UnexpectedlyEmptyResultSet(s"Expected a value for ${queryDesc}, none found.")
   else
     val out = materialize(rs)
     if rs.next() then
-      throw new NonUniqueRow("Expected a unique value for ${queryDesc}. Multiple rows found.")
+      throw new NonUniqueRow(s"Expected a unique value for ${queryDesc}. Multiple rows found.")
     else
       out
 
@@ -100,7 +101,7 @@ def zeroOrOneResult[T]( queryDesc : String, rs : ResultSet )( materialize : Resu
   else
     val out = materialize(rs)
     if rs.next() then
-      throw new NonUniqueRow("Expected a unique value for ${queryDesc}. Multiple rows found.")
+      throw new NonUniqueRow(s"Expected a unique value for ${queryDesc}. Multiple rows found.")
     else
       Some(out)
 

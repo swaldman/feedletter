@@ -10,7 +10,7 @@ val FeedInfoColumns = Seq(
   texttable.Column("Min Delay Minutes"),
   texttable.Column("Await Stabilization Minutes"),
   texttable.Column("Max Delay Minutes"),
-  texttable.Column("Subscribed"),
+  texttable.Column("Added"),
   texttable.Column("Last Assigned")
 )
 
