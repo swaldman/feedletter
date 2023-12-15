@@ -17,6 +17,7 @@ import com.mchange.v2.c3p0.ComboPooledDataSource
 
 import com.mchange.feedletter.db.DbVersionStatus
 import java.nio.file.Path
+import java.time.ZoneId
 
 object Main:
   private lazy given logger : MLogger = mlogger( this )
@@ -113,8 +114,18 @@ object Main:
           Opts.option[Int]("mail-batch-delay-seconds", help=help, metavar="seconds")
             .map( i => (ConfigKey.MailBatchDelaySecs, i.toString()) )
             .orNone
-        ( dumpDbDir, mailBatchSize, mailBatchDelaySecs ) mapN: (ddr, mbs, mbds) =>
-          val settings = (Vector.empty ++ ddr ++ mbs ++ mbds).toMap
+        val mailMaxRetries =
+          val help = "Number of times e-mail sends (defined as successful submission to an SMTP service) will be attempted before giving up."
+          Opts.option[Int]("mail-max-retries", help=help, metavar="times")
+            .map( i => (ConfigKey.MailMaxRetries, i.toString()) )
+            .orNone
+        val timeZone =
+          val help = "ID of the time zone which subscriptions based on time periods should use."
+          Opts.option[String]("time-zone", help=help, metavar="zone").map( ZoneId.of )
+            .map( i => (ConfigKey.TimeZone, i.toString()) )
+            .orNone
+        ( dumpDbDir, mailBatchSize, mailBatchDelaySecs, mailMaxRetries, timeZone ) mapN: (ddr, mbs, mbds, mmr, tz) =>
+          val settings = (Vector.empty ++ ddr ++ mbs ++ mbds ++ mmr ++ tz).toMap
           CommandConfig.Admin.SetConfig( settings )
       Command("set-config", header=header)( opts )
     val subscribe =
