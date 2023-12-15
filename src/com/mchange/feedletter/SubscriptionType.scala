@@ -50,7 +50,7 @@ object SubscriptionType:
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
-        s"""[${subscribableName}] New Post: ${contents.head.title.getOrElse("(untitled post)")}"""
+        s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
     class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
@@ -134,7 +134,7 @@ object SubscriptionType:
         "toEmail"           -> toEmail,
         "toNicknameOrEmail" -> toNickname.getOrElse( toEmail ),
         "numItems"          -> contents.size.toString()
-      )
+      ).filter( _._2.nonEmpty )
 
     override def validateDestination( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Boolean =
       try
