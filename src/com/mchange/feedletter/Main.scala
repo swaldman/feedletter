@@ -178,7 +178,7 @@ object Main:
       val header = "Administer and configure an installation."
       val opts =
         import Admin.*
-        Opts.subcommands(addFeed, defineEmailSubscription, listConfig, listExcludedItems, listSubscriptionDefinitions, setConfig, subscribe)
+        Opts.subcommands(addFeed, defineEmailSubscription, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, setConfig, subscribe)
       Command( name="admin", header=header )( opts )
     val crank =
       val header = "Run a usually recurring operation a single time."
