@@ -23,6 +23,10 @@ enum MetadataKey:
   case SchemaVersion
   case CreatorAppVersion
 
+enum TimesKey:
+  case MailNextBatch
+
+
 /*
  * Maps directly to a postgres enum,
  * if this is changed, keep that in sync

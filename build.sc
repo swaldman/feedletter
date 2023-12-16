@@ -26,7 +26,7 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     ivy"com.lihaoyi::requests:0.8.0",
     ivy"com.mchange:c3p0:0.9.5.5",
     ivy"com.mchange::audiofluidity-rss:0.0.3",
-    ivy"com.mchange::mlog-scala:0.3.14",
+    ivy"com.mchange::mlog-scala:0.3.15-SNAPSHOT",
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.2-SNAPSHOT",
     ivy"com.mchange::cryptoutil:0.0.2-SNAPSHOT",

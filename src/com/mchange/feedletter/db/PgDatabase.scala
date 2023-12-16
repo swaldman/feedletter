@@ -8,6 +8,8 @@ import scala.collection.{immutable,mutable}
 import scala.util.Using
 import scala.util.control.NonFatal
 
+import scala.math.Ordering.Implicits.infixOrderingOps
+
 import java.sql.SQLException
 import java.time.{Duration as JDuration,Instant,ZonedDateTime,ZoneId}
 import java.time.temporal.ChronoUnit
@@ -16,7 +18,7 @@ import com.mchange.sc.v1.log.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.{BuildInfo, ConfigKey, Destination, ExcludedItem, FeedDigest, FeedInfo, FeedUrl, Guid, ItemContent, SubscribableName, SubscriptionType,TemplateParams}
+import com.mchange.feedletter.{BuildInfo, ConfigKey, Default, Destination, ExcludedItem, FeedDigest, FeedInfo, FeedUrl, Guid, ItemContent, SubscribableName, SubscriptionType,TemplateParams}
 import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}
 
@@ -26,21 +28,11 @@ object PgDatabase extends Migratory:
   val LatestSchema = PgSchema.V1
   override val targetDbVersion = LatestSchema.Version
 
-  val DefaultMailBatchSize         = 100
-  val DefaultMailBatchDelaySeconds = 15 * 60 // 15 mins
-  val DefaultMailMaxRetries        = 5
-
   private def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Option[String] =
     PgSchema.Unversioned.Table.Metadata.select( conn, key )
 
-  private def fetchConfigValue( conn : Connection, key : ConfigKey ) : Option[String] =
-    LatestSchema.Table.Config.select( conn, key )
-
   private def zfetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
     ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key ) )
-
-  private def zfetchConfigValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] =
-    ZIO.attemptBlocking( LatestSchema.Table.Config.select( conn, key ) )
 
   private def fetchDbName(conn : Connection) : Task[String] =
     ZIO.attemptBlocking:
@@ -50,7 +42,7 @@ object PgDatabase extends Migratory:
 
   private def fetchDumpDir(conn : Connection) : Task[os.Path] =
     for
-      mbDumpDir <- zfetchConfigValue(conn, ConfigKey.DumpDbDir)
+      mbDumpDir <- Config.zfetchValue(conn, ConfigKey.DumpDbDir)
     yield
       os.Path( mbDumpDir.getOrElse( throw new ConfigurationMissing(ConfigKey.DumpDbDir) ) )
 
@@ -117,6 +109,7 @@ object PgDatabase extends Migratory:
       withConnectionTransactional( ds ): conn =>
         Using.resource( conn.createStatement() ): stmt =>
           PgSchema.V1.Table.Config.create( stmt )
+          PgSchema.V1.Table.Times.create( stmt )
           PgSchema.V1.Table.Feed.create( stmt )
           PgSchema.V1.Table.Item.Type.ItemAssignability.create( stmt )
           PgSchema.V1.Table.Item.create( stmt )
@@ -130,10 +123,9 @@ object PgDatabase extends Migratory:
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
         insertConfigKeys(
           conn,
-          (ConfigKey.MailNextBatchTime, formatPubDate(ZonedDateTime.now)),
-          (ConfigKey.MailBatchSize, DefaultMailBatchSize.toString()),
-          (ConfigKey.MailBatchDelaySecs, DefaultMailBatchDelaySeconds.toString()),
-          (ConfigKey.MailMaxRetries, DefaultMailMaxRetries.toString())
+          (ConfigKey.MailBatchSize, Default.MailBatchSize.toString()),
+          (ConfigKey.MailBatchDelaySeconds, Default.MailBatchDelaySeconds.toString()),
+          (ConfigKey.MailMaxRetries, Default.MailMaxRetries.toString())
         )
         updateMetadataKeys(
           conn,
@@ -243,7 +235,7 @@ object PgDatabase extends Migratory:
             assign( conn, fi.feedUrl, guid, freshContent, dbStatus )
         freshContent.pubDate match
           case Some( pd ) =>
-            if fi.added.compareTo(pd) <= 0 then doInsert() // skip items known to be published prior to subscription
+            if pd > fi.added then doInsert() // skip items known to be published prior to subscription
           case None =>
             doInsert()
 
@@ -254,6 +246,7 @@ object PgDatabase extends Migratory:
       updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
     LatestSchema.Table.Feed.updateLastAssigned(conn, fi.feedUrl, timestamp)
 
+  // TODO: USe latest from feed, rather than cached values, if available
   private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Set[ItemContent] =
     LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.feedUrl, assignableKey.subscribableName, assignableKey.withinTypeId )
 
@@ -330,11 +323,15 @@ object PgDatabase extends Migratory:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscribable.select( conn )
 
-  def timeZone( conn : Connection ) : ZoneId =
-    fetchConfigValue( conn, ConfigKey.TimeZone ).map( str => ZoneId.of(str) ).getOrElse( ZoneId.systemDefault() )
+  object Config:
+    def fetchValue( conn : Connection, key : ConfigKey ) : Option[String] = LatestSchema.Table.Config.select( conn, key )
+    def zfetchValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] = ZIO.attemptBlocking( LatestSchema.Table.Config.select( conn, key ) )
+    def timeZone( conn : Connection ) : ZoneId = fetchValue( conn, ConfigKey.TimeZone ).map( str => ZoneId.of(str) ).getOrElse( ZoneId.systemDefault() )
+    def mailBatchDelaySeconds( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailBatchDelaySeconds ).map( _.toInt ).getOrElse( Default.MailBatchDelaySeconds )
+    def mailMaxRetries( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailMaxRetries ).map( _.toInt ).getOrElse( Default.MailMaxRetries )
 
   def pullMailGroup( conn : Connection ) : Set[MailSpec.WithTemplate] =
-    val batchSize = fetchConfigValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( DefaultMailBatchSize )
+    val batchSize = Config.fetchValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( Default.MailBatchSize )
     val withHashes : Set[MailSpec.WithHash] = LatestSchema.Table.Mailable.selectForDelivery(conn, batchSize)
     val contentMap = mutable.Map.empty[Hash.SHA3_256,String]
     def templateFromHash( hash : Hash.SHA3_256 ) : String =
@@ -343,8 +340,6 @@ object PgDatabase extends Migratory:
     withHashes.foreach: mswh =>
       contentMap.getOrElseUpdate( mswh.templateHash, templateFromHash(mswh.templateHash) )
     withHashes.map( mswh => MailSpec.WithTemplate( mswh.seqnum, mswh.templateHash, templateFromHash( mswh.templateHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject, mswh.templateParams, mswh.retried ) )
-
-  def maxRetries( conn : Connection ) : Int = fetchConfigValue( conn, ConfigKey.MailMaxRetries ).map( _.toInt ).getOrElse( DefaultMailMaxRetries )
 
   def attemptMail( conn : Connection, maxRetries : Int, mswt : MailSpec.WithTemplate ) : Unit =
     LatestSchema.Table.Mailable.deleteSingle( conn, mswt.seqnum )
@@ -362,13 +357,23 @@ object PgDatabase extends Migratory:
       LatestSchema.Table.MailableTemplate.deleteIfUnreferenced( conn, mswt.templateHash )
 
   def mailNextGroup( conn : Connection ) =
-    val retries = maxRetries( conn )
+    val retries = Config.mailMaxRetries( conn )
     val mswts   = pullMailGroup( conn )
     mswts.foreach( mswt => attemptMail( conn, retries, mswt ) )
 
-  def mailNextGroup( ds : DataSource ) : Task[Unit] =
+  def forceMailNextGroup( ds : DataSource ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       mailNextGroup( conn )
+
+  def mailNextGroupIfDue( conn : Connection ) =
+    val now = Instant.now()
+    val nextMailingTime = LatestSchema.Table.Times.select( conn, TimesKey.MailNextBatch ).getOrElse( now )
+    if now >= nextMailingTime then
+      mailNextGroup( conn )
+      val delay = Config.mailBatchDelaySeconds( conn )
+      LatestSchema.Table.Times.upsert( conn, TimesKey.MailNextBatch, now.plusSeconds( delay ) )
+
+  def mailNextGroupIfDue( ds : DataSource ) : Task[Unit] = withConnectionTransactional( ds )( mailNextGroupIfDue )
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
     withConnectionZIO( ds ): conn =>

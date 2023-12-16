@@ -30,13 +30,13 @@ object Main:
       val opts =
         val minDelayMinutes =
           val help = "Minimum wait (in miunutes) before a newly encountered item can be notified."
-          Opts.option[Int]("min-delay-minutes", help=help, metavar="minutes").withDefault(30)
+          Opts.option[Int]("min-delay-minutes", help=help, metavar="minutes").withDefault(Default.MinDelayMinutes)
         val awaitStabilizationMinutes =
           val help = "Period (in minutes) over which an item should not have changed before it is considered stable and can be notified."
-          Opts.option[Int]("await-stabilization-minutes", help=help, metavar="minutes").withDefault(15)
+          Opts.option[Int]("await-stabilization-minutes", help=help, metavar="minutes").withDefault(Default.AwaitStabilizationMinutes)
         val maxDelayMinutes =
           val help = "Notwithstanding other settings, maximum period past which an item should be notified, regardless of its stability."
-          Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes").withDefault(180)
+          Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes").withDefault(Default.MaxDelayMinutes)
         val feedUrl = Opts.argument[String](metavar="feed-url")  
         (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, feedUrl) mapN: (mindm, asm, maxdm, fu) =>
           val fi = FeedInfo.forNewFeed(FeedUrl(fu), mindm, asm, maxdm )
@@ -112,7 +112,7 @@ object Main:
         val mailBatchDelaySecs =
           val help = "Time between batches of e-mails are to be sent."
           Opts.option[Int]("mail-batch-delay-seconds", help=help, metavar="seconds")
-            .map( i => (ConfigKey.MailBatchDelaySecs, i.toString()) )
+            .map( i => (ConfigKey.MailBatchDelaySeconds, i.toString()) )
             .orNone
         val mailMaxRetries =
           val help = "Number of times e-mail sends (defined as successful submission to an SMTP service) will be attempted before giving up."

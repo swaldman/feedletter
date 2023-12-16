@@ -110,15 +110,15 @@ object CommandConfig:
         for
           ds <- ZIO.service[DataSource]
           _ <- PgDatabase.ensureDb( ds )
-          _ <- PgDatabase.mailNextGroup( ds )
+          _ <- PgDatabase.forceMailNextGroup( ds )
         yield ()
       end zcommand
   object Db:
     case object Dump extends CommandConfig:
       override def zcommand : ZCommand =
         for
-          ds     <- ZIO.service[DataSource]
-          out    <- PgDatabase.dump(ds)
+          ds  <- ZIO.service[DataSource]
+          out <- PgDatabase.dump(ds)
         yield
           INFO.log(s"The database was successfully dumped to '${out}'.")
       end zcommand
@@ -142,10 +142,17 @@ object CommandConfig:
         def doMigrate( ds : DataSource ) = if force then PgDatabase.migrate(ds) else PgDatabase.cautiousMigrate(ds)
         for
           ds <- ZIO.service[DataSource]
-          _ <- doMigrate( ds )
+          _  <- doMigrate( ds )
         yield ()
       end zcommand
-  case object Daemon extends CommandConfig
-  case object Sendmail extends CommandConfig
+  end Db
+  case object Daemon extends CommandConfig:
+      override def zcommand: ZCommand =
+        for
+          ds <- ZIO.service[DataSource]
+          _  <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds ).fork
+          _  <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds ).fork
+        yield ()
+      end zcommand
 sealed trait CommandConfig:
-  def zcommand : ZCommand = ZIO.fail( new NotImplementedError("No zcommand has been implemented for this command") ) // XXX: temporary, make abstract when we stabilize
+  def zcommand : ZCommand

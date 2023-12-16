@@ -76,7 +76,7 @@ object SubscriptionType:
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
-        val tz = PgDatabase.timeZone( conn ) // do we really need to hit this every time?
+        val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
         val laZoned = lastAssigned.atZone(tz)
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)

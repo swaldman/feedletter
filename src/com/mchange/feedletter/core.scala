@@ -20,11 +20,11 @@ type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
 
 enum ConfigKey:
   case DumpDbDir
-  case MailNextBatchTime
   case MailBatchSize
-  case MailBatchDelaySecs
+  case MailBatchDelaySeconds
   case MailMaxRetries
   case TimeZone
+
 
 type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) => Map[String,String]
