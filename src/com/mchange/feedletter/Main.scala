@@ -168,6 +168,11 @@ object Main:
         Opts.flag("force",help=help,short="f").orFalse.map( force => CommandConfig.Db.Migrate(force) )
       Command("migrate", header=header )( opts )
 
+  val daemon =
+    val header = "Run daemon that watches feeds and sends notifications."
+    val opts = Opts( CommandConfig.Daemon )
+    Command("daemon", header=header )( opts )
+
   val feedletter =
     val admin =
       val header = "Administer and configure an installation."
@@ -188,7 +193,7 @@ object Main:
         Opts.subcommands( init, migrate )
       Command( name="db", header=header )( opts )
 
-    val subcommands = Opts.subcommands(admin,crank,db)
+    val subcommands = Opts.subcommands(admin,crank,daemon,db)
     Command(name="feedletter", header="Manage e-mail subscriptions to and other notifications from RSS feeds.")( subcommands )
 
   def main( args : Array[String] ) : Unit =

@@ -2,6 +2,8 @@ import $meta._
 
 import mill._, scalalib._
 
+import $ivy.`com.lihaoyi::mill-contrib-bloop:$MILL_VERSION`
+
 import $ivy.`com.lihaoyi::mill-contrib-buildinfo:`
 import mill.contrib.buildinfo.BuildInfo
 

@@ -152,6 +152,7 @@ object CommandConfig:
           ds <- ZIO.service[DataSource]
           _  <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds ).fork
           _  <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds ).fork
+          _  <- ZIO.unit.forever
         yield ()
       end zcommand
 sealed trait CommandConfig:
