@@ -23,7 +23,7 @@ object CommandConfig extends SelfLogging:
           _   <- printFeedInfoTable(fis)
         yield ()
       end zcommand
-    case class DefineEmailSubscription( feedUrl : FeedUrl, subscribableName : SubscribableName, from : String, replyTo : Option[String], subtype : String, extraParams : Map[String,String]  ) extends CommandConfig:
+    case class DefineEmailSubscription( feedId : FeedId, subscribableName : SubscribableName, from : String, replyTo : Option[String], subtype : String, extraParams : Map[String,String]  ) extends CommandConfig:
       override def zcommand : ZCommand =
         val params = Seq( ("from", from) ) ++ replyTo.map( rt => ("replyTo",rt) ) ++ extraParams.toSeq
         val mbStype = SubscriptionType.dispatch( "Email", subtype, params )
@@ -31,10 +31,10 @@ object CommandConfig extends SelfLogging:
           for
             ds   <- ZIO.service[DataSource]
             _    <- PgDatabase.ensureDb( ds )
-            _    <- PgDatabase.addSubscribable( ds, feedUrl, subscribableName, subscriptionType )
+            _    <- PgDatabase.addSubscribable( ds, feedId, subscribableName, subscriptionType )
             tups <- PgDatabase.listSubscribables(ds)
             _    <- printSubscribablesTable(tups)
-            _    <- Console.printLine(s"An email subscribable to '${feedUrl}' named '${subscribableName}' has been created.")
+            _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
           yield ()
       end zcommand
     case object ListConfig extends CommandConfig:
@@ -97,7 +97,7 @@ object CommandConfig extends SelfLogging:
         for
           ds <- ZIO.service[DataSource]
           _  <- PgDatabase.ensureDb( ds )
-          _  <- PgDatabase.addSubscription( ds, aso.feedUrl, aso.subscribableName, aso.destination )
+          _  <- PgDatabase.addSubscription( ds, aso.feedId, aso.subscribableName, aso.destination )
         yield ()
       end zcommand
   object Crank:

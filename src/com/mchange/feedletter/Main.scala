@@ -68,9 +68,9 @@ object Main extends SelfLogging:
     val defineEmailSubscription =
       val header = "Define a kind of e-mail subscription."
       val opts =
-        val feedUrl =
-          val help = "The URL of the RSS feed to be subscribed."
-          Opts.option[String]("feed-url", help=help, metavar="url").map( FeedUrl.apply )
+        val feedId =
+          val help = "The ID of the RSS feed to be subscribed."
+          Opts.option[Int]("feed-id", help=help, metavar="feed-id").map( FeedId.apply )
         val name =
           val help = "A name for the new kind of email subscription."
           Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
@@ -98,8 +98,8 @@ object Main extends SelfLogging:
             .mapValidated( validate )
             .map( Map.from )
         end extraParams
-        ( feedUrl, name, from, replyTo, kind, extraParams ) mapN: ( fu, n, f, rt, k, ep ) =>
-          CommandConfig.Admin.DefineEmailSubscription( fu, n, f, rt, k, ep )
+        ( feedId, name, from, replyTo, kind, extraParams ) mapN: ( fi, n, f, rt, k, ep ) =>
+          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, k, ep )
       Command("define-email-subscription",header=header)( opts )
     val listConfig =
       val header = "List all configuration parameters."
@@ -165,15 +165,15 @@ object Main extends SelfLogging:
     val subscribe =
       val header = "Subscribe to a defined subscription."
       val opts =
-        val feedUrl =
-          val help = "The URL of the RSS feed to be subscribed."
-          Opts.option[String]("feed-url", help=help, metavar="url").map( FeedUrl.apply )
+        val feedId =
+          val help = "The ID of the RSS feed to be subscribed."
+          Opts.option[Int]("feed-id", help=help, metavar="feed-id").map( FeedId.apply )
         val name =
           val help = "The name of the defined subscription."
           Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
         val destination = Opts.argument[String](metavar="destination-to-be-subscribed").map( Destination.apply )
-        ( feedUrl, name, destination ) mapN: (fu, n, d) =>
-          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(fu, n, d) )
+        ( feedId, name, destination ) mapN: (fi, n, d) =>
+          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(fi, n, d) )
       Command("subscribe", header=header)( opts )
 
   object Crank:

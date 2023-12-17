@@ -38,16 +38,25 @@ type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinType
 object FeedInfo:
   def forNewFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int ): FeedInfo =
     val startTime = Instant.now()
-    FeedInfo( feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, startTime, startTime )
-final case class FeedInfo( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, added : Instant, lastAssigned : Instant )
+    FeedInfo( None, feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, startTime, startTime )
+final case class FeedInfo( feedId : Option[FeedId], feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, added : Instant, lastAssigned : Instant ):
+  def assertFeedId : FeedId = feedId.getOrElse:
+    throw new FeedletterException( s"FeedInfo which should be for an extant feed, with id defined, has no feedId set: ${this}" )
 
-final case class ExcludedItem( feedUrl : FeedUrl, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
+final case class ExcludedItem( feedId : FeedId, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 
-final case class AdminSubscribeOptions( feedUrl : FeedUrl, subscribableName : SubscribableName, destination : Destination )
+final case class AdminSubscribeOptions( feedId : FeedId, subscribableName : SubscribableName, destination : Destination )
 
 object Destination:
   def apply( s : String ) : Destination = s
 opaque type Destination = String
+
+object FeedId:
+  def apply( i : Int ) : FeedId = i
+opaque type FeedId = Int
+
+extension( feedId : FeedId )
+  def toInt : Int = feedId
 
 object FeedUrl:
   def apply( s : String ) : FeedUrl = s

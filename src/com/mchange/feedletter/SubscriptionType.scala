@@ -31,21 +31,22 @@ object SubscriptionType:
   object Email:
     class Each( params : Seq[(String,String)] ) extends Email("Each", params):
 
-      override def withinTypeId( feedUrl : FeedUrl, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
+      override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         assert( contents.size == 1, s"Email.Each expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
-        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
+        val feedUrl = PgDatabase.assertFeedUrl( conn, assignableKey.feedId )
+        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
         val fullTemplate =
-          val info = ComposeInfo.Single( assignableKey.feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
+          val info = ComposeInfo.Single( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
           val compose = IndexedUntemplates( "com.mchange.feedletter.default.defaultComposeSingle" ).asInstanceOf[untemplate.Untemplate[ComposeInfo.Single,Nothing]]
           compose( info ).text
         val tosWithTemplateParams =
           destinations.map: destination =>
-            ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, destination, contents ) )
+            ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
         PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
@@ -57,7 +58,8 @@ object SubscriptionType:
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
-        feedUrl        : FeedUrl,
+        conn           : Connection,
+        feedId         : FeedId,
         guid           : Guid,
         content        : ItemContent,
         status         : ItemStatus,
@@ -83,11 +85,12 @@ object SubscriptionType:
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         if contents.nonEmpty then
-          val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, contents )
-          val fullTemplate = composeMultipleItemHtmlMailTemplate( assignableKey, this, contents )
+          val feedUrl = PgDatabase.assertFeedUrl( conn, assignableKey.feedId )
+          val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+          val fullTemplate = composeMultipleItemHtmlMailTemplate( assignableKey, this, contents ) // XXX: To be replaced with some entre to an untemplate
           val tosWithTemplateParams =
             destinations.map: destination =>
-              ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, assignableKey.feedUrl, destination, contents ) )
+              ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
           PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, tosWithTemplateParams, computedSubject)
 
       private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
@@ -136,7 +139,7 @@ object SubscriptionType:
         "numItems"          -> contents.size.toString()
       ).filter( _._2.nonEmpty )
 
-    override def validateDestination( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Boolean =
+    override def validateDestination( conn : Connection, destination : Destination, feedId : FeedId, subscribableName : SubscribableName ) : Boolean =
       try
         Smtp.Address.parseSingle( destination.toString(), strict = true  )
         true
@@ -170,9 +173,9 @@ object SubscriptionType:
 sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
   def paramsFirstValue( key : String ) : Option[String] = wwwFormFindFirstValue( key, params )
   def paramsAllValues( key : String ) : Seq[String] = wwwFormFindAllValues( key, params )
-  def withinTypeId( feedUrl : FeedUrl, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
+  def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
-  def validateDestination( conn : Connection, destination : Destination, feedUrl : FeedUrl, subscribableName : SubscribableName ) : Boolean
+  def validateDestination( conn : Connection, destination : Destination, feedId : FeedId, subscribableName : SubscribableName ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
   override def toString() : String = s"${category}.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
   override def equals( other : Any ) : Boolean =
