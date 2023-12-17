@@ -341,11 +341,12 @@ object PgDatabase extends Migratory:
       contentMap.getOrElseUpdate( mswh.templateHash, templateFromHash(mswh.templateHash) )
     withHashes.map( mswh => MailSpec.WithTemplate( mswh.seqnum, mswh.templateHash, templateFromHash( mswh.templateHash ), mswh.from, mswh.replyTo, mswh.to, mswh.subject, mswh.templateParams, mswh.retried ) )
 
-  def attemptMail( conn : Connection, maxRetries : Int, mswt : MailSpec.WithTemplate ) : Unit =
+  def attemptMail( conn : Connection, maxRetries : Int, mswt : MailSpec.WithTemplate, smtpContext : Smtp.Context ) : Unit =
     LatestSchema.Table.Mailable.deleteSingle( conn, mswt.seqnum )
     var attemptDeleteContents = true
     try
       val contents = mswt.templateParams.fill( mswt.template )
+      given Smtp.Context = smtpContext
       Smtp.sendSimpleHtmlOnly( contents, subject = mswt.subject, from = mswt.from, to = mswt.to.toString(), replyTo = mswt.replyTo.toSeq )
     catch
       case NonFatal(t) =>
@@ -356,24 +357,25 @@ object PgDatabase extends Migratory:
     if attemptDeleteContents then
       LatestSchema.Table.MailableTemplate.deleteIfUnreferenced( conn, mswt.templateHash )
 
-  def mailNextGroup( conn : Connection ) =
+  def mailNextGroup( conn : Connection, smtpContext : Smtp.Context ) =
     val retries = Config.mailMaxRetries( conn )
     val mswts   = pullMailGroup( conn )
-    mswts.foreach( mswt => attemptMail( conn, retries, mswt ) )
+    mswts.foreach( mswt => attemptMail( conn, retries, mswt, smtpContext ) )
 
-  def forceMailNextGroup( ds : DataSource ) : Task[Unit] =
+  def forceMailNextGroup( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
-      mailNextGroup( conn )
+      mailNextGroup( conn, smtpContext )
 
-  def mailNextGroupIfDue( conn : Connection ) =
+  def mailNextGroupIfDue( conn : Connection, smtpContext : Smtp.Context ) =
     val now = Instant.now()
     val nextMailingTime = LatestSchema.Table.Times.select( conn, TimesKey.MailNextBatch ).getOrElse( now )
     if now >= nextMailingTime then
-      mailNextGroup( conn )
+      mailNextGroup( conn, smtpContext )
       val delay = Config.mailBatchDelaySeconds( conn )
       LatestSchema.Table.Times.upsert( conn, TimesKey.MailNextBatch, now.plusSeconds( delay ) )
 
-  def mailNextGroupIfDue( ds : DataSource ) : Task[Unit] = withConnectionTransactional( ds )( mailNextGroupIfDue )
+  def mailNextGroupIfDue( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] = withConnectionTransactional( ds ): conn =>
+    mailNextGroupIfDue(conn, smtpContext )
 
   def ensureDb( ds : DataSource ) : Task[Unit] =
     withConnectionZIO( ds ): conn =>

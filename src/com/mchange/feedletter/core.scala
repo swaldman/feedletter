@@ -25,6 +25,12 @@ enum ConfigKey:
   case MailMaxRetries
   case TimeZone
 
+object SecretsKey:
+  val FeedletterJdbcUrl      = "feedletter.jdbc.url"
+  val FeedletterJdbcUser     = "feedletter.jdbc.user"
+  val FeedletterJdbcPassword = "feedletter.jdbc.password"
+  val FeedletterSecretSalt   = "feedletter.secret.salt"
+
 
 type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) => Map[String,String]

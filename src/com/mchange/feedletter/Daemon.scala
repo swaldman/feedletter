@@ -1,8 +1,9 @@
 package com.mchange.feedletter
 
 import zio.*
-import com.mchange.feedletter.db.PgDatabase
 import javax.sql.DataSource
+import com.mchange.feedletter.db.PgDatabase
+import com.mchange.mailutil.*
 
 import MLevel.*
 
@@ -34,13 +35,13 @@ object Daemon extends SelfLogging:
       .catchAll( t => WARNING.zlog( "Retry cycle for updateAssignComplete failed...", t ) )
       .schedule( CyclingSchedule.updateAssignComplete ) *> ZIO.unit
 
-  def retryingMailNextGroupIfDue( ds : DataSource ) : Task[Unit] =
-    PgDatabase.mailNextGroupIfDue( ds )
+  def retryingMailNextGroupIfDue( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
+    PgDatabase.mailNextGroupIfDue( ds, smtpContext )
       .tapError( t => WARNING.zlog("mailNextGroupIfDue failed. May retry.", t ) )
       .retry( RetrySchedule.mailNextGroupIfDue )
 
-  def cyclingRetryingMailNextGroupIfDue( ds : DataSource ) : Task[Unit] =
-    retryingMailNextGroupIfDue( ds )
+  def cyclingRetryingMailNextGroupIfDue( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
+    retryingMailNextGroupIfDue( ds, smtpContext )
       .catchAll( t => WARNING.zlog( "Retry cycle for mailNextGroupIfDue failed...", t ) )
       .schedule( CyclingSchedule.mailNextGroupIfDue ) *> ZIO.unit
 

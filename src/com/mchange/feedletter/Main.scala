@@ -7,22 +7,45 @@ import com.monovore.decline.*
 import cats.implicits.* // for mapN
 import cats.data.{NonEmptyList,Validated,ValidatedNel}
 
-import com.mchange.sc.v1.log.*
 import MLevel.*
 
-import java.time.Instant
+import java.nio.file.{Path as JPath}
+import java.time.{Instant,ZoneId}
+import java.util.{Properties, Map as JMap}
 import javax.sql.DataSource
 
-import com.mchange.v2.c3p0.ComboPooledDataSource
-
 import com.mchange.feedletter.db.DbVersionStatus
-import java.nio.file.Path
-import java.time.ZoneId
 
-object Main:
-  private lazy given logger : MLogger = mlogger( this )
+object Main extends SelfLogging:
+  val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] =
+    import com.mchange.v2.beans.BeansUtils
+    import com.mchange.v2.c3p0.ComboPooledDataSource
+    import scala.jdk.CollectionConverters.*
 
-  val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] = ZLayer.fromZIO( ZIO.attempt( new ComboPooledDataSource() ) )
+    def createDataSource( appSetup : AppSetup ) : DataSource =
+      val c3p0PropsJMap =
+        appSetup.secrets
+          .filter( (k, _) => k.startsWith("c3p0.") )
+          .map( (k, v) => (k.substring(5), v) )
+          .asJava
+
+      val nascent = new ComboPooledDataSource()
+      BeansUtils.overwriteAccessiblePropertiesFromMap(
+        c3p0PropsJMap, // sourceMap
+        nascent,       // destination bean
+        true,          // skip nulls
+        null,          // props to ignore, null means none
+        true,          // do coerce strings
+        null,          // null means log to default (WARNING) level if can't write
+        null,          // null means log to default (WARNING) level if can't coerce
+        false          // don't die on failures, continue
+      )
+      appSetup.secrets.get( SecretsKey.FeedletterJdbcUrl ).foreach( nascent.setJdbcUrl )
+      appSetup.secrets.get( SecretsKey.FeedletterJdbcUser ).foreach( nascent.setUser )
+      appSetup.secrets.get( SecretsKey.FeedletterJdbcPassword ).foreach( nascent.setPassword )
+      nascent
+
+    ZLayer.fromFunction( createDataSource _ )
 
   object Admin:
     val addFeed =
@@ -99,7 +122,7 @@ object Main:
       val opts =
         val dumpDbDir =
           val help = "Directory in which to create dump files prior to db migrations."
-          Opts.option[Path]("dump-db-dir", help=help, metavar="directory")
+          Opts.option[JPath]("dump-db-dir", help=help, metavar="directory")
             .map( checkExpandTildeHomeDirPath )
             .map( _.toAbsolutePath )
             .map( p => (ConfigKey.DumpDbDir, p.toString()) )
@@ -128,6 +151,17 @@ object Main:
           val settings = (Vector.empty ++ ddr ++ mbs ++ mbds ++ mmr ++ tz).toMap
           CommandConfig.Admin.SetConfig( settings )
       Command("set-config", header=header)( opts )
+    val sendTestEmail =
+      val header = "Send a brief email to test your SMTP configuration."
+      val opts =
+        val from =
+          val help = "The email address from which the test mail should be sent."
+          Opts.option[String]("from",help=help,metavar="e-mail address")
+        val to =
+          val help = "The email address to which the test mail should be sent."
+          Opts.option[String]("to",help=help,metavar="e-mail address")
+        ( from, to ) mapN ( (f,t) => CommandConfig.Admin.SendTestEmail(f,t) )
+      Command("send-test-email", header=header)( opts )
     val subscribe =
       val header = "Subscribe to a defined subscription."
       val opts =
@@ -174,34 +208,39 @@ object Main:
     Command("daemon", header=header )( opts )
 
   val feedletter =
-    val admin =
-      val header = "Administer and configure an installation."
-      val opts =
-        import Admin.*
-        Opts.subcommands(addFeed, defineEmailSubscription, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, setConfig, subscribe)
-      Command( name="admin", header=header )( opts )
-    val crank =
-      val header = "Run a usually recurring operation a single time."
-      val opts =
-        import Crank.*
-        Opts.subcommands(assign, complete, sendMailGroup)
-      Command( name="crank", header=header )( opts )
-    val db =
-      val header = "Manage the database and database schema."
-      val opts =
-        import Db.*
-        Opts.subcommands( init, migrate )
-      Command( name="db", header=header )( opts )
-
-    val subcommands = Opts.subcommands(admin,crank,daemon,db)
-    Command(name="feedletter", header="Manage e-mail subscriptions to and other notifications from RSS feeds.")( subcommands )
+    val opts : Opts[(Option[JPath], CommandConfig)] =
+      val secrets =
+        val help = "Path to properties file containing SMTP, postgres, and other configuration details."
+        Opts.option[JPath]("secrets",help=help,metavar="propsfile").orNone
+      val subcommands =
+        val admin =
+          val header = "Administer and configure an installation."
+          val opts =
+            import Admin.*
+            Opts.subcommands(addFeed, defineEmailSubscription, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
+          Command( name="admin", header=header )( opts )
+        val crank =
+          val header = "Run a usually recurring operation a single time."
+          val opts =
+            import Crank.*
+            Opts.subcommands(assign, complete, sendMailGroup)
+          Command( name="crank", header=header )( opts )
+        val db =
+          val header = "Manage the database and database schema."
+          val opts =
+            import Db.*
+            Opts.subcommands( init, migrate )
+          Command( name="db", header=header )( opts )
+        Opts.subcommands(admin,crank,daemon,db)
+      ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )
+    Command(name="feedletter", header="Manage e-mail subscriptions to and other notifications from RSS feeds.")( opts )
 
   def main( args : Array[String] ) : Unit =
     feedletter.parse(args.toIndexedSeq, sys.env) match
       case Left(help) =>
         println(help)
         System.exit(1)
-      case Right( cc : CommandConfig ) =>
-        val task = cc.zcommand.provide( AppSetup.live, LayerDataSource )
+      case Right( ( mbSecrets : Option[JPath], cc : CommandConfig ) ) =>
+        val task = cc.zcommand.provide( AppSetup.live(mbSecrets), LayerDataSource )
         Unsafe.unsafely:
           Runtime.default.unsafe.run(task).getOrThrow()

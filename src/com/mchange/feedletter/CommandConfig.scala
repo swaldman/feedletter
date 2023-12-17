@@ -1,15 +1,17 @@
 package com.mchange.feedletter
 
 import zio.*
+
 import com.mchange.feedletter.db.{DbVersionStatus,PgDatabase}
 
-import com.mchange.sc.v1.log.*
-import MLevel.*
-
+import java.nio.file.{Path as JPath}
 import javax.sql.DataSource
 
-object CommandConfig:
-  private lazy given logger : MLogger = mlogger( this )
+import com.mchange.mailutil.*
+
+import MLevel.*
+
+object CommandConfig extends SelfLogging:
 
   object Admin:
     case class AddFeed( fi : FeedInfo ) extends CommandConfig:
@@ -71,6 +73,16 @@ object CommandConfig:
           _    <- printSubscribablesTable(tups)
         yield ()
       end zcommand
+    case class SendTestEmail( from : String, to : String ) extends CommandConfig:
+      override def zcommand : ZCommand =
+        for
+          as <- ZIO.service[AppSetup]
+          _  <- ZIO.attemptBlocking:
+                      given Smtp.Context = as.smtpContext
+                      Smtp.sendSimplePlaintext("This is a test message from feedletter.", subject="FEEDLETTER TEST MESSAGE", from=from, to=to )
+          _  <- Console.printLine( s"Test email sent from '$from' to '$to'." )
+        yield ()
+      end zcommand
     case class SetConfig( settings : Map[ConfigKey,String] ) extends CommandConfig:
       override def zcommand : ZCommand =
         for
@@ -90,7 +102,7 @@ object CommandConfig:
       end zcommand
   object Crank:
     case object Assign extends CommandConfig:
-      override def zcommand: ZCommand =
+      override def zcommand : ZCommand =
         for
           ds <- ZIO.service[DataSource]
           _ <- PgDatabase.ensureDb( ds )
@@ -98,7 +110,7 @@ object CommandConfig:
         yield ()
       end zcommand
     case object Complete extends CommandConfig:
-      override def zcommand: ZCommand =
+      override def zcommand : ZCommand =
         for
           ds <- ZIO.service[DataSource]
           _ <- PgDatabase.ensureDb( ds )
@@ -106,11 +118,12 @@ object CommandConfig:
         yield ()
       end zcommand
     case object SendMailGroup extends CommandConfig:
-      override def zcommand: ZCommand =
+      override def zcommand : ZCommand =
         for
+          as <- ZIO.service[AppSetup]
           ds <- ZIO.service[DataSource]
           _ <- PgDatabase.ensureDb( ds )
-          _ <- PgDatabase.forceMailNextGroup( ds )
+          _ <- PgDatabase.forceMailNextGroup( ds, as.smtpContext )
         yield ()
       end zcommand
   object Db:
@@ -138,7 +151,7 @@ object CommandConfig:
         yield ()
       end zcommand
     case class Migrate( force : Boolean ) extends CommandConfig:
-      override def zcommand: ZCommand =
+      override def zcommand : ZCommand =
         def doMigrate( ds : DataSource ) = if force then PgDatabase.migrate(ds) else PgDatabase.cautiousMigrate(ds)
         for
           ds <- ZIO.service[DataSource]
@@ -147,11 +160,12 @@ object CommandConfig:
       end zcommand
   end Db
   case object Daemon extends CommandConfig:
-      override def zcommand: ZCommand =
+      override def zcommand : ZCommand =
         for
+          as <- ZIO.service[AppSetup]
           ds <- ZIO.service[DataSource]
           _  <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds ).fork
-          _  <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds ).fork
+          _  <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds, as.smtpContext ).fork
           _  <- ZIO.unit.forever
         yield ()
       end zcommand
