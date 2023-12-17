@@ -14,6 +14,8 @@ import java.time.{Instant,ZoneId}
 import java.util.{Properties, Map as JMap}
 import javax.sql.DataSource
 
+import com.mchange.conveniences.javanio.*
+
 import com.mchange.feedletter.db.DbVersionStatus
 
 object Main extends SelfLogging:
@@ -123,7 +125,7 @@ object Main extends SelfLogging:
         val dumpDbDir =
           val help = "Directory in which to create dump files prior to db migrations."
           Opts.option[JPath]("dump-db-dir", help=help, metavar="directory")
-            .map( checkExpandTildeHomeDirPath )
+            .map( _.resolveTildeAsHome )
             .map( _.toAbsolutePath )
             .map( p => (ConfigKey.DumpDbDir, p.toString()) )
             .orNone

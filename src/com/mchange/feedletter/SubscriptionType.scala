@@ -12,6 +12,7 @@ import scala.collection.immutable
 import com.mchange.feedletter.db.{AssignableKey, AssignableWithinTypeStatus, ItemStatus}
 
 import com.mchange.conveniences.www.*
+import com.mchange.conveniences.string.*
 import com.mchange.feedletter.db.PgDatabase
 import com.mchange.mailutil.*
 import com.mchange.sc.v1.log.*
@@ -21,12 +22,6 @@ object SubscriptionType:
   private lazy given logger : MLogger = mlogger(this)
 
   private val GeneralRegex = """^(\w+)\.(\w+)\:(.*)$""".r
-
-  extension ( s : String )
-    def asOptionNotBlank : Option[String] = if s.trim().nonEmpty then Some(s) else None
-    def asOptionNotBlankTrimmed : Option[String] =
-      val t = s.trim()
-      if t.nonEmpty then Some(t) else None
 
   object Email:
     class Each( params : Seq[(String,String)] ) extends Email("Each", params):
@@ -47,7 +42,7 @@ object SubscriptionType:
         val tosWithTemplateParams =
           destinations.map: destination =>
             ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-        PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, tosWithTemplateParams, computedSubject)
+        PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlank, tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -91,7 +86,7 @@ object SubscriptionType:
           val tosWithTemplateParams =
             destinations.map: destination =>
               ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-          PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlankTrimmed, tosWithTemplateParams, computedSubject)
+          PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlank, tosWithTemplateParams, computedSubject)
 
       private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
