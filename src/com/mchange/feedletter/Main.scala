@@ -210,8 +210,10 @@ object Main extends SelfLogging:
   val feedletter =
     val opts : Opts[(Option[JPath], CommandConfig)] =
       val secrets =
-        val help = "Path to properties file containing SMTP, postgres, and other configuration details."
-        Opts.option[JPath]("secrets",help=help,metavar="propsfile").orNone
+        val help = "Path to properties file containing SMTP, postgres, c3p0, and other configuration details."
+        val opt  = Opts.option[JPath]("secrets",help=help,metavar="propsfile")
+        val env  = Opts.env[JPath]("FEEDLETTER_SECRETS", help=help)
+        (opt orElse env).orNone
       val subcommands =
         val admin =
           val header = "Administer and configure an installation."
