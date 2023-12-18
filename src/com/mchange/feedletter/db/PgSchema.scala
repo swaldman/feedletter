@@ -9,6 +9,7 @@ import com.mchange.feedletter.{ConfigKey,Destination,ExcludedItem,FeedId,FeedInf
 import com.mchange.cryptoutil.{Hash, given}
 
 import com.mchange.feedletter.*
+import zio.http.Status.SeeOther
 
 object PgSchema:
   trait Creatable:
@@ -222,6 +223,17 @@ object PgSchema:
             """|UPDATE item
                |SET assignability = CAST( ? AS ItemAssignability )
                |WHERE feed_id = ? AND guid = ?""".stripMargin
+          // See
+          //   https://stackoverflow.com/questions/178479/preparedstatement-in-clause-alternatives
+          //   https://stackoverflow.com/questions/34627026/in-vs-any-operator-in-postgresql
+          private val DeleteDisappearedUnassigned =
+            """|DELETE FROM item
+               |WHERE assignability = 'Unassigned' AND NOT (guid = ANY( ? ))""".stripMargin
+          def deleteDisappearedUnassigned( conn : Connection, current : Set[Guid] ) : Int =
+            Using.resource( conn.prepareStatement( DeleteDisappearedUnassigned ) ): ps =>
+              val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
+              ps.setArray(1, sqlArray)
+              ps.executeUpdate()
           def checkStatus( conn : Connection, feedId : FeedId, guid : Guid ) : Option[ItemStatus] =
             Using.resource( conn.prepareStatement( SelectCheck ) ): ps =>
               ps.setInt   (1, feedId.toInt)

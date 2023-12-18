@@ -227,7 +227,11 @@ object PgDatabase extends Migratory:
           val newStableSince = now
           val newLastChecked = now
           LatestSchema.Table.Item.updateChanged( conn, fi.assertFeedId, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
-      case Some( ItemStatus( _, _, _, _, ItemAssignability.Assigned | ItemAssignability.Cleared ) ) => /* ignore, already assigned */
+      case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Assigned ) ) => /* update cache only */
+        val newContentHash = freshContent.##
+        if newContentHash != contentHash && newContentHash != ItemContent.EmptyHashCode then
+          LatestSchema.Table.Item.updateChanged( conn, fi.assertFeedId, guid, freshContent, prev )
+      case Some( ItemStatus( _, _, _, _, ItemAssignability.Cleared ) )  => /* ignore, we're done with this one */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
         def doInsert() =
@@ -247,6 +251,8 @@ object PgDatabase extends Migratory:
     guidToItemContent.foreach: ( guid, freshContent ) =>
       val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
       updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
+    val deleted = LatestSchema.Table.Item.deleteDisappearedUnassigned( conn, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
+    DEBUG.log( s"Deleted ${deleted} disappeared unassigned items." )
     LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
 
   // TODO: USe latest from feed, rather than cached values, if available
