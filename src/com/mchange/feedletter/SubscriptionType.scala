@@ -42,7 +42,7 @@ object SubscriptionType:
         val tosWithTemplateParams =
           destinations.map: destination =>
             ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-        PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlank, tosWithTemplateParams, computedSubject)
+        PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").toOptionNotBlank, tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -86,7 +86,7 @@ object SubscriptionType:
           val tosWithTemplateParams =
             destinations.map: destination =>
               ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-          PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").asOptionNotBlank, tosWithTemplateParams, computedSubject)
+          PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").toOptionNotBlank, tosWithTemplateParams, computedSubject)
 
       private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
