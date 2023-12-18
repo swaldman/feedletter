@@ -167,15 +167,12 @@ object Main extends SelfLogging:
     val subscribe =
       val header = "Subscribe to a defined subscription."
       val opts =
-        val feedId =
-          val help = "The ID of the RSS feed to be subscribed."
-          Opts.option[Int]("feed-id", help=help, metavar="feed-id").map( FeedId.apply )
         val name =
           val help = "The name of the defined subscription."
           Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
         val destination = Opts.argument[String](metavar="destination-to-be-subscribed").map( Destination.apply )
-        ( feedId, name, destination ) mapN: (fi, n, d) =>
-          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(fi, n, d) )
+        ( name, destination ) mapN: (n, d) =>
+          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(n, d) )
       Command("subscribe", header=header)( opts )
 
   object Crank:

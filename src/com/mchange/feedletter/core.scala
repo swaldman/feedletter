@@ -45,7 +45,7 @@ final case class FeedInfo( feedId : Option[FeedId], feedUrl : FeedUrl, minDelayM
 
 final case class ExcludedItem( feedId : FeedId, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
 
-final case class AdminSubscribeOptions( feedId : FeedId, subscribableName : SubscribableName, destination : Destination )
+final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination )
 
 object Destination:
   def apply( s : String ) : Destination = s

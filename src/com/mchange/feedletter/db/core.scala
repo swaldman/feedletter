@@ -13,7 +13,7 @@ import com.mchange.cryptoutil.*
 
 final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assignability : ItemAssignability )
 final case class AssignableWithinTypeStatus( withinTypeId : String, count : Int )
-final case class AssignableKey( feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String )
+final case class AssignableKey( subscribableName : SubscribableName, withinTypeId : String )
 
 object MailSpec:
   final case class WithHash( seqnum : Long, templateHash : Hash.SHA3_256, from : String, replyTo : Option[String], to : Destination, subject : String, templateParams : TemplateParams, retried : Int )

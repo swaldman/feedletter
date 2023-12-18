@@ -33,7 +33,7 @@ object SubscriptionType:
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         assert( contents.size == 1, s"Email.Each expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
-        val feedUrl = PgDatabase.assertFeedUrl( conn, assignableKey.feedId )
+        val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
         val fullTemplate =
           val info = ComposeInfo.Single( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
@@ -80,7 +80,7 @@ object SubscriptionType:
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
         if contents.nonEmpty then
-          val feedUrl = PgDatabase.assertFeedUrl( conn, assignableKey.feedId )
+          val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
           val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
           val fullTemplate = composeMultipleItemHtmlMailTemplate( assignableKey, this, contents ) // XXX: To be replaced with some entre to an untemplate
           val tosWithTemplateParams =
@@ -134,7 +134,7 @@ object SubscriptionType:
         "numItems"          -> contents.size.toString()
       ).filter( _._2.nonEmpty )
 
-    override def validateDestination( conn : Connection, destination : Destination, feedId : FeedId, subscribableName : SubscribableName ) : Boolean =
+    override def validateDestination( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean =
       try
         Smtp.Address.parseSingle( destination.toString(), strict = true  )
         true
@@ -170,7 +170,7 @@ sealed abstract class SubscriptionType( val category : String, val subtype : Str
   def paramsAllValues( key : String ) : Seq[String] = wwwFormFindAllValues( key, params )
   def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
-  def validateDestination( conn : Connection, destination : Destination, feedId : FeedId, subscribableName : SubscribableName ) : Boolean
+  def validateDestination( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
   override def toString() : String = s"${category}.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
   override def equals( other : Any ) : Boolean =

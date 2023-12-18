@@ -38,12 +38,12 @@ def printExcludedItemsTable( eis : Set[ExcludedItem] ) : Task[Unit] =
   ZIO.attempt( texttable.printTable( ExcludedItemsColumns, extractExcludedItem )( eis.map(texttable. Row.apply) ) )
 
 val SubscribableColumns = Seq(
-  texttable.Column("Feed ID"),
   texttable.Column("Name"),
+  texttable.Column("Feed ID"),
   texttable.Column("Subscription Type")
 )
 
-def printSubscribablesTable( tups : Set[(FeedId,SubscribableName,SubscriptionType)] ) : Task[Unit] =
+def printSubscribablesTable( tups : Set[(SubscribableName,FeedId,SubscriptionType)] ) : Task[Unit] =
   ZIO.attempt( texttable.printProductTable( SubscribableColumns )( tups.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
 
 
