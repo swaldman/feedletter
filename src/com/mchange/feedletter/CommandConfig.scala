@@ -46,6 +46,12 @@ object CommandConfig extends SelfLogging:
           _    <- printConfigurationTuplesTable(tups)
         yield ()
       end zcommand
+    case object ListComposeUntemplates extends CommandConfig:
+      override def zcommand : ZCommand =
+        for
+          _ <- printUntemplatesTable( ComposeUntemplates )
+        yield ()
+      end zcommand
     case object ListExcludedItems extends CommandConfig:
       override def zcommand : ZCommand =
         for

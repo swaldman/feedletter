@@ -37,7 +37,7 @@ object SubscriptionType:
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
         val fullTemplate =
           val info = ComposeInfo.Single( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
-          val compose = IndexedUntemplates( "com.mchange.feedletter.default.defaultComposeSingle" ).asInstanceOf[untemplate.Untemplate[ComposeInfo.Single,Nothing]]
+          val compose = ComposeUntemplates( "com.mchange.feedletter.default.defaultComposeSingle" ).asInstanceOf[untemplate.Untemplate[ComposeInfo.Single,Nothing]]
           compose( info ).text
         val tosWithTemplateParams =
           destinations.map: destination =>

@@ -3,6 +3,8 @@ package com.mchange.feedletter
 import com.mchange.sc.v1.texttable
 import zio.*
 
+import untemplate.Untemplate
+
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 
 val FeedInfoColumns = Seq(
@@ -46,5 +48,11 @@ val SubscribableColumns = Seq(
 def printSubscribablesTable( tups : Set[(SubscribableName,FeedId,SubscriptionType)] ) : Task[Unit] =
   ZIO.attempt( texttable.printProductTable( SubscribableColumns )( tups.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
 
+val UntemplatesColumns = Seq(
+  texttable.Column("Untemplate, Fully Qualified Name"),
+  texttable.Column("Input Type")
+)
 
+def printUntemplatesTable( tups : Iterable[(String,Untemplate.AnyUntemplate)] ) : Task[Unit] =
+  ZIO.attempt( texttable.printProductTable( UntemplatesColumns )( tups.map((k,v)=>(k,untemplateInputType(v))).map( texttable.Row.apply ) ) )
 

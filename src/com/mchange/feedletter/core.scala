@@ -16,6 +16,8 @@ import scala.collection.immutable
 import com.mchange.conveniences.www.*
 import trivialtemplate.TrivialTemplate
 
+import untemplate.Untemplate
+
 type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
 
 enum ConfigKey:
@@ -77,8 +79,41 @@ case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
   def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
 
+val ComposeUntemplates         = IndexedUntemplates.filter( (k,v) => isCompose(v) )
+val ComposeUntemplatesSingle   = ComposeUntemplates.filter( (k,v) => isComposeSingle(v) )
+val ComposeUntemplatesMultiple = ComposeUntemplates.filter( (k,v) => isComposeMultiple(v) )
+
+def untemplateInputType( template : Untemplate.AnyUntemplate ) : String =
+  template.UntemplateInputTypeCanonical.getOrElse( template.UntemplateInputTypeDeclared )
+
+def isCompose( candidate : Untemplate.AnyUntemplate ) : Boolean =
+  candidate.UntemplateInputTypeCanonical match
+    case Some( ctype ) => ctype.startsWith("com.mchange.feedletter.ComposeInfo")
+    case None =>
+      val checkMe  = candidate.UntemplateInputTypeDeclared
+      val prefixes = "ComposeInfo" :: "com.mchange.feedletter.ComposeInfo" :: "feedletter.ComposeInfo" :: Nil
+      prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
+
+def isComposeSingle( candidate : Untemplate.AnyUntemplate ) : Boolean =
+  candidate.UntemplateInputTypeCanonical match
+    case Some( "com.mchange.feedletter.ComposeInfo.Single" ) => true
+    case Some( _ ) => false
+    case None =>
+      val checkMe  = candidate.UntemplateInputTypeDeclared
+      val prefixes = "ComposeInfo.Single" :: "com.mchange.feedletter.ComposeInfo.Single" :: "feedletter.ComposeInfo.Single" :: Nil
+      prefixes.find( checkMe == _ ).nonEmpty
+
+def isComposeMultiple( candidate : Untemplate.AnyUntemplate ) : Boolean =
+  candidate.UntemplateInputTypeCanonical match
+    case Some( "com.mchange.feedletter.ComposeInfo.Multiple" ) => true
+    case Some( _ ) => false
+    case None =>
+      val checkMe  = candidate.UntemplateInputTypeDeclared
+      val prefixes = "ComposeInfo.Multiple" :: "com.mchange.feedletter.ComposeInfo.Multiple" :: "feedletter.ComposeInfo.Multiple" :: Nil
+      prefixes.find( checkMe == _ ).nonEmpty
+
 object ComposeInfo:
-  trait Universal:
+  sealed trait Universal:
     def feedUrl          : String
     def subscriptionName : String
     def subscriptionType : SubscriptionType
