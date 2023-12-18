@@ -17,7 +17,7 @@ import untemplate.mill._
 object feedletter extends RootModule with UntemplateModule with BuildInfo {
   def scalaVersion = "3.3.1"
 
-  val UnstaticVersion = "0.2.1-SNAPSHOT"
+  //val UnstaticVersion = "0.2.1-SNAPSHOT"
 
   def ivyDeps = Agg(
     ivy"dev.zio::zio:2.0.18",
@@ -33,8 +33,11 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     ivy"com.mchange::mailutil:0.0.2-SNAPSHOT",
     ivy"com.mchange::cryptoutil:0.0.2-SNAPSHOT",
     ivy"com.mchange::conveniences:0.0.2-SNAPSHOT",
-    ivy"com.mchange::unstatic:${UnstaticVersion}",
-    ivy"com.mchange::unstatic-ztapir:${UnstaticVersion}"
+    ivy"com.softwaremill.sttp.tapir::tapir-zio:1.9.5",
+    ivy"com.softwaremill.sttp.tapir::tapir-zio-http-server:1.9.5",
+    ivy"com.mchange::untemplate:0.1.2-SNAPSHOT",
+    //ivy"com.mchange::unstatic:${UnstaticVersion}",
+    //ivy"com.mchange::unstatic-ztapir:${UnstaticVersion}",
   )
 
   def buildInfoMembers = Seq(

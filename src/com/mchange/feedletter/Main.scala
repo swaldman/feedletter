@@ -222,7 +222,7 @@ object Main extends SelfLogging:
           val header = "Administer and configure an installation."
           val opts =
             import Admin.*
-            Opts.subcommands(addFeed, defineEmailSubscription, listConfig, listComposeUntemplates, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
+            Opts.subcommands(addFeed, defineEmailSubscription, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
           Command( name="admin", header=header )( opts )
         val crank =
           val header = "Run a usually recurring operation a single time."
