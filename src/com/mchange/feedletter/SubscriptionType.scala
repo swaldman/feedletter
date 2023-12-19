@@ -29,7 +29,7 @@ object SubscriptionType:
   object Email:
     class Each( params : Seq[(String,String)] ) extends Email("Each", params):
 
-      override val exampleWithinTypeId = "https://www.someblog.com/post/1111.html"
+      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
       
       override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
         Some( guid.toString() )
@@ -56,7 +56,7 @@ object SubscriptionType:
     class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
-      override val exampleWithinTypeId = "2023-week50"
+      override val sampleWithinTypeId = "2023-week50"
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -113,6 +113,8 @@ object SubscriptionType:
   abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params) with Templating:
     val from    : Seq[String] = paramsAllValues("from")
     val replyTo : Seq[String] = paramsAllValues("replyTo")
+
+    override def sampleDestination : Destination = Destination("user@example.com")
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
       val args = ( subscribableName, withinTypeId, feedUrl, contents )
@@ -173,7 +175,8 @@ object SubscriptionType:
         throw new InvalidSubscriptionType(s"'${str}' could not be parsed into a valid subscription type.")
 
 sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
-  def exampleWithinTypeId : String
+  def sampleWithinTypeId : String
+  def sampleDestination  : Destination
   def paramsFirstValue( key : String ) : Option[String] = wwwFormFindFirstValue( key, params )
   def paramsAllValues( key : String ) : Seq[String] = wwwFormFindAllValues( key, params )
   def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]

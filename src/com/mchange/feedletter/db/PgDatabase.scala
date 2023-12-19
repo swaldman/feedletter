@@ -247,7 +247,7 @@ object PgDatabase extends Migratory:
             doInsert()
 
   private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Unit =
-    val FeedDigest( guidToItemContent, timestamp ) = FeedDigest( fi.feedUrl )
+    val FeedDigest( _, guidToItemContent, timestamp ) = FeedDigest( fi.feedUrl )
     guidToItemContent.foreach: ( guid, freshContent ) =>
       val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
       updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
@@ -432,3 +432,8 @@ object PgDatabase extends Migratory:
   def feedIdUrlForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedId, FeedUrl ) =
     LatestSchema.Join.ItemSubscribable.selectFeedIdUrlForSubscribableName( conn, subscribableName )
 
+  def subscriptionTypeForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : SubscriptionType =
+    LatestSchema.Table.Subscribable.selectType( conn, subscribableName )
+
+  def subscriptionTypeForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[SubscriptionType] =
+    withConnectionTransactional( ds )( subscriptionTypeForSubscribableName( _, subscribableName ) )

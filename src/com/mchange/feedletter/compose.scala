@@ -50,6 +50,15 @@ object ComposeInfo:
   case class Single( feedUrl : String, subscriptionName : String, subscriptionType: SubscriptionType, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal
   case class Multiple( feedUrl : String, subscriptionName : String, subscriptionType: SubscriptionType, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal
 
+object ComposeSelection:
+  object Single:
+    case object First extends Single
+    case object Random extends Single
+    case class Guid( guid : com.mchange.feedletter.Guid ) extends Single
+  sealed trait Single
+  //object Multiple:
+  //sealed trait Multiple
+
 def composeMultipleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
 
 // def composeSingleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : ItemContent ) : String = ???
@@ -66,15 +75,15 @@ def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.port(port)), Server.live)
 
 def serveComposeSingleUntemplate(
-  untemplateName : String,
+  untemplateName   : String,
   subscriptionName : SubscribableName,
   subscriptionType : SubscriptionType,
-  withinTypeId : String,
-  destination : Destination,
-  feedUrl : FeedUrl,
-  digest : FeedDigest,
-  guid : Guid,
-  port : Int
+  withinTypeId     : String,
+  destination      : Destination,
+  feedUrl          : FeedUrl,
+  digest           : FeedDigest,
+  guid             : Guid,
+  port             : Int
 ) : Task[Unit] =
   val contents = digest.guidToItemContent( guid )
   val composeInfo = ComposeInfo.Single( feedUrl.toString(), subscriptionName.toString(), subscriptionType, withinTypeId, contents )

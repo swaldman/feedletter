@@ -23,6 +23,47 @@ object CommandConfig extends SelfLogging:
           _   <- printFeedInfoTable(fis)
         yield ()
       end zcommand
+    case class ComposeUntemplateSingle(
+      subscribableName : SubscribableName,
+      untemplateName   : String,
+      feedUrl          : FeedUrl,
+      selection        : ComposeSelection.Single,
+      destination      : Option[Destination],
+      withinTypeId     : Option[String],
+      port             : Int ) extends CommandConfig:
+      val digest = FeedDigest( feedUrl )
+      if digest.isEmpty then
+        throw new NoExampleItems(s"We can't compose against feed '$feedUrl', because it has no example items to render.")
+      val guid =
+        selection match
+          case ComposeSelection.Single.First  =>
+            digest.orderedGuids.head
+          case ComposeSelection.Single.Random =>
+            val n = scala.util.Random.nextInt( digest.orderedGuids.size )
+            digest.orderedGuids(n)
+          case ComposeSelection.Single.Guid( guid ) =>
+            guid
+      override def zcommand : ZCommand =
+        for
+          ds    <- ZIO.service[DataSource]
+          _     <- PgDatabase.ensureDb( ds )
+          stype <- PgDatabase.subscriptionTypeForSubscribableName( ds, subscribableName )
+          _     <- serveComposeSingleUntemplate(
+                     untemplateName,
+                     subscribableName,
+                     stype,
+                     withinTypeId.getOrElse( stype.sampleWithinTypeId ),
+                     destination.getOrElse( stype.sampleDestination ),
+                     feedUrl,
+                     digest,
+                     guid,
+                     port
+                   ).fork
+          _    <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _    <- ZIO.unit.forever
+        yield ()
+      end zcommand
+
     case class DefineEmailSubscription( feedId : FeedId, subscribableName : SubscribableName, from : String, replyTo : Option[String], subtype : String, extraParams : Map[String,String]  ) extends CommandConfig:
       override def zcommand : ZCommand =
         val params = Seq( ("from", from) ) ++ replyTo.map( rt => ("replyTo",rt) ) ++ extraParams.toSeq

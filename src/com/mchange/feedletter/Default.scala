@@ -7,4 +7,4 @@ object Default:
   val MailBatchSize             = 100
   val MailBatchDelaySeconds     = 15 * 60 // 15 mins
   val MailMaxRetries            = 5
-
+  val ComposePort               = 8080
