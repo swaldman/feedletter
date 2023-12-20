@@ -25,7 +25,6 @@ object CommandConfig extends SelfLogging:
       end zcommand
     case class ComposeUntemplateSingle(
       subscribableName : SubscribableName,
-      untemplateName   : String,
       selection        : ComposeSelection.Single,
       destination      : Option[Destination],
       withinTypeId     : Option[String],
@@ -44,6 +43,12 @@ object CommandConfig extends SelfLogging:
             digest.orderedGuids(n)
           case ComposeSelection.Single.Guid( guid ) =>
             guid
+      def untemplateName( stype : SubscriptionType ) : String =
+        stype match
+          case stu : SubscriptionType.Untemplated => stu.untemplateName
+          case _ =>
+            throw new InvalidSubscriptionType(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $stype")
+
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
@@ -53,8 +58,9 @@ object CommandConfig extends SelfLogging:
           stype    =  pair(1)
           dig      =  digest( fu )
           g        =  guid( dig )
+          un       = untemplateName(stype)
           _        <- serveComposeSingleUntemplate(
-                        untemplateName,
+                        un,
                         subscribableName,
                         stype,
                         withinTypeId.getOrElse( stype.sampleWithinTypeId ),

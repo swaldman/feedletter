@@ -14,9 +14,6 @@ object ComposeMain extends AbstractMain:
       val subscriptionName =
         val help = "The name of an already defined subscription that will use this template."
         Opts.option[String]("subscription-name",help=help,metavar="name").map( SubscribableName.apply )
-      val untemplateName =
-        val help = "The fully-qualified name of the unteplate"
-        Opts.option[String]("untemplate-name",help=help,metavar="fully-qualified-name")
       val selection =
         val first  = Opts.flag("first",help="Display first item in feed.").map( _ => ComposeSelection.Single.First )
         val random = Opts.flag("random",help="Choose random item from feed to display").map( _ => ComposeSelection.Single.Random )
@@ -31,8 +28,8 @@ object ComposeMain extends AbstractMain:
       val port =
         val help = "The port on which to run a local HTTP server, which will serve the rendered untemplate."
         Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.ComposePort )
-      ( subscriptionName, untemplateName, selection, destination, withinTypeId, port ) mapN: ( sn, un, s, d, wti, p ) =>
-        CommandConfig.Admin.ComposeUntemplateSingle( sn, un, s, d, wti, p )
+      ( subscriptionName, selection, destination, withinTypeId, port ) mapN: ( sn, s, d, wti, p ) =>
+        CommandConfig.Admin.ComposeUntemplateSingle( sn, s, d, wti, p )
     Command("single",header=header)( opts )
 
   val feedletterCompose =
