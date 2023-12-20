@@ -1,5 +1,5 @@
 #!/bin/bash
 
-./millw --no-server run "$@"
+./millw --no-server runMain com.mchange.feedletter.Main "$@"
 
 

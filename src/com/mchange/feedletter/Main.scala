@@ -18,36 +18,7 @@ import com.mchange.conveniences.javanio.*
 
 import com.mchange.feedletter.db.DbVersionStatus
 
-object Main extends SelfLogging:
-  val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] =
-    import com.mchange.v2.beans.BeansUtils
-    import com.mchange.v2.c3p0.ComboPooledDataSource
-    import scala.jdk.CollectionConverters.*
-
-    def createDataSource( appSetup : AppSetup ) : DataSource =
-      val c3p0PropsJMap =
-        appSetup.secrets
-          .filter( (k, _) => k.startsWith("c3p0.") )
-          .map( (k, v) => (k.substring(5), v) )
-          .asJava
-
-      val nascent = new ComboPooledDataSource()
-      BeansUtils.overwriteAccessiblePropertiesFromMap(
-        c3p0PropsJMap, // sourceMap
-        nascent,       // destination bean
-        true,          // skip nulls
-        null,          // props to ignore, null means none
-        true,          // do coerce strings
-        null,          // null means log to default (WARNING) level if can't write
-        null,          // null means log to default (WARNING) level if can't coerce
-        false          // don't die on failures, continue
-      )
-      appSetup.secrets.get( SecretsKey.FeedletterJdbcUrl ).foreach( nascent.setJdbcUrl )
-      appSetup.secrets.get( SecretsKey.FeedletterJdbcUser ).foreach( nascent.setUser )
-      appSetup.secrets.get( SecretsKey.FeedletterJdbcPassword ).foreach( nascent.setPassword )
-      nascent
-
-    ZLayer.fromFunction( createDataSource _ )
+object Main extends AbstractMain, SelfLogging:
 
   object Admin:
     val addFeed =
@@ -67,35 +38,6 @@ object Main extends SelfLogging:
           val fi = FeedInfo.forNewFeed(FeedUrl(fu), mindm, asm, maxdm )
           CommandConfig.Admin.AddFeed( fi )
       Command("add-feed",header=header)( opts )
-    val composeUntemplateSingle =
-      val header = "Iteratively edit and review the untemplate through which your posts will be notified"
-      val opts =
-        val subscriptionName =
-          val help = "The name of an already defined subscription that will use this template."
-          Opts.option[String]("subscription-name",help=help,metavar="name").map( SubscribableName.apply )
-        val untemplateName =
-          val help = "The fully-qualified name of the unteplate"
-          Opts.option[String]("untemplate-name",help=help,metavar="fully-qualified-name")
-        val feedUrl =
-          val help = "The URL from which to draw an example post"
-          Opts.option[String]("feed-url",help=help,metavar="url").map( FeedUrl.apply )
-        val selection =
-          val first  = Opts.flag("first",help="Display first item in feed.").map( _ => ComposeSelection.Single.First )
-          val random = Opts.flag("random",help="Choose random item from feed to display").map( _ => ComposeSelection.Single.Random )
-          val guid   = Opts.option[String]("guid",help="Choose guid of item to display.").map( s => ComposeSelection.Single.Guid(Guid(s)) )
-          ( first orElse random orElse guid ).withDefault( ComposeSelection.Single.First )
-        val destination =  
-          val help = "A subscription-type specific sample destination (e.g. email address) for the notification."
-          Opts.option[String]("destination",help=help,metavar="string").map( Destination.apply ).orNone
-        val withinTypeId =
-          val help = "A subscription-type specific sample within-type-id for the notification."
-          Opts.option[String]("within-type-id",help=help,metavar="string").orNone
-        val port =
-          val help = "The port on which to run a local HTTP server, which will serve the rendered untemplate."
-          Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.ComposePort )
-        ( subscriptionName, untemplateName, feedUrl, selection, destination, withinTypeId, port ) mapN: ( sn, un, fu, s, d, wti, p ) =>
-          CommandConfig.Admin.ComposeUntemplateSingle( sn, un, fu, s, d, wti, p )
-      Command("compose-untemplate-single",header=header)( opts )
     val defineEmailSubscription =
       val header = "Define a kind of e-mail subscription."
       val opts =
@@ -241,17 +183,13 @@ object Main extends SelfLogging:
 
   val feedletter =
     val opts : Opts[(Option[JPath], CommandConfig)] =
-      val secrets =
-        val help = "Path to properties file containing SMTP, postgres, c3p0, and other configuration details."
-        val opt  = Opts.option[JPath]("secrets",help=help,metavar="propsfile")
-        val env  = Opts.env[JPath]("FEEDLETTER_SECRETS", help=help)
-        (opt orElse env).orNone
+      val secrets = CommonOpts.Secrets
       val subcommands =
         val admin =
           val header = "Administer and configure an installation."
           val opts =
             import Admin.*
-            Opts.subcommands(addFeed, composeUntemplateSingle, defineEmailSubscription, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
+            Opts.subcommands(addFeed, defineEmailSubscription, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
           Command( name="admin", header=header )( opts )
         val crank =
           val header = "Run a usually recurring operation a single time."
@@ -269,12 +207,4 @@ object Main extends SelfLogging:
       ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )
     Command(name="feedletter", header="Manage e-mail subscriptions to and other notifications from RSS feeds.")( opts )
 
-  def main( args : Array[String] ) : Unit =
-    feedletter.parse(args.toIndexedSeq, sys.env) match
-      case Left(help) =>
-        println(help)
-        System.exit(1)
-      case Right( ( mbSecrets : Option[JPath], cc : CommandConfig ) ) =>
-        val task = cc.zcommand.provide( AppSetup.live(mbSecrets), LayerDataSource )
-        Unsafe.unsafely:
-          Runtime.default.unsafe.run(task).getOrThrow()
+  override val baseCommand = feedletter

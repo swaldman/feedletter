@@ -27,7 +27,8 @@ object AppSetup:
           case Some( jpath ) => ( Some(os.Path(jpath)), loadProperties( jpath ) )
           case None =>
             DefaultSecretsSearch.find( os.exists ).fold( (None, new Properties()) )( path => (Some(path), loadProperties(path.toIO)) )
-      val propsMap = props.toMap   
-      AppSetup( loc, propsMap, Smtp.Context( (Smtp.Context.defaultProperties().asScala.toMap ++ propsMap).toProperties, sys.env ) )
+      val propsMap = props.toMap
+      AppSetup( loc, propsMap )
       
-case class AppSetup( secretsLoc : Option[os.Path], secrets : Map[String,String], smtpContext : Smtp.Context )
+case class AppSetup( secretsLoc : Option[os.Path], secrets : Map[String,String] ):
+  lazy val smtpContext : Smtp.Context = Smtp.Context( (Smtp.Context.defaultProperties().asScala.toMap ++ secrets).toProperties, sys.env )
