@@ -53,11 +53,14 @@ object Main extends AbstractMain, SelfLogging:
         val replyTo =
           val help = "E-mail address to which recipients should reply (if different from the 'from' address)."
           Opts.option[String]("reply-to",help=help,metavar="e-mail address").orNone
+        val untemplateName =
+          val help = "Fully qualified name of untemplate that will render notifications."
+          Opts.option[String]("untemplate-name",help=help,metavar="fully-qualified-name").orNone
          // modified from decline's docs
         val kind =
-          val each = Opts.flag("each",help="E-mail each item").map( _ => "Each" )
-          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => "Weekly")
-          (each orElse weekly).withDefault("Each")
+          val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionType.Email.Each )
+          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionType.Email.Weekly )
+          (each orElse weekly).withDefault( SubscriptionType.Email.Each )
         val extraParams =
           def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
             strings.map{ s =>
@@ -71,8 +74,8 @@ object Main extends AbstractMain, SelfLogging:
             .mapValidated( validate )
             .map( Map.from )
         end extraParams
-        ( feedId, name, from, replyTo, kind, extraParams ) mapN: ( fi, n, f, rt, k, ep ) =>
-          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, k, ep )
+        ( feedId, name, from, replyTo, untemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, un, k, ep ) =>
+          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, un, k, ep )
       Command("define-email-subscription",header=header)( opts )
     val listComposeUntemplates =
       val header = "List available templates for composing notifications."

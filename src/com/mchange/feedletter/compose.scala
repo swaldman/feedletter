@@ -5,6 +5,7 @@ import zio.*
 import untemplate.Untemplate
 
 import db.AssignableKey
+import com.mchange.feedletter.ComposeMain.single
 
 val ComposeUntemplates         = IndexedUntemplates.filter( (k,v) => isCompose(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Universal,Nothing]]) )
 val ComposeUntemplatesSingle   = ComposeUntemplates.filter( (k,v) => isComposeSingle(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Single,Nothing]])    )
@@ -38,6 +39,26 @@ def isComposeMultiple( candidate : Untemplate.AnyUntemplate ) : Boolean =
       val checkMe  = candidate.UntemplateInputTypeDeclared
       val prefixes = "ComposeInfo.Multiple" :: "com.mchange.feedletter.ComposeInfo.Multiple" :: "feedletter.ComposeInfo.Multiple" :: Nil
       prefixes.find( checkMe == _ ).nonEmpty
+
+
+def findComposeUntemplate( fqn : String, single : Boolean ) : Untemplate.AnyUntemplate =
+  val (expectedDesc, otherDesc, expectedLoc, otherLoc) =
+    if single then
+      ("single","multiple",ComposeUntemplatesSingle,ComposeUntemplatesMultiple)
+    else
+      ("multiple","single",ComposeUntemplatesMultiple,ComposeUntemplatesSingle)
+  expectedLoc.get( fqn ).getOrElse:
+    val isCrosswise = otherLoc.contains(fqn)
+    if isCrosswise then
+      throw new UntemplateNotFound( s"Untemplate '$fqn' is a ${otherDesc}-item-accepting untemplate, not available in contexts thar render a ${expectedDesc} item." )
+    else
+      throw new UntemplateNotFound( s"Untemplate '$fqn' does not appear to be defined." )
+
+def findComposeUntemplateSingle( fqn : String ) : untemplate.Untemplate[ComposeInfo.Single,Nothing] =
+  findComposeUntemplate(fqn, single=true).asInstanceOf[untemplate.Untemplate[ComposeInfo.Single,Nothing]]
+
+def findComposeUntemplateMultiple( fqn : String ) : untemplate.Untemplate[ComposeInfo.Multiple,Nothing] =
+  findComposeUntemplate(fqn, single=false).asInstanceOf[untemplate.Untemplate[ComposeInfo.Multiple,Nothing]]
 
 object ComposeInfo:
   sealed trait Universal:

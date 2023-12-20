@@ -13,20 +13,28 @@ import com.mchange.feedletter.db.{AssignableKey, AssignableWithinTypeStatus, Ite
 
 import com.mchange.conveniences.www.*
 import com.mchange.conveniences.string.*
+import com.mchange.conveniences.collection.*
 import com.mchange.feedletter.db.PgDatabase
 import com.mchange.mailutil.*
 import com.mchange.sc.v1.log.*
 import MLevel.*
+import scala.util.control.NonFatal
 
 object SubscriptionType:
   private lazy given logger : MLogger = mlogger(this)
 
   private val GeneralRegex = """^(\w+)\.(\w+)\:(.*)$""".r
 
-  trait Templating:
+  sealed trait Untemplated:
+    def untemplateName : String
+  sealed trait Templating:
     def templateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : TemplateParams
+  sealed trait Factory:
+    def apply( params : Seq[(String,String)] ) : SubscriptionType
 
   object Email:
+    object Each extends Factory:
+      override def apply( params : Seq[(String,String)] ) : Each = new Each(params)
     class Each( params : Seq[(String,String)] ) extends Email("Each", params):
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
@@ -37,12 +45,13 @@ object SubscriptionType:
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
-        assert( contents.size == 1, s"Email.Each expects contents of exactly one item from a completed assignable, found ${contents.size}. assignableKey: ${assignableKey}" )
+        val uniqueContent = contents.uniqueOr: (c, nu) =>
+          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
         val fullTemplate =
           val info = ComposeInfo.Single( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
-          val compose = ComposeUntemplates( "com.mchange.feedletter.default.defaultComposeSingle" ).asInstanceOf[untemplate.Untemplate[ComposeInfo.Single,Nothing]]
+          val compose = findComposeUntemplateSingle(untemplateName)
           compose( info ).text
         val tosWithTemplateParams =
           destinations.map: destination =>
@@ -53,6 +62,8 @@ object SubscriptionType:
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
+    object Weekly extends Factory:
+      override def apply( params : Seq[(String,String)] ) : Weekly = new Weekly(params)
     class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
@@ -89,7 +100,10 @@ object SubscriptionType:
         if contents.nonEmpty then
           val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
           val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
-          val fullTemplate = composeMultipleItemHtmlMailTemplate( assignableKey, this, contents ) // XXX: To be replaced with some entre to an untemplate
+          val fullTemplate =
+            val info = ComposeInfo.Multiple( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents )
+            val compose = findComposeUntemplateMultiple(untemplateName)
+            compose( info ).text
           val tosWithTemplateParams =
             destinations.map: destination =>
               ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
@@ -110,9 +124,26 @@ object SubscriptionType:
         val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
         mainDefaultTemplateParams ++ (("weekStart", weekStart)::("weekEnd", weekEnd)::Nil)
 
-  abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params) with Templating:
+  abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params),Untemplated,Templating:
     val from    : Seq[String] = paramsAllValues("from")
     val replyTo : Seq[String] = paramsAllValues("replyTo")
+
+    override val untemplateName : String = paramsAllValues("untemplateName").uniqueOr: (c, nu) =>
+      throw new InvalidSubscriptionType(s"Each email subscription should define a unique untemplate name, found ${nu}: $c")
+
+    if from.isEmpty then
+      throw new InvalidSubscriptionType("All e-mail subscriptions must have a from address defined. Params: " + params.mkString(" "))
+    else
+      try
+        from.foreach( Smtp.Address.parseCommaSeparated(_, strict=true) )
+        replyTo.foreach( Smtp.Address.parseCommaSeparated(_, strict=true) )
+      catch
+        case NonFatal(t) =>
+          throw new InvalidSubscriptionType(
+            "Failed to parse as e-mail addresses, to and/or replyTo elements: to -> " +
+            from.mkString(", ") + "; replyTo -> " + replyTo.mkString(", "),
+            t
+          )
 
     override def sampleDestination : Destination = Destination("user@example.com")
 
@@ -163,7 +194,7 @@ object SubscriptionType:
     ( category, subtype ) match
       case ("Email", "Each")   => Some( Email.Each(params) )
       case ("Email", "Weekly") => Some( Email.Weekly(params) )
-      case _                   => None 
+      case _                   => None
 
   private def preparse( s : String ) : Option[Tuple3[String,String,Seq[Tuple2[String,String]]]] =
     s match
