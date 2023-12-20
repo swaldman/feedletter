@@ -599,6 +599,18 @@ object PgSchema:
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult("select-feed-id-url-for-subname", rs): rs =>
                   ( FeedId( rs.getInt(1) ), FeedUrl( rs.getString(2) ) )
+          private val SelectFeedUrlSubscriptionTypeForSubscribableName =
+            """|SELECT url, subscription_type
+               |FROM feed
+               |INNER JOIN subscribable
+               |ON feed.id = subscribable.feed_id
+               |WHERE subscribable.subscribable_name = ?""".stripMargin
+          def selectFeedUrlSubscriptionTypeForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedUrl, SubscriptionType ) =
+            Using.resource( conn.prepareStatement( SelectFeedUrlSubscriptionTypeForSubscribableName ) ): ps =>
+              ps.setString(1, subscribableName.toString())
+              Using.resource( ps.executeQuery() ): rs =>
+                uniqueResult("select-feed-url-subscription-type-for-subname", rs): rs =>
+                  ( FeedUrl( rs.getString(1) ), SubscriptionType.parse( rs.getString(2) ) )
         end ItemSubscribable
         object ItemAssignment:
           private val SelectItemContentsForAssignable =

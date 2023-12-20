@@ -26,15 +26,16 @@ object CommandConfig extends SelfLogging:
     case class ComposeUntemplateSingle(
       subscribableName : SubscribableName,
       untemplateName   : String,
-      feedUrl          : FeedUrl,
       selection        : ComposeSelection.Single,
       destination      : Option[Destination],
       withinTypeId     : Option[String],
       port             : Int ) extends CommandConfig:
-      val digest = FeedDigest( feedUrl )
-      if digest.isEmpty then
-        throw new NoExampleItems(s"We can't compose against feed '$feedUrl', because it has no example items to render.")
-      val guid =
+      def digest( feedUrl : FeedUrl ) : FeedDigest =
+        val digest = FeedDigest( feedUrl )
+        if digest.isEmpty then
+          throw new NoExampleItems(s"We can't compose against feed '$feedUrl', because it has no example items to render.")
+        digest
+      def guid( digest : FeedDigest ) : Guid = 
         selection match
           case ComposeSelection.Single.First  =>
             digest.orderedGuids.head
@@ -45,22 +46,26 @@ object CommandConfig extends SelfLogging:
             guid
       override def zcommand : ZCommand =
         for
-          ds    <- ZIO.service[DataSource]
-          _     <- PgDatabase.ensureDb( ds )
-          stype <- PgDatabase.subscriptionTypeForSubscribableName( ds, subscribableName )
-          _     <- serveComposeSingleUntemplate(
-                     untemplateName,
-                     subscribableName,
-                     stype,
-                     withinTypeId.getOrElse( stype.sampleWithinTypeId ),
-                     destination.getOrElse( stype.sampleDestination ),
-                     feedUrl,
-                     digest,
-                     guid,
-                     port
-                   ).fork
-          _    <- INFO.zlog( s"HTTP Server started on port ${port}" )
-          _    <- ZIO.unit.forever
+          ds       <- ZIO.service[DataSource]
+          _        <- PgDatabase.ensureDb( ds )
+          pair     <- PgDatabase.feedUrlSubscriptionTypeForSubscribableName( ds, subscribableName )
+          fu       =  pair(0)
+          stype    =  pair(1)
+          dig      =  digest( fu )
+          g        =  guid( dig )
+          _        <- serveComposeSingleUntemplate(
+                        untemplateName,
+                        subscribableName,
+                        stype,
+                        withinTypeId.getOrElse( stype.sampleWithinTypeId ),
+                        destination.getOrElse( stype.sampleDestination ),
+                        fu,
+                        dig,
+                        g,
+                        port
+                      ).fork
+          _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _       <- ZIO.unit.forever
         yield ()
       end zcommand
 

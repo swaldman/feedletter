@@ -429,11 +429,21 @@ object PgDatabase extends Migratory:
     LatestSchema.Table.Feed.selectUrl(conn, feedId).getOrElse:
       throw new FeedletterException( s"Expected a URL assigned for Feed ID '$feedId', none found.")
 
+
   def feedIdUrlForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedId, FeedUrl ) =
     LatestSchema.Join.ItemSubscribable.selectFeedIdUrlForSubscribableName( conn, subscribableName )
 
+/*
   def subscriptionTypeForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : SubscriptionType =
     LatestSchema.Table.Subscribable.selectType( conn, subscribableName )
 
   def subscriptionTypeForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[SubscriptionType] =
     withConnectionTransactional( ds )( subscriptionTypeForSubscribableName( _, subscribableName ) )
+*/
+
+  def feedUrlSubscriptionTypeForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedUrl, SubscriptionType ) =
+    LatestSchema.Join.ItemSubscribable.selectFeedUrlSubscriptionTypeForSubscribableName( conn, subscribableName )
+
+  def feedUrlSubscriptionTypeForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[( FeedUrl, SubscriptionType )] =
+    withConnectionTransactional( ds )( feedUrlSubscriptionTypeForSubscribableName( _, subscribableName ) )
+
