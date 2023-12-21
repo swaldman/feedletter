@@ -11,6 +11,8 @@ import scala.collection.immutable
 
 import com.mchange.feedletter.db.{AssignableKey, AssignableWithinTypeStatus, ItemStatus}
 
+import scala.collection.immutable
+
 import com.mchange.conveniences.www.*
 import com.mchange.conveniences.string.*
 import com.mchange.conveniences.collection.*
@@ -124,7 +126,7 @@ object SubscriptionType:
         val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
         mainDefaultTemplateParams ++ (("weekStart", weekStart)::("weekEnd", weekEnd)::Nil)
 
-  abstract class Email(subtype : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subtype, params),Untemplated,Templating:
+  abstract class Email(subcategory : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subcategory, params),Untemplated,Templating:
     val from    : Seq[String] = paramsAllValues("from")
     val replyTo : Seq[String] = paramsAllValues("replyTo")
 
@@ -190,22 +192,27 @@ object SubscriptionType:
       )
   end Email
 
-  def dispatch( category : String, subtype : String, params : Seq[(String,String)] ) : Option[SubscriptionType] =
-    ( category, subtype ) match
+  def dispatch( category : String, subcategory : String, params : Seq[(String,String)] ) : Option[SubscriptionType] =
+    ( category, subcategory ) match
       case ("Email", "Each")   => Some( Email.Each(params) )
       case ("Email", "Weekly") => Some( Email.Weekly(params) )
       case _                   => None
 
   private def preparse( s : String ) : Option[Tuple3[String,String,Seq[Tuple2[String,String]]]] =
     s match
-      case GeneralRegex( category, subtype, params ) => Some( Tuple3( category, subtype, wwwFormDecodeUTF8( params ) ) )
+      case GeneralRegex( category, subcategory, params ) => Some( Tuple3( category, subcategory, wwwFormDecodeUTF8( params ) ) )
       case _ => None
 
   def parse( str : String ) : SubscriptionType =
       preparse( str ).flatMap( dispatch.tupled ).getOrElse:
         throw new InvalidSubscriptionType(s"'${str}' could not be parsed into a valid subscription type.")
 
-sealed abstract class SubscriptionType( val category : String, val subtype : String, val params : Seq[(String,String)] ):
+  private def semisort( unsortedParams : Seq[(String,String)] ) : Seq[(String,String)] =
+    val sortedKeys = immutable.SortedSet.from( unsortedParams.map( _(0) ) )
+    sortedKeys.toSeq.flatMap( key => unsortedParams.filter( (k,_) => k == key ) )
+
+sealed abstract class SubscriptionType( val category : String, val subcategory : String, unsortedParams : Seq[(String,String)] ):
+  final val params = SubscriptionType.semisort( unsortedParams )
   def sampleWithinTypeId : String
   def sampleDestination  : Destination
   def paramsFirstValue( key : String ) : Option[String] = wwwFormFindFirstValue( key, params )
@@ -214,15 +221,15 @@ sealed abstract class SubscriptionType( val category : String, val subtype : Str
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestination( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
-  override def toString() : String = s"${category}.${subtype}:${wwwFormEncodeUTF8( params.toSeq* )}"
+  override def toString() : String = s"${category}.${subcategory}:${wwwFormEncodeUTF8( params.toSeq* )}"
   override def equals( other : Any ) : Boolean =
     other match
-      case stype : SubscriptionType =>
-        category == category && subtype == subtype && params == params
+      case otherStype : SubscriptionType =>
+        this.category == otherStype.category && this.subcategory == otherStype.subcategory && this.params == otherStype.params
       case _ =>
         false
   override def hashCode(): Int =
-    category.## ^ subtype.## ^ params.##
+    category.## ^ subcategory.## ^ params.##
 
 
 
