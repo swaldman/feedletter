@@ -7,3 +7,5 @@ class UntemplateNotFound( msg : String, cause : Throwable = null ) extends Feedl
 class InvalidSubscriptionType( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class NoExampleItems( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class WrongContentsMultiplicity( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+class EditorNotDefined( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+class InvalidEditFormat( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )

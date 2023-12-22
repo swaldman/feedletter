@@ -305,11 +305,20 @@ object PgSchema:
             """|SELECT subscription_type
                |FROM subscribable
                |WHERE subscribable_name = ?""".stripMargin
+          private val UpdateType =
+            """|UPDATE subscribable
+               |SET subscription_type = ?
+               |WHERE subscribable_name = ?""".stripMargin
           private val Insert = "INSERT INTO subscribable VALUES ( ?, ?, ? )"
           private val SelectSubscriptionTypeNamesByFeedId =
             """|SELECT DISTINCT subscribable_name
                |FROM subscribable
                |WHERE subscribable.feed_id = ?""".stripMargin
+          def updateSubscriptionType( conn : Connection, subscribableName : SubscribableName, subscriptionType : SubscriptionType ) =
+            Using.resource( conn.prepareStatement( UpdateType ) ): ps =>
+              ps.setString(1, subscriptionType.toString())
+              ps.setString(2, subscribableName.toString())
+              ps.executeUpdate()
           def selectSubscriptionTypeNamesByFeedId( conn : Connection, feedId : FeedId ) : Set[SubscribableName] =
             Using.resource( conn.prepareStatement( this.SelectSubscriptionTypeNamesByFeedId ) ): ps =>
               ps.setInt(1, feedId.toInt )
@@ -319,11 +328,13 @@ object PgSchema:
             Using.resource( conn.prepareStatement( Select ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => ( SubscribableName( rs.getString(1) ), FeedId( rs.getInt(2) ), SubscriptionType.parse( rs.getString(3) ) ) )
-          def selectType( conn : Connection, subscribableName : SubscribableName ) : SubscriptionType =
+          def selectTypeRep( conn : Connection, subscribableName : SubscribableName ) : String =
             Using.resource( conn.prepareStatement( SelectType ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
-                uniqueResult("select-subscription-type", rs)( rs => SubscriptionType.parse( rs.getString(1) ) )
+                uniqueResult("select-subscription-type-rep", rs)( _.getString(1) )
+          def selectType( conn : Connection, subscribableName : SubscribableName ) : SubscriptionType =
+            SubscriptionType.parse( selectTypeRep(conn, subscribableName) )
           def selectFeedIdAndType( conn : Connection, subscribableName : SubscribableName ) : (FeedId, SubscriptionType) =
             Using.resource( conn.prepareStatement( SelectFeedIdAndType ) ): ps =>
               ps.setString(1, subscribableName.toString())

@@ -19,7 +19,7 @@ trait AbstractMain:
       val env  = Opts.env[JPath]("FEEDLETTER_SECRETS", help=help)
       (opt orElse env).orNone
   end CommonOpts
-  
+
   val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] =
     import com.mchange.v2.beans.BeansUtils
     import com.mchange.v2.c3p0.ComboPooledDataSource

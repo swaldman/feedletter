@@ -77,6 +77,14 @@ object Main extends AbstractMain, SelfLogging:
         ( feedId, name, from, replyTo, untemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, un, k, ep ) =>
           CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, un, k, ep )
       Command("define-email-subscription",header=header)( opts )
+    val editSubscriptionDefinition =
+      val header = "Edit a subscription definition."
+      val opts =
+        val name =
+          val help = "Name of an existing email subscription."
+          Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
+        name.map( n => CommandConfig.Admin.EditSubscriptionDefinition(n) )
+      Command("edit-subscription-definition",header=header)( opts )
     val listComposeUntemplates =
       val header = "List available templates for composing notifications."
       val opts = Opts( CommandConfig.Admin.ListComposeUntemplates )
@@ -192,7 +200,7 @@ object Main extends AbstractMain, SelfLogging:
           val header = "Administer and configure an installation."
           val opts =
             import Admin.*
-            Opts.subcommands(addFeed, defineEmailSubscription, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
+            Opts.subcommands(addFeed, defineEmailSubscription, editSubscriptionDefinition, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
           Command( name="admin", header=header )( opts )
         val crank =
           val header = "Run a usually recurring operation a single time."

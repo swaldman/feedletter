@@ -7,6 +7,8 @@ import com.mchange.feedletter.db.{DbVersionStatus,PgDatabase}
 import java.nio.file.{Path as JPath}
 import javax.sql.DataSource
 
+import com.mchange.conveniences.throwable.*
+
 import com.mchange.mailutil.*
 
 import MLevel.*
@@ -46,8 +48,8 @@ object CommandConfig extends SelfLogging:
       def untemplateName( stype : SubscriptionType ) : String =
         stype match
           case stu : SubscriptionType.Untemplated => stu.untemplateName
-          case _ =>
-            throw new InvalidSubscriptionType(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $stype")
+          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          //  throw new InvalidSubscriptionType(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $stype")
 
       override def zcommand : ZCommand =
         for
@@ -98,6 +100,29 @@ object CommandConfig extends SelfLogging:
           tups <- PgDatabase.listSubscribables(ds)
           _    <- printSubscribablesTable(tups)
           _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
+        yield ()
+      end zcommand
+    case class EditSubscriptionDefinition( name : SubscribableName ) extends CommandConfig:
+      override def zcommand : ZCommand =
+        def withTemp[T]( op : os.Path => Task[T] ) : Task[T] =
+          ZIO.acquireReleaseWith( ZIO.attemptBlocking( os.temp() ) )( p => ZIO.succeedBlocking( try os.remove(p) catch NonFatals.PrintStackTrace ))(op)
+        for
+          ds         <- ZIO.service[DataSource]
+          _          <- PgDatabase.ensureDb( ds )
+          stypeRep   <- PgDatabase.subscriptionTypeRepForSubscribableName( ds, name )
+          editFormat =  SubscriptionType.toEditFormatLenient( stypeRep )
+          updated    <- withTemp { temp =>
+                          for
+                            _        <- ZIO.attemptBlocking( os.write.over(temp, editFormat) )
+                            editor   =  sys.env.get("EDITOR").getOrElse:
+                                          throw new EditorNotDefined("Please define environment variable EDITOR if you wish to edit a subscription.")
+                            ec       <- ZIO.attemptBlocking( os.proc(List(editor,temp.toString)).call(stdin=os.Inherit,stdout=os.Inherit,stderr=os.Inherit).exitCode )
+                            contents <- ZIO.attemptBlocking( os.read( temp ) )
+                            updated  =  SubscriptionType.fromEditFormat( contents )
+                          yield updated
+                      }
+          _           <- PgDatabase.updateSubscriptionType( ds, name, updated )
+          _           <- Console.printLine(s"Subscription '$name' successfully updated.")
         yield ()
       end zcommand
     case object ListConfig extends CommandConfig:

@@ -1,6 +1,7 @@
 package com.mchange.feedletter
 
 import zio.*
+import java.lang.System
 
 import java.nio.file.{Path as JPath}
 import java.time.Instant
@@ -36,6 +37,8 @@ object SecretsKey:
 
 type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) => Map[String,String]
+
+val LineSep = System.lineSeparator()
 
 object FeedInfo:
   def forNewFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int ): FeedInfo =

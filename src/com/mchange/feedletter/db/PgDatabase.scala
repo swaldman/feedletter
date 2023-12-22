@@ -14,19 +14,17 @@ import java.sql.SQLException
 import java.time.{Duration as JDuration,Instant,ZonedDateTime,ZoneId}
 import java.time.temporal.ChronoUnit
 
-import com.mchange.sc.v1.log.*
+import com.mchange.feedletter.*
 import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
-import com.mchange.feedletter.*
+
 import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}
 
 import com.mchange.feedletter.BuildInfo
 
-object PgDatabase extends Migratory:
-  private lazy given logger : MLogger = mlogger( this )
-
+object PgDatabase extends Migratory, SelfLogging:
   val LatestSchema = PgSchema.V1
   override val targetDbVersion = LatestSchema.Version
 
@@ -433,13 +431,17 @@ object PgDatabase extends Migratory:
   def feedIdUrlForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedId, FeedUrl ) =
     LatestSchema.Join.ItemSubscribable.selectFeedIdUrlForSubscribableName( conn, subscribableName )
 
-/*
   def subscriptionTypeForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : SubscriptionType =
     LatestSchema.Table.Subscribable.selectType( conn, subscribableName )
 
   def subscriptionTypeForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[SubscriptionType] =
     withConnectionTransactional( ds )( subscriptionTypeForSubscribableName( _, subscribableName ) )
-*/
+
+  def subscriptionTypeRepForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : String =
+    LatestSchema.Table.Subscribable.selectTypeRep( conn, subscribableName )
+
+  def subscriptionTypeRepForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[String] =
+    withConnectionTransactional( ds )( subscriptionTypeRepForSubscribableName( _, subscribableName ) )
 
   def feedUrlSubscriptionTypeForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedUrl, SubscriptionType ) =
     LatestSchema.Join.ItemSubscribable.selectFeedUrlSubscriptionTypeForSubscribableName( conn, subscribableName )
@@ -447,3 +449,8 @@ object PgDatabase extends Migratory:
   def feedUrlSubscriptionTypeForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[( FeedUrl, SubscriptionType )] =
     withConnectionTransactional( ds )( feedUrlSubscriptionTypeForSubscribableName( _, subscribableName ) )
 
+  def updateSubscriptionType( conn : Connection, subscribableName : SubscribableName, subscriptionType : SubscriptionType ) =
+    LatestSchema.Table.Subscribable.updateSubscriptionType( conn, subscribableName, subscriptionType )
+
+  def updateSubscriptionType( ds : DataSource, subscribableName : SubscribableName, subscriptionType : SubscriptionType ) : Task[Unit] =
+    withConnectionTransactional( ds )( conn => updateSubscriptionType(conn, subscribableName, subscriptionType) )

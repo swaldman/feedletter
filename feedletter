@@ -1,5 +1,14 @@
 #!/bin/bash
 
-./millw --no-server runMain com.mchange.feedletter.Main "$@"
+# We use runLocal rather than runMain, because the edit-subscription subcommand
+# requires access to unmediated standard input, and runMain often fakes / forwards
+# it.
+#
+# It might be better to write a custom run command that forks the process but
+# always inherits parent streams. But we'll stick with in-process execution for
+# now.
+
+./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
+
 
 

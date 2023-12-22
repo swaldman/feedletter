@@ -18,12 +18,11 @@ import com.mchange.conveniences.string.*
 import com.mchange.conveniences.collection.*
 import com.mchange.feedletter.db.PgDatabase
 import com.mchange.mailutil.*
-import com.mchange.sc.v1.log.*
-import MLevel.*
 import scala.util.control.NonFatal
 
-object SubscriptionType:
-  private lazy given logger : MLogger = mlogger(this)
+import MLevel.*
+
+object SubscriptionType extends SelfLogging:
 
   private val GeneralRegex = """^(\w+)\.(\w+)\:(.*)$""".r
 
@@ -40,7 +39,7 @@ object SubscriptionType:
     class Each( params : Seq[(String,String)] ) extends Email("Each", params):
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
-      
+
       override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
         Some( guid.toString() )
 
@@ -207,12 +206,58 @@ object SubscriptionType:
       preparse( str ).flatMap( dispatch.tupled ).getOrElse:
         throw new InvalidSubscriptionType(s"'${str}' could not be parsed into a valid subscription type.")
 
+  def fromEditFormat( str : String ) : SubscriptionType =
+    def lineToTup( line : String ) : (String,String) =
+      val separatorIndex = line.indexOf("=")
+      if separatorIndex >= 0 then // remember, values can contain '=' chars, don't split
+        val k = line.substring(0, separatorIndex)
+        val v = line.substring( separatorIndex + 1 )
+        (k, v)
+      else
+        throw new InvalidEditFormat("Missing '=' as separator: " + line)
+
+    val tups = str.linesIterator.map( _.stripLeading() ).filter( s => !s.startsWith("#") ).filterNot(_.isEmpty).map( lineToTup )
+    val (stypes, rest) = tups.partition( (k,_) => k == "SubscriptionType" )
+    val ( _, stype ) = stypes.toSeq.uniqueOr: (c, nu) =>
+      throw new InvalidEditFormat(s"Only one 'SubscriptionType' key is allowed, found $nu")
+    val cats = stype.split('.')
+    cats.length match
+      case 2 =>
+        val params = rest.toSeq
+        dispatch( cats(0), cats(1), params ).getOrElse:
+          throw new InvalidEditFormat(s"""Could not resolve "${cats(0)}.${cats(1)}" with params ${params.mkString(", ")} to a SubscriptionType.""")
+      case n =>
+        throw new InvalidEditFormat(s"""Category and subcategory should be separated by a single '.', found "${stype}".""")
+
   private def semisort( unsortedParams : Seq[(String,String)] ) : Seq[(String,String)] =
     val sortedKeys = immutable.SortedSet.from( unsortedParams.map( _(0) ) )
     sortedKeys.toSeq.flatMap( key => unsortedParams.filter( (k,_) => k == key ) )
 
+  private val ValidKeyRegex = """^\w+$""".r
+
+  def isValidKey( k : String ) : Boolean = k != "SubscriptionType" && ValidKeyRegex.matches(k)
+
+  def toEditFormatLenient( str : String ) =
+    preparse(str) match
+      case Some( (cat, subcat, params) ) => toEditFormat( cat, subcat, params )
+      case None =>
+        throw new InvalidSubscriptionType(s"Misformatted String representation: '${str}'")
+
+  def toEditFormat( category : String, subcategory : String, params : Seq[(String,String)] ) : String =
+    val allTuples = ("SubscriptionType", s"${category}.${subcategory}") +: params
+    allTuples.map((k,v) => s"$k=$v").mkString("",LineSep,LineSep)
+
 sealed abstract class SubscriptionType( val category : String, val subcategory : String, unsortedParams : Seq[(String,String)] ):
+
+  def validateParams() : Unit =
+    val invalidParams = unsortedParams.filter((k,_) => !SubscriptionType.isValidKey(k))
+    if invalidParams.nonEmpty then
+      throw new InvalidEditFormat(s"""Invalid parameters found: ${invalidParams.mkString(", ")}""")
+  validateParams()
+
   final val params = SubscriptionType.semisort( unsortedParams )
+  
+  def toEditFormat() : String = SubscriptionType.toEditFormat( category, subcategory, params )
   def sampleWithinTypeId : String
   def sampleDestination  : Destination
   def paramsFirstValue( key : String ) : Option[String] = wwwFormFindFirstValue( key, params )
