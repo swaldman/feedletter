@@ -52,38 +52,12 @@ final case class ExcludedItem( feedId : FeedId, guid : String, title : Option[St
 
 final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination )
 
-object Destination:
-  def apply( s : String ) : Destination = s
-opaque type Destination = String
-
-object FeedId:
-  def apply( i : Int ) : FeedId = i
-opaque type FeedId = Int
-
-extension( feedId : FeedId )
-  def toInt : Int = feedId
-
-object FeedUrl:
-  def apply( s : String ) : FeedUrl = s
-opaque type FeedUrl = String
-
-object Guid:
-  def apply( s : String ) : Guid = s
-opaque type Guid = String
-
-object SubscribableName:
-  def apply( s : String ) : SubscribableName = s
-opaque type SubscribableName = String
-
 object TemplateParams:
   def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )
   //val defaults : String => String = key => s"<i>&lt;oops! could not insert param '$key'&gt;</i>" 
 case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
   def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
-
-def digestFeed( feedUrl : String ) : Task[FeedDigest] =
-  ZIO.attemptBlocking( FeedDigest(feedUrl) )
 
 
 

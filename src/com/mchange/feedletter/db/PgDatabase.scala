@@ -119,6 +119,7 @@ object PgDatabase extends Migratory, SelfLogging:
           PgSchema.V1.Table.Assignable.create( stmt )
           PgSchema.V1.Table.Assignment.create( stmt )
           PgSchema.V1.Table.Subscription.create( stmt )
+          PgSchema.V1.Table.Subscription.Sequence.SubscriptionSeq.create( stmt )
           PgSchema.V1.Table.MailableTemplate.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
@@ -256,7 +257,8 @@ object PgDatabase extends Migratory, SelfLogging:
       DEBUG.log( s"Deleted ${deleted} disappeared unassigned items." )
       LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
 
-  // TODO: Use latest from feed, rather than cached values, if available
+  // it's probably fine to use cached values, because we recache them continually, even after assignment
+  // so they should never be very stale.
   private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Set[ItemContent] =
     LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.subscribableName, assignableKey.withinTypeId )
 
@@ -267,7 +269,7 @@ object PgDatabase extends Migratory, SelfLogging:
   private def route( conn : Connection, assignableKey : AssignableKey, stype : SubscriptionType ) : Unit =
     val AssignableKey( subscribableName, withinTypeId ) = assignableKey
     val contents = materializeAssignable(conn, assignableKey)
-    val destinations = LatestSchema.Table.Subscription.selectDestination( conn, subscribableName )
+    val destinations = LatestSchema.Table.Subscription.selectDestinationsForSubscribable( conn, subscribableName )
     stype.route(conn, assignableKey, contents, destinations )
 
   def queueForMailing( conn : Connection, contents : String, from : String, replyTo : Option[String], tosWithParams : Set[(Destination,TemplateParams)], subject : String ) : Unit = 
@@ -328,7 +330,8 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       val subscriptionType = LatestSchema.Table.Subscribable.selectType( conn, subscribableName )
       subscriptionType.validateDestination( conn, destination, subscribableName )
-      LatestSchema.Table.Subscription.insert( conn, destination, subscribableName )
+      val newId = LatestSchema.Table.Subscription.Sequence.SubscriptionSeq.selectNext( conn )
+      LatestSchema.Table.Subscription.insert( conn, newId, destination, subscribableName )
 
   def listSubscribables( ds : DataSource ) : Task[Set[(SubscribableName,FeedId,SubscriptionType)]] =
     withConnectionTransactional( ds ): conn =>

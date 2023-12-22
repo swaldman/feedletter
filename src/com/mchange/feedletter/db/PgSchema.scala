@@ -4,7 +4,7 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.{ConfigKey,Destination,ExcludedItem,FeedId,FeedInfo,FeedUrl,Guid,InvalidSubscriptionType,ItemContent,SubscribableName,SubscriptionType,TemplateParams}
+import com.mchange.feedletter.{ConfigKey,Destination,ExcludedItem,FeedId,FeedInfo,FeedUrl,Guid,InvalidSubscriptionType,ItemContent,SubscribableName,SubscriptionId,SubscriptionType,TemplateParams}
 
 import com.mchange.cryptoutil.{Hash, given}
 
@@ -471,28 +471,38 @@ object PgSchema:
         object Subscription extends Creatable:
           protected val Create =
             """|CREATE TABLE subscription(
+               |  subscription_id   BIGINT,
                |  destination       VARCHAR(1024),
                |  subscribable_name VARCHAR(64),
-               |  PRIMARY KEY( destination, subscribable_name ),
+               |  PRIMARY KEY( subscription_id ),
                |  FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
                |)""".stripMargin
-          private val SelectDestination =
+          private val SelectDestinationsForSubscribable =
             """|SELECT destination
                |FROM subscription
                |WHERE subscribable_name = ?""".stripMargin
           private val Insert =
-            """|INSERT INTO subscription(destination, subscribable_name)
-               |VALUES ( ?, ? )""".stripMargin
-          def selectDestination( conn : Connection, subscribableName : SubscribableName ) : Set[Destination] =
-            Using.resource( conn.prepareStatement( this.SelectDestination ) ): ps =>
+            """|INSERT INTO subscription(subscription_id, destination, subscribable_name)
+               |VALUES ( ?, ?, ? )""".stripMargin
+          def selectDestinationsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[Destination] =
+            Using.resource( conn.prepareStatement( this.SelectDestinationsForSubscribable ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => Destination( rs.getString(1) ) )
-          def insert( conn : Connection, destination : Destination, subscribableName : SubscribableName ) =
+          def insert( conn : Connection, subscriptionId : SubscriptionId, destination : Destination, subscribableName : SubscribableName ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
-              ps.setString(1, destination.toString())
-              ps.setString(2, subscribableName.toString())
+              ps.setLong  (1, subscriptionId.toLong)
+              ps.setString(2, destination.toString())
+              ps.setString(3, subscribableName.toString())
               ps.executeUpdate()
+          object Sequence:
+            object SubscriptionSeq extends Creatable:
+              protected val Create = "CREATE SEQUENCE subscription_seq AS BIGINT"
+              private val SelectNext = "SELECT nextval('subscription_seq')"
+              def selectNext( conn : Connection ) : SubscriptionId =
+                Using.resource( conn.prepareStatement(SelectNext) ): ps =>
+                  Using.resource( ps.executeQuery() ): rs =>
+                    uniqueResult("select-next-feed-seq", rs)( rs => SubscriptionId( rs.getInt(1) ) )
 
         // publication-related tables should be decoupled from, unrelated to the
         // tables above. logically, we should be listening for "completion" above
