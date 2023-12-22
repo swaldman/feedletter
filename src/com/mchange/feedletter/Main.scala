@@ -33,9 +33,12 @@ object Main extends AbstractMain, SelfLogging:
         val maxDelayMinutes =
           val help = "Notwithstanding other settings, maximum period past which an item should be notified, regardless of its stability."
           Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes").withDefault(Default.MaxDelayMinutes)
+        val recheckEveryMinutes =
+          val help = "Delay between refreshes of feeds, and redetermining items' availability for notification."
+          Opts.option[Int]("recheck-every-minutes", help=help, metavar="minutes").withDefault(Default.RecheckEveryMinutes)
         val feedUrl = Opts.argument[String](metavar="feed-url")  
-        (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, feedUrl) mapN: (mindm, asm, maxdm, fu) =>
-          val fi = FeedInfo.forNewFeed(FeedUrl(fu), mindm, asm, maxdm )
+        (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, recheckEveryMinutes, feedUrl) mapN: (mindm, asm, maxdm, rem, fu) =>
+          val fi = FeedInfo.forNewFeed(FeedUrl(fu), mindm, asm, maxdm, rem )
           CommandConfig.Admin.AddFeed( fi )
       Command("add-feed",header=header)( opts )
     val defineEmailSubscription =

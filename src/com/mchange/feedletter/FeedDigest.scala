@@ -8,11 +8,10 @@ import scala.xml.{Elem,XML}
 
 
 object FeedDigest:
-  def apply( is : InputStream ) : FeedDigest =
-    // we err on the side of the timestamp being early, so there's no risk
-    // interval-dependent subscriptions see full assignment through a timestamp
-    // then an item appearing at the very end of the interval, unassigned.
-    val asOf = Instant.now() 
+  // we should err on the side of the timestamp being slightly early, so there's no risk
+  // interval-dependent subscriptions see full assignment through a timestamp
+  // then an item appearing at the very end of the interval, unassigned.
+  def apply( is : InputStream, asOf : Instant ) : FeedDigest =
     val rootElem = XML.load( is )
     val rssElem =
       rootElem.label match
@@ -22,10 +21,12 @@ object FeedDigest:
     val orderedGuids = items.map( _ \ "guid" ).map( _.text.trim ).map( Guid.apply )
     val itemContents = items.map( ItemContent.fromItemElem )
     val guidToItemContent = orderedGuids.zip( itemContents ).toMap
-    FeedDigest( orderedGuids, guidToItemContent, asOf )  
+    FeedDigest( orderedGuids, guidToItemContent, asOf )
 
-  def apply( feedUrl : FeedUrl ) : FeedDigest =
-    requests.get.stream( feedUrl.toString() ).readBytesThrough( this.apply )
+  def apply( is : InputStream) : FeedDigest = apply( is, Instant.now() )
+
+  def apply( feedUrl : FeedUrl, asOf : Instant = Instant.now() ) : FeedDigest =
+    requests.get.stream( feedUrl.toString() ).readBytesThrough( is => this.apply(is, asOf) )
 
 final case class FeedDigest( orderedGuids : Seq[Guid], guidToItemContent : immutable.Map[Guid,ItemContent], timestamp : Instant ):
   def isEmpty  : Boolean = orderedGuids.isEmpty

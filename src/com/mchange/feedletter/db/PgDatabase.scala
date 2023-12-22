@@ -245,15 +245,18 @@ object PgDatabase extends Migratory, SelfLogging:
             doInsert()
 
   private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Unit =
-    val FeedDigest( _, guidToItemContent, timestamp ) = FeedDigest( fi.feedUrl )
-    guidToItemContent.foreach: ( guid, freshContent ) =>
-      val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
-      updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
-    val deleted = LatestSchema.Table.Item.deleteDisappearedUnassigned( conn, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
-    DEBUG.log( s"Deleted ${deleted} disappeared unassigned items." )
-    LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
+    val nextAssign = fi.lastAssigned.plusSeconds( fi.assignEveryMinutes * 60 )
+    val now = Instant.now()
+    if now > nextAssign then
+      val FeedDigest( _, guidToItemContent, timestamp ) = FeedDigest( fi.feedUrl, now )
+      guidToItemContent.foreach: ( guid, freshContent ) =>
+        val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
+        updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
+      val deleted = LatestSchema.Table.Item.deleteDisappearedUnassigned( conn, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
+      DEBUG.log( s"Deleted ${deleted} disappeared unassigned items." )
+      LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
 
-  // TODO: USe latest from feed, rather than cached values, if available
+  // TODO: Use latest from feed, rather than cached values, if available
   private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Set[ItemContent] =
     LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.subscribableName, assignableKey.withinTypeId )
 

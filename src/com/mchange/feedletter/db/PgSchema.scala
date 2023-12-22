@@ -114,15 +114,16 @@ object PgSchema:
                |  min_delay_minutes           INTEGER NOT NULL,
                |  await_stabilization_minutes INTEGER NOT NULL,
                |  max_delay_minutes           INTEGER NOT NULL,
+               |  assign_every_minutes        INTEGER NOT NULL,
                |  added                       TIMESTAMP NOT NULL,
                |  last_assigned               TIMESTAMP NOT NULL,     -- we'll start at added
                |  PRIMARY KEY(id)
                |)""".stripMargin
           private val Insert =
-            """|INSERT INTO feed(id, url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, added, last_assigned)
-               |VALUES( ?, ?, ?, ?, ?, ?, ? )""".stripMargin
+            """|INSERT INTO feed(id, url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, assign_every_minutes, added, last_assigned)
+               |VALUES( ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
           private val SelectAll =
-            "SELECT id, url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, added, last_assigned FROM feed"
+            "SELECT id, url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, assign_every_minutes, added, last_assigned FROM feed"
           private val SelectUrl =
             """|SELECT url
                |FROM feed
@@ -137,21 +138,22 @@ object PgSchema:
                |WHERE id = ?""".stripMargin
           def insert( conn : Connection, newFeedId : FeedId, fi : FeedInfo ) : Int =
             assert( fi.feedId == None, "Cannot insert a FeedInfo with an already assigned id: " + fi )
-            insert(conn, newFeedId, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.added, fi.lastAssigned)
-          def insert( conn : Connection, feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, added : Instant, lastAssigned : Instant ) : Int =
+            insert(conn, newFeedId, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.assignEveryMinutes, fi.added, fi.lastAssigned)
+          def insert( conn : Connection, feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
               ps.setInt       (1, feedId.toInt)
               ps.setString    (2, feedUrl.toString())
               ps.setInt       (3, minDelayMinutes )
               ps.setInt       (4, awaitStabilizationMinutes)
               ps.setInt       (5, maxDelayMinutes )
-              ps.setTimestamp (6, Timestamp.from(added) )
-              ps.setTimestamp (7, Timestamp.from(lastAssigned) )
+              ps.setInt       (6, assignEveryMinutes )
+              ps.setTimestamp (7, Timestamp.from(added) )
+              ps.setTimestamp (8, Timestamp.from(lastAssigned) )
               ps.executeUpdate()
           def selectAll( conn : Connection ) : Set[FeedInfo] =
             Using.resource( conn.prepareStatement( this.SelectAll ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => FeedInfo(Some(FeedId(rs.getInt(1))), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getTimestamp(6).toInstant, rs.getTimestamp(7).toInstant) )
+                toSet(rs)( rs => FeedInfo(Some(FeedId(rs.getInt(1))), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6), rs.getTimestamp(7).toInstant, rs.getTimestamp(8).toInstant) )
           def selectUrl( conn : Connection, feedId : FeedId ) : Option[FeedUrl] =
             Using.resource(conn.prepareStatement(this.SelectUrl)): ps =>
               ps.setInt(1, feedId.toInt)
