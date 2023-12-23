@@ -56,6 +56,8 @@ object SubscriptionManager extends SelfLogging:
 
       override lazy val json = jsoniter.writeToString(this)
 
+      override lazy val jsonPretty = jsoniter.writeToString(this, jsoniter.WriterConfig.withIndentionStep(4))
+
       override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
         Some( guid.toString() )
 
@@ -91,6 +93,8 @@ object SubscriptionManager extends SelfLogging:
       override val factory = Weekly
 
       override lazy val json = jsoniter.writeToString(this)
+
+      override lazy val jsonPretty = jsoniter.writeToString(this, jsoniter.WriterConfig.withIndentionStep(4))
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -207,3 +211,4 @@ sealed trait SubscriptionManager:
   def factory : SubscriptionManager.Factory
   def tag : SubscriptionManager.Tag = factory.tag
   def json : String
+  def jsonPretty : String

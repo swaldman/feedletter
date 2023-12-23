@@ -310,7 +310,7 @@ object PgSchema:
                |WHERE subscribable_name = ?""".stripMargin
           private val UpdateManagerJson =
             """|UPDATE subscribable
-               |SET subscription_manager_json = ?
+               |SET subscription_manager_json = CAST( ? AS JSONB )
                |WHERE subscribable_name = ?""".stripMargin
           private val Insert = "INSERT INTO subscribable VALUES ( ?, ?, ?, CAST( ? AS JSONB ) )"
           private val SelectSubscribableNamesByFeedId =

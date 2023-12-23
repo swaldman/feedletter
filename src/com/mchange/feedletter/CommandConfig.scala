@@ -119,7 +119,7 @@ object CommandConfig extends SelfLogging:
           sman       <- PgDatabase.subscriptionManagerForSubscribableName( ds, name )
           updated    <- withTemp { temp =>
                           for
-                            _        <- ZIO.attemptBlocking( os.write.over(temp, sman.json) )
+                            _        <- ZIO.attemptBlocking( os.write.over(temp, sman.jsonPretty) )
                             editor   =  sys.env.get("EDITOR").getOrElse:
                                           throw new EditorNotDefined("Please define environment variable EDITOR if you wish to edit a subscription.")
                             ec       <- ZIO.attemptBlocking( os.proc(List(editor,temp.toString)).call(stdin=os.Inherit,stdout=os.Inherit,stderr=os.Inherit).exitCode )
