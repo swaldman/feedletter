@@ -75,7 +75,7 @@ object SubscriptionManager extends SelfLogging:
         val tosWithTemplateParams =
           destinations.map: destination =>
             ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-        PgDatabase.queueForMailing( conn, fullTemplate, from.toInternetAddress.toString(), replyTo.map(_.toInternetAddress.toString()), tosWithTemplateParams, computedSubject)
+        PgDatabase.queueForMailing( conn, fullTemplate, from.rendered, replyTo.map(_.rendered), tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -134,7 +134,7 @@ object SubscriptionManager extends SelfLogging:
           val tosWithTemplateParams =
             destinations.map: destination =>
               ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-          PgDatabase.queueForMailing( conn, fullTemplate, from.toInternetAddress.toString(), replyTo.map(_.toInternetAddress.toString()), tosWithTemplateParams, computedSubject)
+          PgDatabase.queueForMailing( conn, fullTemplate, from.rendered, replyTo.map(_.rendered), tosWithTemplateParams, computedSubject)
 
       private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
@@ -176,8 +176,8 @@ object SubscriptionManager extends SelfLogging:
       val toNickname = toAddress.displayName
       val toEmail  = toAddress.email
       extraParams.toMap ++ Map(
-        "from"              -> from.toInternetAddress.toString(),
-        "replyTo"           -> replyTo.map( _.toInternetAddress.toString() ).getOrElse(""),
+        "from"              -> from.rendered,
+        "replyTo"           -> replyTo.map( _.rendered ).getOrElse(""),
         "to"                -> toFull,
         "toFull"            -> toFull,
         "toNickname"        -> toNickname.getOrElse(""),

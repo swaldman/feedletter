@@ -129,3 +129,14 @@ Generated JSON codec for type 'com.mchange.mailutil.Smtp.Address':
 }
 val json: String = {"email":"swaldman@mchange.com"}
 #+end_example
+
+#+begin_src scala :scala-version 3.3.1 :dep '("com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:2.25.0" "com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:2.25.0" "com.mchange::mailutil:0.0.2-SNAPSHOT") 
+  import com.mchange.mailutil.*
+
+  println( Smtp.Address("swaldman@mchange.com", Some("Steve")).toString )
+  println( Smtp.Address("swaldman@mchange.com", Some("Steve")).toInternetAddress.toString )
+#+end_src
+
+#+RESULTS:
+: Address(swaldman@mchange.com,Some(Steve),UTF-8)
+: Steve <swaldman@mchange.com>
