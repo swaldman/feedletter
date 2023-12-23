@@ -2,6 +2,8 @@ package com.mchange.feedletter
 
 import zio.*
 
+import com.github.plokhotnyuk.jsoniter_scala.{core as jsoniter}
+
 import com.mchange.feedletter.db.{DbVersionStatus,PgDatabase}
 
 import java.nio.file.{Path as JPath}
@@ -45,28 +47,28 @@ object CommandConfig extends SelfLogging:
             digest.orderedGuids(n)
           case ComposeSelection.Single.Guid( guid ) =>
             guid
-      def untemplateName( stype : SubscriptionType ) : String =
-        stype match
-          case stu : SubscriptionType.Untemplated => stu.untemplateName
+      def untemplateName( sman : SubscriptionManager ) : String =
+        sman match
+          case stu : SubscriptionManager.Untemplated => stu.untemplateName
           //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-          //  throw new InvalidSubscriptionType(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $stype")
+          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $sman")
 
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
           _        <- PgDatabase.ensureDb( ds )
-          pair     <- PgDatabase.feedUrlSubscriptionTypeForSubscribableName( ds, subscribableName )
+          pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
-          stype    =  pair(1)
+          sman     =  pair(1)
           dig      =  digest( fu )
           g        =  guid( dig )
-          un       = untemplateName(stype)
+          un       = untemplateName(sman)
           _        <- serveComposeSingleUntemplate(
                         un,
                         subscribableName,
-                        stype,
-                        withinTypeId.getOrElse( stype.sampleWithinTypeId ),
-                        destination.getOrElse( stype.sampleDestination ),
+                        sman,
+                        withinTypeId.getOrElse( sman.sampleWithinTypeId ),
+                        destination.getOrElse( sman.sampleDestination ),
                         fu,
                         dig,
                         g,
@@ -82,21 +84,26 @@ object CommandConfig extends SelfLogging:
       from             : String,
       replyTo          : Option[String],
       mbUntemplateName : Option[String],
-      stypeFactory     : SubscriptionType.Factory,
+      smanFactory      : SubscriptionManager.Factory,
       extraParams      : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
         val untemplateName =
-          stypeFactory match
-            case SubscriptionType.Email.Each   => mbUntemplateName.getOrElse( Default.UntemplateSingle )
-            case SubscriptionType.Email.Weekly => mbUntemplateName.getOrElse( Default.UntemplateMultiple )
+          smanFactory match
+            case SubscriptionManager.Email.Each   => mbUntemplateName.getOrElse( Default.UntemplateSingle )
+            case SubscriptionManager.Email.Weekly => mbUntemplateName.getOrElse( Default.UntemplateMultiple )
 
-        val params = (Seq( ("from", from) ) ++ replyTo.map( rt => ("replyTo",rt) ) :+ ("untemplateName", untemplateName)) ++ extraParams.toSeq
-        val subscriptionType = stypeFactory(params)
+        val subscriptionManager =
+          smanFactory match
+            case SubscriptionManager.Email.Each =>
+              SubscriptionManager.Email.Each( from = Smtp.Address.parseSingle(from), replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ), untemplateName, extraParams )
+            case SubscriptionManager.Email.Weekly =>
+              SubscriptionManager.Email.Weekly( from = Smtp.Address.parseSingle(from), replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ), untemplateName, extraParams )
+
         for
           ds   <- ZIO.service[DataSource]
           _    <- PgDatabase.ensureDb( ds )
-          _    <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionType )
+          _    <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
           tups <- PgDatabase.listSubscribables(ds)
           _    <- printSubscribablesTable(tups)
           _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
@@ -109,20 +116,19 @@ object CommandConfig extends SelfLogging:
         for
           ds         <- ZIO.service[DataSource]
           _          <- PgDatabase.ensureDb( ds )
-          stypeRep   <- PgDatabase.subscriptionTypeRepForSubscribableName( ds, name )
-          editFormat =  SubscriptionType.toEditFormatLenient( stypeRep )
+          sman       <- PgDatabase.subscriptionManagerForSubscribableName( ds, name )
           updated    <- withTemp { temp =>
                           for
-                            _        <- ZIO.attemptBlocking( os.write.over(temp, editFormat) )
+                            _        <- ZIO.attemptBlocking( os.write.over(temp, sman.json) )
                             editor   =  sys.env.get("EDITOR").getOrElse:
                                           throw new EditorNotDefined("Please define environment variable EDITOR if you wish to edit a subscription.")
                             ec       <- ZIO.attemptBlocking( os.proc(List(editor,temp.toString)).call(stdin=os.Inherit,stdout=os.Inherit,stderr=os.Inherit).exitCode )
                             contents <- ZIO.attemptBlocking( os.read( temp ) )
-                            updated  =  SubscriptionType.fromEditFormat( contents )
+                            updated  =  SubscriptionManager.materialize( sman.tag, contents )
                           yield updated
                       }
-          _           <- PgDatabase.updateSubscriptionType( ds, name, updated )
-          _           <- Console.printLine(s"Subscription '$name' successfully updated.")
+          _           <- PgDatabase.updateSubscriptionManagerJson( ds, name, updated )
+          _           <- Console.printLine(s"Subscription definition '$name' successfully updated.")
         yield ()
       end zcommand
     case object ListConfig extends CommandConfig:

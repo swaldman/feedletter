@@ -36,9 +36,15 @@ object Main extends AbstractMain, SelfLogging:
         val recheckEveryMinutes =
           val help = "Delay between refreshes of feeds, and redetermining items' availability for notification."
           Opts.option[Int]("recheck-every-minutes", help=help, metavar="minutes").withDefault(Default.RecheckEveryMinutes)
+        val setTimings =
+          (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, recheckEveryMinutes).mapN( (mindm, asm, maxdm, rem) => (mindm, asm, maxdm, rem) )
+        val ping =
+          val help = "Check feed as often as possible, notify as soon as possible, regardless of (in)stability."
+          Opts.flag("ping",help=help).map( _ => (0,0,0,0) )
+        val timings = ping orElse setTimings
         val feedUrl = Opts.argument[String](metavar="feed-url")  
-        (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, recheckEveryMinutes, feedUrl) mapN: (mindm, asm, maxdm, rem, fu) =>
-          val fi = FeedInfo.forNewFeed(FeedUrl(fu), mindm, asm, maxdm, rem )
+        (timings, feedUrl) mapN: (t, fu) =>
+          val fi = FeedInfo.forNewFeed(FeedUrl(fu), t(0), t(1), t(2), t(3) )
           CommandConfig.Admin.AddFeed( fi )
       Command("add-feed",header=header)( opts )
     val defineEmailSubscription =
@@ -61,9 +67,9 @@ object Main extends AbstractMain, SelfLogging:
           Opts.option[String]("untemplate-name",help=help,metavar="fully-qualified-name").orNone
          // modified from decline's docs
         val kind =
-          val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionType.Email.Each )
-          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionType.Email.Weekly )
-          (each orElse weekly).withDefault( SubscriptionType.Email.Each )
+          val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionManager.Email.Each )
+          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionManager.Email.Weekly )
+          (each orElse weekly).withDefault( SubscriptionManager.Email.Each )
         val extraParams =
           def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
             strings.map{ s =>

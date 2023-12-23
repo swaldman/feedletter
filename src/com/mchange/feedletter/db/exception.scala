@@ -6,8 +6,7 @@ import com.mchange.feedletter.{
   FeedId,
   FeedUrl,
   Guid,
-  SubscribableName,
-  SubscriptionType
+  SubscribableName
 }
 
 class FeedletterDbException(msg : String, cause : Throwable = null ) extends FeedletterException(msg, cause)

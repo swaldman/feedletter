@@ -1,0 +1,131 @@
+Okay. This is just so I can remember the syntax.
+
+#+begin_src scala :scala-version 3.3.1 :dep '("com.lihaoyi::os-lib:0.9.2")
+println("This is:" + os.pwd)
+#+end_src
+
+#+RESULTS:
+: This is:/Users/swaldman/Sync/BaseFolders/development-why/gitproj/feedletter/playpen
+
+#+begin_src scala :scala-version 3.3.1 :dep '("com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:2.25.0" "com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:2.25.0" "com.mchange::mailutil:0.0.2-SNAPSHOT") 
+    import com.mchange.mailutil.*
+
+    import com.github.plokhotnyuk.jsoniter_scala.macros.*
+    import com.github.plokhotnyuk.jsoniter_scala.core.*
+
+    import java.nio.charset.Charset
+
+    //given CodecMakerConfig.PrintCodec with {}
+    //case class Point( x : Double, y : Double )
+    //given pointCodec : JsonValueCodec[Point] = JsonCodecMaker.make
+
+    given JsonValueCodec[Charset] with
+      def nullValue: Charset = null
+      def decodeValue(in : JsonReader, default : Charset): Charset = Charset.forName( in.readKeyAsString() )
+      def encodeValue(cs : Charset, out: JsonWriter): Unit = out.writeKey( cs.name() )
+
+    given addressCodec : JsonValueCodec[Smtp.Address] = JsonCodecMaker.make
+
+    val json = writeToString(Smtp.Address("swaldman@mchange.com", None))
+    println(json)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+{"email":"swaldman@mchange.com"}
+// defined object given_JsonValueCodec_Charset
+lazy val addressCodec:
+  com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[
+    com.mchange.mailutil.Smtp.Address]
+Generated JSON codec for type 'com.mchange.mailutil.Smtp.Address':
+{
+  def f0(i: scala.Int): java.lang.String = i match {
+    case 0 =>
+      "email"
+    case 1 =>
+      "displayName"
+    case 2 =>
+      "codec"
+  }
+  def f1(`iâ`: scala.Int): java.lang.String = `iâ` match {
+    case 0 =>
+      "charSet"
+  }
+  def d1(in: com.github.plokhotnyuk.jsoniter_scala.core.JsonReader, default: scala.io.Codec): scala.io.Codec = if (in.isNextToken(123)) {
+    var _charSet: java.nio.charset.Charset = rs$line$4.given_JsonValueCodec_Charset.nullValue
+    var p0: scala.Int = 1
+    if (in.isNextToken(125).unary_!) {
+      in.rollbackToken()
+      var l: scala.Int = -1
+      while (l.<(0).||(in.isNextToken(44))) {
+        l = in.readKeyAsCharBuf()
+        if (in.isCharBufEqualsTo(l, "charSet")) {
+          if (p0.&(1).!=(0)) p0 = p0.^(1) else in.duplicatedKeyError(l)
+          _charSet = rs$line$4.given_JsonValueCodec_Charset.decodeValue(in, _charSet)
+        } else in.skip()
+      }
+      if (in.isCurrentToken(125).unary_!) in.objectEndOrCommaError() else ()
+    } else ()
+    if (p0.!=(0)) in.requiredFieldError(f1(java.lang.Integer.numberOfTrailingZeros(p0))) else ()
+    new scala.io.Codec(_charSet)
+  } else in.readNullOrTokenError[scala.io.Codec](default, 123)
+  def d0(`inâ`: com.github.plokhotnyuk.jsoniter_scala.core.JsonReader, `defaultâ`: com.mchange.mailutil.Smtp.Address): com.mchange.mailutil.Smtp.Address = if (`inâ`.isNextToken(123)) {
+    var _email: java.lang.String = (null: java.lang.String)
+    var _displayName: scala.Option[scala.Predef.String] = com.mchange.mailutil.Smtp.Address.$lessinit$greater$default$2
+    var _codec: scala.io.Codec = com.mchange.mailutil.Smtp.Address.$lessinit$greater$default$3
+    var `p0â`: scala.Int = 7
+    if (`inâ`.isNextToken(125).unary_!) {
+      `inâ`.rollbackToken()
+      var `lâ`: scala.Int = -1
+      while (`lâ`.<(0).||(`inâ`.isNextToken(44))) {
+        `lâ` = `inâ`.readKeyAsCharBuf()
+        if (`inâ`.isCharBufEqualsTo(`lâ`, "email")) {
+          if (`p0â`.&(1).!=(0)) `p0â` = `p0â`.^(1) else `inâ`.duplicatedKeyError(`lâ`)
+          _email = `inâ`.readString(_email)
+        } else if (`inâ`.isCharBufEqualsTo(`lâ`, "displayName")) {
+          if (`p0â`.&(2).!=(0)) `p0â` = `p0â`.^(2) else `inâ`.duplicatedKeyError(`lâ`)
+          _displayName = if (`inâ`.isNextToken(110)) `inâ`.readNullOrError[scala.Option[scala.Predef.String]](_displayName, "expected value or null") else {
+            `inâ`.rollbackToken()
+            new scala.Some[java.lang.String](`inâ`.readString((null: java.lang.String)))
+          }
+        } else if (`inâ`.isCharBufEqualsTo(`lâ`, "codec")) {
+          if (`p0â`.&(4).!=(0)) `p0â` = `p0â`.^(4) else `inâ`.duplicatedKeyError(`lâ`)
+          _codec = d1(`inâ`, _codec)
+        } else `inâ`.skip()
+      }
+      if (`inâ`.isCurrentToken(125).unary_!) `inâ`.objectEndOrCommaError() else ()
+    } else ()
+    if (`p0â`.&(1).!=(0)) `inâ`.requiredFieldError(f0(java.lang.Integer.numberOfTrailingZeros(`p0â`.&(1)))) else ()
+    new com.mchange.mailutil.Smtp.Address(_email, _displayName, _codec)
+  } else `inâ`.readNullOrTokenError[com.mchange.mailutil.Smtp.Address](`defaultâ`, 123)
+  def e1(x: scala.io.Codec, out: com.github.plokhotnyuk.jsoniter_scala.core.JsonWriter): scala.Unit = {
+    out.writeObjectStart()
+    out.writeNonEscapedAsciiKey("charSet")
+    rs$line$4.given_JsonValueCodec_Charset.encodeValue(x.charSet, out)
+    out.writeObjectEnd()
+  }
+  def e0(`xâ`: com.mchange.mailutil.Smtp.Address, `outâ`: com.github.plokhotnyuk.jsoniter_scala.core.JsonWriter): scala.Unit = {
+    `outâ`.writeObjectStart()
+    `outâ`.writeNonEscapedAsciiKey("email")
+    `outâ`.writeVal(`xâ`.email)
+    val v: scala.Option[java.lang.String] = `xâ`.displayName
+    if (v.ne(scala.None).&&(v.!=(com.mchange.mailutil.Smtp.Address.$lessinit$greater$default$2))) {
+      `outâ`.writeNonEscapedAsciiKey("displayName")
+      `outâ`.writeVal(v.get)
+    } else ()
+    val `vâ`: scala.io.Codec = `xâ`.codec
+    if (`vâ`.!=(com.mchange.mailutil.Smtp.Address.$lessinit$greater$default$3)) {
+      `outâ`.writeNonEscapedAsciiKey("codec")
+      e1(`vâ`, `outâ`)
+    } else ()
+    `outâ`.writeObjectEnd()
+  }
+  final class $anon() extends com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[com.mchange.mailutil.Smtp.Address] {
+    def nullValue: com.mchange.mailutil.Smtp.Address = null
+    def decodeValue(`inâ`: com.github.plokhotnyuk.jsoniter_scala.core.JsonReader, `defaultâ`: com.mchange.mailutil.Smtp.Address): com.mchange.mailutil.Smtp.Address = d0(`inâ`, `defaultâ`)
+    def encodeValue(`xâ`: com.mchange.mailutil.Smtp.Address, `outâ`: com.github.plokhotnyuk.jsoniter_scala.core.JsonWriter): scala.Unit = e0(`xâ`, `outâ`)
+  }
+  (new $anon(): com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[com.mchange.mailutil.Smtp.Address])
+}
+val json: String = {"email":"swaldman@mchange.com"}
+#+end_example

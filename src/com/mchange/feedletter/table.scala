@@ -13,6 +13,7 @@ val FeedInfoColumns = Seq(
   texttable.Column("Min Delay Minutes"),
   texttable.Column("Await Stabilization Minutes"),
   texttable.Column("Max Delay Minutes"),
+  texttable.Column("Recheck Every Minutes"),
   texttable.Column("Added"),
   texttable.Column("Last Assigned")
 )
@@ -42,10 +43,10 @@ def printExcludedItemsTable( eis : Set[ExcludedItem] ) : Task[Unit] =
 val SubscribableColumns = Seq(
   texttable.Column("Name"),
   texttable.Column("Feed ID"),
-  texttable.Column("Subscription Type")
+  texttable.Column("Subscription Manager")
 )
 
-def printSubscribablesTable( tups : Set[(SubscribableName,FeedId,SubscriptionType)] ) : Task[Unit] =
+def printSubscribablesTable( tups : Set[(SubscribableName,FeedId,SubscriptionManager)] ) : Task[Unit] =
   ZIO.attempt( texttable.printProductTable( SubscribableColumns )( tups.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
 
 val UntemplatesColumns = Seq(

@@ -105,23 +105,24 @@ notified of items or collections of items.
 
 ```sql
 CREATE TABLE subscribable(
-  subscribable_name VARCHAR(64),
-  feed_id           INTEGER,
-  subscription_type TEXT,
+  subscribable_name         VARCHAR(64),
+  feed_id                   INTEGER NOT NULL,
+  subscription_manager_tag  VARCHAR(128) NOT NULL,
+  subscription_manager_json JSONB NOT NULL,
   PRIMARY KEY (subscribable_name),
   FOREIGN KEY (feed_id) REFERENCES feed(id)
 )
 ```
 
-A subscribable maps a name to a feed and a `SubscriptionType`. For our purposes here,
-the main role of a `SubscriptionType` (a serialization of a Scala ADT) is to
+A subscribable maps a name to a feed and a `SubscriptionManager`. For our purposes here,
+the main role of a `SubscriptionManager` (a serialization of a Scala ADT) is to
 
 1. Generate for items a `within_type_id`, which is really just a collection identifier.
    All items in a collection of items that will be distributed will share the same `within_type_id`.
 2. Determine whether a collection (identified by its `within_type_id`) is "complete" — that is,
    no further items need by assigned the same `within_type_id`.
 
-`SubscriptionType` determines how collections are compiled, to what kind of destination (e-mail,
+`SubscriptionManager` determines how collections are compiled, to what kind of destination (e-mail,
 Mastodon, mobile message, whatever) notifications will be sent, and how they will be formatted.
 
 Names are scoped on a per-feed-URL basis. Users subscribe to a `(feed_url, subscribable_name)`
@@ -149,7 +150,7 @@ CREATE TABLE assignable(
 
 > [!NOTE]
 > Completed assignable could just be cleaned away, but for now we keep exactly
-> one completed item per subscription around, on the theory that some `SubscriptionTypes`
+> one completed item per subscription around, on the theory that some `SubscriptionManager`
 > might require information about the prior collection it generated.
 >
 > This adds a bit of complexity, and I'm not sure it will be useful. In future, we
@@ -176,7 +177,7 @@ CREATE TABLE assignment(
 
 Next there is `subscription`, which just maps a destination to a `subscribable`.
 the destination is just a `String`, can be anything. It's meaning is interpreted
-by the `SubscriptionType`.
+by the `SubscriptionManager`.
 
 ```sql
 CREATE TABLE subscription(

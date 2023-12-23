@@ -36,8 +36,13 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     ivy"com.softwaremill.sttp.tapir::tapir-zio:1.9.5",
     ivy"com.softwaremill.sttp.tapir::tapir-zio-http-server:1.9.5",
     ivy"com.mchange::untemplate:0.1.2-SNAPSHOT",
+    ivy"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:2.25.0"
     //ivy"com.mchange::unstatic:${UnstaticVersion}",
     //ivy"com.mchange::unstatic-ztapir:${UnstaticVersion}",
+  )
+
+  def compileIvyDeps = Agg(
+    ivy"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:2.25.0"
   )
 
   def buildInfoMembers = Seq(

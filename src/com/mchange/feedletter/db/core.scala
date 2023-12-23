@@ -7,7 +7,7 @@ import javax.sql.DataSource
 import scala.util.control.NonFatal
 import java.lang.System
 
-import com.mchange.feedletter.{Destination,FeedId,FeedUrl,SubscribableName,SubscriptionType,TemplateParams}
+import com.mchange.feedletter.{Destination,FeedId,FeedUrl,SubscribableName,TemplateParams}
 
 import com.mchange.cryptoutil.*
 

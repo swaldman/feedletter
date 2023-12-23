@@ -9,6 +9,7 @@
 # now.
 
 ./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
+# ./millw --no-server runMain com.mchange.feedletter.Main "$@"
 
 
 

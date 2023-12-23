@@ -62,14 +62,14 @@ def findComposeUntemplateMultiple( fqn : String ) : untemplate.Untemplate[Compos
 
 object ComposeInfo:
   sealed trait Universal:
-    def feedUrl          : String
-    def subscriptionName : String
-    def subscriptionType : SubscriptionType
-    def withinTypeId     : String
-    def contents         : ItemContent | Set[ItemContent]
+    def feedUrl             : String
+    def subscriptionName    : String
+    def subscriptionManager : SubscriptionManager
+    def withinTypeId        : String
+    def contents            : ItemContent | Set[ItemContent]
   end Universal
-  case class Single( feedUrl : String, subscriptionName : String, subscriptionType: SubscriptionType, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal
-  case class Multiple( feedUrl : String, subscriptionName : String, subscriptionType: SubscriptionType, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal
+  case class Single( feedUrl : String, subscriptionName : String, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal
+  case class Multiple( feedUrl : String, subscriptionName : String, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal
 
 object ComposeSelection:
   object Single:
@@ -80,9 +80,9 @@ object ComposeSelection:
   //object Multiple:
   //sealed trait Multiple
 
-def composeMultipleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : Set[ItemContent] ) : String = ???
+def composeMultipleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionManager, contents : Set[ItemContent] ) : String = ???
 
-// def composeSingleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionType, contents : ItemContent ) : String = ???
+// def composeSingleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionManager, contents : ItemContent ) : String = ???
 
 def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   import zio.http.Server
@@ -96,26 +96,26 @@ def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.port(port)), Server.live)
 
 def serveComposeSingleUntemplate(
-  untemplateName   : String,
-  subscriptionName : SubscribableName,
-  subscriptionType : SubscriptionType,
-  withinTypeId     : String,
-  destination      : Destination,
-  feedUrl          : FeedUrl,
-  digest           : FeedDigest,
-  guid             : Guid,
-  port             : Int
+  untemplateName      : String,
+  subscriptionName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : Destination,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guid                : Guid,
+  port                : Int
 ) : Task[Unit] =
   val contents = digest.guidToItemContent( guid )
-  val composeInfo = ComposeInfo.Single( feedUrl.toString(), subscriptionName.toString(), subscriptionType, withinTypeId, contents )
+  val composeInfo = ComposeInfo.Single( feedUrl.toString(), subscriptionName.toString(), subscriptionManager, withinTypeId, contents )
   val untemplate = ComposeUntemplatesSingle.get( untemplateName ).getOrElse:
     throw new UntemplateNotFound( s"Untemplate '${untemplateName}' seems not to be defined. Are you sure you are using the correct, fully-qualified name?" )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
-    subscriptionType match
-      case templating : SubscriptionType.Templating =>
+    subscriptionManager match
+      case templating : SubscriptionManager.Templating =>
         val templateParams = templating.templateParams( subscriptionName, withinTypeId, feedUrl, destination, Set(contents) )
         templateParams.fill( untemplateOutput )
-   // case _ => // this case will become relavant when some non-templating SubscriptionTypes are defines
+   // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
    //   untemplateOutput 
   serveOneHtmlPage( composed, port )

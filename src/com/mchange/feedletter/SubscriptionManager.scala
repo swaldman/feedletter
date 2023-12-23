@@ -13,32 +13,48 @@ import com.mchange.feedletter.db.{AssignableKey, AssignableWithinTypeStatus, Ite
 
 import scala.collection.immutable
 
-import com.mchange.conveniences.www.*
 import com.mchange.conveniences.string.*
 import com.mchange.conveniences.collection.*
 import com.mchange.feedletter.db.PgDatabase
 import com.mchange.mailutil.*
 import scala.util.control.NonFatal
 
+import Jsoniter.{*, given}
+import com.github.plokhotnyuk.jsoniter_scala.macros.*
+import com.github.plokhotnyuk.jsoniter_scala.{core as jsoniter}
+
 import MLevel.*
 
-object SubscriptionType extends SelfLogging:
+object SubscriptionManager extends SelfLogging:
 
-  private val GeneralRegex = """^(\w+)\.(\w+)\:(.*)$""".r
+  object Tag:
+    def apply( s : String ) : Tag = s
+  opaque type Tag = String
 
   sealed trait Untemplated:
     def untemplateName : String
   sealed trait Templating:
     def templateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : TemplateParams
   sealed trait Factory:
-    def apply( params : Seq[(String,String)] ) : SubscriptionType
+    def fromJson( json : String ) : SubscriptionManager
+    def tag : Tag
+
+  val Factories =
+    val all = Email.Each :: Email.Weekly :: Nil
+    all.map( f => (f.tag, f) ).toMap
 
   object Email:
     object Each extends Factory:
-      override def apply( params : Seq[(String,String)] ) : Each = new Each(params)
-    class Each( params : Seq[(String,String)] ) extends Email("Each", params):
+      override def fromJson( json : String ) : Each = jsoniter.readFromString[Each](json)
+      override def tag : Tag = "Email.Each"
+      given jsoniter.JsonValueCodec[Each] = JsonCodecMaker.make
+    case class Each( from : Smtp.Address, replyTo : Option[Smtp.Address], untemplateName : String, extraParams : Map[String,String] ) extends Email:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
+
+      override val factory = Each
+
+      override lazy val json = jsoniter.writeToString(this)
 
       override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
         Some( guid.toString() )
@@ -57,18 +73,24 @@ object SubscriptionType extends SelfLogging:
         val tosWithTemplateParams =
           destinations.map: destination =>
             ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-        PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").toOptionNotBlank, tosWithTemplateParams, computedSubject)
+        PgDatabase.queueForMailing( conn, fullTemplate, from.toInternetAddress.toString(), replyTo.map(_.toInternetAddress.toString()), tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
     object Weekly extends Factory:
-      override def apply( params : Seq[(String,String)] ) : Weekly = new Weekly(params)
-    class Weekly( params : Seq[(String,String)] ) extends Email( "Weekly", params ):
+      override def fromJson( json : String ) : Weekly = jsoniter.readFromString[Weekly](json)
+      override def tag : Tag = "Email.Weekly"
+      given jsoniter.JsonValueCodec[Weekly] = JsonCodecMaker.make
+    final case class Weekly( from : Smtp.Address, replyTo : Option[Smtp.Address], untemplateName : String, extraParams : Map[String,String] ) extends Email:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
       override val sampleWithinTypeId = "2023-week50"
+
+      override val factory = Weekly
+
+      override lazy val json = jsoniter.writeToString(this)
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -80,7 +102,7 @@ object SubscriptionType extends SelfLogging:
         lastCompleted  : Option[AssignableWithinTypeStatus],
         mostRecentOpen : Option[AssignableWithinTypeStatus]
       ) : Option[String] =
-        Some( WtiFormatter.format( status.lastChecked ) ) 
+        Some( WtiFormatter.format( status.lastChecked ) )
 
       // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
       private def extractYearWeekAndWeekFields( withinTypeId : String ) : (Int, Int, WeekFields) =
@@ -108,7 +130,7 @@ object SubscriptionType extends SelfLogging:
           val tosWithTemplateParams =
             destinations.map: destination =>
               ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-          PgDatabase.queueForMailing( conn, fullTemplate, from.mkString(","), replyTo.mkString(",").toOptionNotBlank, tosWithTemplateParams, computedSubject)
+          PgDatabase.queueForMailing( conn, fullTemplate, from.toInternetAddress.toString(), replyTo.map(_.toInternetAddress.toString()), tosWithTemplateParams, computedSubject)
 
       private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
@@ -125,26 +147,11 @@ object SubscriptionType extends SelfLogging:
         val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
         mainDefaultTemplateParams ++ (("weekStart", weekStart)::("weekEnd", weekEnd)::Nil)
 
-  abstract class Email(subcategory : String, params : Seq[Tuple2[String,String]]) extends SubscriptionType("Email", subcategory, params),Untemplated,Templating:
-    val from    : Seq[String] = paramsAllValues("from")
-    val replyTo : Seq[String] = paramsAllValues("replyTo")
-
-    override val untemplateName : String = paramsAllValues("untemplateName").uniqueOr: (c, nu) =>
-      throw new InvalidSubscriptionType(s"Each email subscription should define a unique untemplate name, found ${nu}: $c")
-
-    if from.isEmpty then
-      throw new InvalidSubscriptionType("All e-mail subscriptions must have a from address defined. Params: " + params.mkString(" "))
-    else
-      try
-        from.foreach( Smtp.Address.parseCommaSeparated(_, strict=true) )
-        replyTo.foreach( Smtp.Address.parseCommaSeparated(_, strict=true) )
-      catch
-        case NonFatal(t) =>
-          throw new InvalidSubscriptionType(
-            "Failed to parse as e-mail addresses, to and/or replyTo elements: to -> " +
-            from.mkString(", ") + "; replyTo -> " + replyTo.mkString(", "),
-            t
-          )
+  trait Email extends SubscriptionManager, Untemplated, Templating:
+    def from           : Smtp.Address
+    def replyTo        : Option[Smtp.Address]
+    def untemplateName : String
+    def extraParams    : Map[String,String]
 
     override def sampleDestination : Destination = Destination("user@example.com")
 
@@ -164,9 +171,9 @@ object SubscriptionType extends SelfLogging:
       val toAddress = Smtp.Address.parseSingle( toFull )
       val toNickname = toAddress.displayName
       val toEmail  = toAddress.email
-      params.toMap ++ Map(
-        "from"              -> from.mkString(", "),
-        "replyTo"           -> replyTo.mkString(", "),
+      extraParams.toMap ++ Map(
+        "from"              -> from.toInternetAddress.toString(),
+        "replyTo"           -> replyTo.map( _.toInternetAddress.toString() ).getOrElse(""),
         "to"                -> toFull,
         "toFull"            -> toFull,
         "toNickname"        -> toNickname.getOrElse(""),
@@ -183,100 +190,20 @@ object SubscriptionType extends SelfLogging:
         case failure : SmtpAddressParseFailed =>
           WARNING.log( s"[${subscribableName}] Could not validate destination for email subscription '${destination}'. Rejecting." )
           false
-
-    if from.isEmpty then
-      throw new InvalidSubscriptionType(
-        "An Email subscription type must include at least one 'from' param. Params given: " +
-        params.map( (k,v) => k + " -> " + v ).mkString(", ")
-      )
   end Email
 
-  def dispatch( category : String, subcategory : String, params : Seq[(String,String)] ) : Option[SubscriptionType] =
-    ( category, subcategory ) match
-      case ("Email", "Each")   => Some( Email.Each(params) )
-      case ("Email", "Weekly") => Some( Email.Weekly(params) )
-      case _                   => None
+  def materialize( tag : Tag, json : String ) : SubscriptionManager =
+    val factory = Factories.get(tag).getOrElse:
+      throw new InvalidSubscriptionManager(s"Tag '${tag}' unknown for $json")
+    factory.fromJson( json )  
 
-  private def preparse( s : String ) : Option[Tuple3[String,String,Seq[Tuple2[String,String]]]] =
-    s match
-      case GeneralRegex( category, subcategory, params ) => Some( Tuple3( category, subcategory, wwwFormDecodeUTF8( params ) ) )
-      case _ => None
-
-  def parse( str : String ) : SubscriptionType =
-      preparse( str ).flatMap( dispatch.tupled ).getOrElse:
-        throw new InvalidSubscriptionType(s"'${str}' could not be parsed into a valid subscription type.")
-
-  def fromEditFormat( str : String ) : SubscriptionType =
-    def lineToTup( line : String ) : (String,String) =
-      val separatorIndex = line.indexOf("=")
-      if separatorIndex >= 0 then // remember, values can contain '=' chars, don't split
-        val k = line.substring(0, separatorIndex)
-        val v = line.substring( separatorIndex + 1 )
-        (k, v)
-      else
-        throw new InvalidEditFormat("Missing '=' as separator: " + line)
-
-    val tups = str.linesIterator.map( _.stripLeading() ).filter( s => !s.startsWith("#") ).filterNot(_.isEmpty).map( lineToTup )
-    val (stypes, rest) = tups.partition( (k,_) => k == "SubscriptionType" )
-    val ( _, stype ) = stypes.toSeq.uniqueOr: (c, nu) =>
-      throw new InvalidEditFormat(s"Only one 'SubscriptionType' key is allowed, found $nu")
-    val cats = stype.split('.')
-    cats.length match
-      case 2 =>
-        val params = rest.toSeq
-        dispatch( cats(0), cats(1), params ).getOrElse:
-          throw new InvalidEditFormat(s"""Could not resolve "${cats(0)}.${cats(1)}" with params ${params.mkString(", ")} to a SubscriptionType.""")
-      case n =>
-        throw new InvalidEditFormat(s"""Category and subcategory should be separated by a single '.', found "${stype}".""")
-
-  private def semisort( unsortedParams : Seq[(String,String)] ) : Seq[(String,String)] =
-    val sortedKeys = immutable.SortedSet.from( unsortedParams.map( _(0) ) )
-    sortedKeys.toSeq.flatMap( key => unsortedParams.filter( (k,_) => k == key ) )
-
-  private val ValidKeyRegex = """^\w+$""".r
-
-  def isValidKey( k : String ) : Boolean = k != "SubscriptionType" && ValidKeyRegex.matches(k)
-
-  def toEditFormatLenient( str : String ) =
-    preparse(str) match
-      case Some( (cat, subcat, params) ) => toEditFormat( cat, subcat, params )
-      case None =>
-        throw new InvalidSubscriptionType(s"Misformatted String representation: '${str}'")
-
-  def toEditFormat( category : String, subcategory : String, params : Seq[(String,String)] ) : String =
-    val allTuples = ("SubscriptionType", s"${category}.${subcategory}") +: params
-    allTuples.map((k,v) => s"$k=$v").mkString("",LineSep,LineSep)
-
-sealed abstract class SubscriptionType( val category : String, val subcategory : String, unsortedParams : Seq[(String,String)] ):
-
-  def validateParams() : Unit =
-    val invalidParams = unsortedParams.filter((k,_) => !SubscriptionType.isValidKey(k))
-    if invalidParams.nonEmpty then
-      throw new InvalidEditFormat(s"""Invalid parameters found: ${invalidParams.mkString(", ")}""")
-  validateParams()
-
-  final val params = SubscriptionType.semisort( unsortedParams )
-  
-  def toEditFormat() : String = SubscriptionType.toEditFormat( category, subcategory, params )
+sealed trait SubscriptionManager:
   def sampleWithinTypeId : String
   def sampleDestination  : Destination
-  def paramsFirstValue( key : String ) : Option[String] = wwwFormFindFirstValue( key, params )
-  def paramsAllValues( key : String ) : Seq[String] = wwwFormFindAllValues( key, params )
   def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestination( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
-  override def toString() : String = s"${category}.${subcategory}:${wwwFormEncodeUTF8( params.toSeq* )}"
-  override def equals( other : Any ) : Boolean =
-    other match
-      case otherStype : SubscriptionType =>
-        this.category == otherStype.category && this.subcategory == otherStype.subcategory && this.params == otherStype.params
-      case _ =>
-        false
-  override def hashCode(): Int =
-    category.## ^ subcategory.## ^ params.##
-
-
-
-
-
+  def factory : SubscriptionManager.Factory
+  def tag : SubscriptionManager.Tag = factory.tag
+  def json : String
