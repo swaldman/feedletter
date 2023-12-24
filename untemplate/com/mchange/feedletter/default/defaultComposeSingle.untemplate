@@ -23,7 +23,7 @@ end ifLink
       }
       .item {
         background-color: white;
-	margin-top: 2rem;
+        margin-top: 2rem;
         margin-left: 10%;
         margin-right: 10%;
         padding-top: 3rem;
@@ -40,7 +40,7 @@ end ifLink
       .item-title a {
         text-decoration: none;
         color: black;
-	line-height: 120%;
+        line-height: 120%;
       }
       .item-title a:hover {
         text-decoration: underline;
@@ -50,7 +50,7 @@ end ifLink
         font-family: Verdana, sans-serif;
         font-style: italic;
         font-size: 80%;
-	border-bottom: 1px solid black;
+        border-bottom: 1px solid black;
       }
       .item-date {
         margin-top: 0.4rem;
@@ -65,10 +65,10 @@ end ifLink
       }
       @media screen and (max-width: 600px) {
         .item {
-	  margin-left: 2%;
-	  margin-right: 2%;
-	  margin-top: 1rem;
-	}
+          margin-left: 2%;
+          margin-right: 2%;
+          margin-top: 1rem;
+        }
       }
     </style>
     <meta charset="utf-8" />
