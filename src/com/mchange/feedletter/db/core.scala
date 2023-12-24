@@ -11,13 +11,44 @@ import com.mchange.feedletter.{Destination,FeedId,FeedUrl,SubscribableName,Templ
 
 import com.mchange.cryptoutil.*
 
+import com.mchange.mailutil.Smtp
+
 final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assignability : ItemAssignability )
 final case class AssignableWithinTypeStatus( withinTypeId : String, count : Int )
 final case class AssignableKey( subscribableName : SubscribableName, withinTypeId : String )
 
+sealed trait AddressHeaderType
+opaque type To      <: AddressHeaderType = Nothing
+opaque type From    <: AddressHeaderType = Nothing
+opaque type ReplyTo <: AddressHeaderType = Nothing
+
+object AddressHeader:
+  def apply[T <: AddressHeaderType]( s : String )             : AddressHeader[T] = s
+  def apply[T <: AddressHeaderType]( address : Smtp.Address ) : AddressHeader[T] = address.rendered
+opaque type AddressHeader[T <: AddressHeaderType] = String
+
 object MailSpec:
-  final case class WithHash( seqnum : Long, templateHash : Hash.SHA3_256, from : String, replyTo : Option[String], to : Destination, subject : String, templateParams : TemplateParams, retried : Int )
-  final case class WithTemplate( seqnum : Long, templateHash : Hash.SHA3_256, template : String, from : String, replyTo : Option[String], to : Destination, subject : String, templateParams : TemplateParams, retried : Int )
+  final case class WithHash(
+    seqnum       : Long,
+    templateHash : Hash.SHA3_256,
+    from         : AddressHeader[From],
+    replyTo      : Option[AddressHeader[ReplyTo]],
+    to           : AddressHeader[To],
+    subject : String,
+    templateParams : TemplateParams,
+    retried : Int
+  )
+  final case class WithTemplate(
+    seqnum : Long,
+    templateHash : Hash.SHA3_256,
+    template : String,
+    from : AddressHeader[From],
+    replyTo : Option[AddressHeader[ReplyTo]],
+    to : AddressHeader[To],
+    subject : String,
+    templateParams : TemplateParams,
+    retried : Int
+  )
 
 enum MetadataKey:
   case SchemaVersion

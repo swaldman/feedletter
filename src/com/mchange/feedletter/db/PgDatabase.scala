@@ -272,7 +272,7 @@ object PgDatabase extends Migratory, SelfLogging:
     val destinations = LatestSchema.Table.Subscription.selectDestinationsForSubscribable( conn, subscribableName )
     sman.route(conn, assignableKey, contents, destinations )
 
-  def queueForMailing( conn : Connection, contents : String, from : String, replyTo : Option[String], tosWithParams : Set[(Destination,TemplateParams)], subject : String ) : Unit = 
+  def queueForMailing( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], tosWithParams : Set[(AddressHeader[To],TemplateParams)], subject : String ) : Unit = 
     val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
     LatestSchema.Table.MailableTemplate.ensure( conn, hash, contents )
     LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tosWithParams, subject, 0 )
@@ -361,7 +361,7 @@ object PgDatabase extends Migratory, SelfLogging:
     try
       val contents = mswt.templateParams.fill( mswt.template )
       given Smtp.Context = smtpContext
-      Smtp.sendSimpleHtmlOnly( contents, subject = mswt.subject, from = mswt.from, to = mswt.to.toString(), replyTo = mswt.replyTo.toSeq )
+      Smtp.sendSimpleHtmlOnly( contents, subject = mswt.subject, from = mswt.from.toString(), to = mswt.to.toString(), replyTo = mswt.replyTo.map(_.toString()).toSeq )
     catch
       case NonFatal(t) =>
         val lastRetryMessage = if mswt.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"

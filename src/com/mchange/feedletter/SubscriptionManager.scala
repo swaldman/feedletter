@@ -9,7 +9,7 @@ import DateTimeFormatter.ISO_LOCAL_DATE
 
 import scala.collection.immutable
 
-import com.mchange.feedletter.db.{AssignableKey, AssignableWithinTypeStatus, ItemStatus}
+import com.mchange.feedletter.db.{AddressHeader, AssignableKey, AssignableWithinTypeStatus, From, ItemStatus, ReplyTo, To}
 
 import scala.collection.immutable
 
@@ -74,8 +74,8 @@ object SubscriptionManager extends SelfLogging:
           compose( info ).text
         val tosWithTemplateParams =
           destinations.map: destination =>
-            ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-        PgDatabase.queueForMailing( conn, fullTemplate, from.rendered, replyTo.map(_.rendered), tosWithTemplateParams, computedSubject)
+            ( AddressHeader[To](destination.toString()), templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
+        PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -133,8 +133,8 @@ object SubscriptionManager extends SelfLogging:
             compose( info ).text
           val tosWithTemplateParams =
             destinations.map: destination =>
-              ( destination, templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
-          PgDatabase.queueForMailing( conn, fullTemplate, from.rendered, replyTo.map(_.rendered), tosWithTemplateParams, computedSubject)
+              ( AddressHeader[To](destination.toString()), templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
+          PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
       private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )

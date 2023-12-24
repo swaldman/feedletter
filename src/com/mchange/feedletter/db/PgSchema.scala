@@ -4,8 +4,6 @@ import java.sql.{Connection,Statement,Timestamp,Types}
 import java.time.Instant
 import scala.util.Using
 
-import com.mchange.feedletter.{ConfigKey,Destination,ExcludedItem,FeedId,FeedInfo,FeedUrl,Guid,InvalidSubscriptionManager,ItemContent,SubscribableName,SubscriptionId,SubscriptionManager,TemplateParams}
-
 import com.mchange.cryptoutil.{Hash, given}
 
 import com.mchange.feedletter.*
@@ -569,23 +567,33 @@ object PgSchema:
             Using.resource( conn.prepareStatement( this.SelectForDelivery ) ): ps =>
               ps.setInt( 1, batchSize )
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => MailSpec.WithHash( rs.getLong(1), Hash.SHA3_256.withHexBytes( rs.getString(2) ), rs.getString(3), Option(rs.getString(4)), Destination(rs.getString(5)), rs.getString(6), TemplateParams(rs.getString(7)), rs.getInt(8) ) )
-          def insert( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], to : Destination, subject : String, templateParams : TemplateParams, retried : Int ) =
+                toSet(rs): rs =>
+                  MailSpec.WithHash(
+                    rs.getLong(1),
+                    Hash.SHA3_256.withHexBytes( rs.getString(2) ),
+                    AddressHeader[From](rs.getString(3)),
+                    Option(rs.getString(4)).map( AddressHeader.apply[ReplyTo] ),
+                    AddressHeader[To](rs.getString(5)),
+                    rs.getString(6),
+                    TemplateParams(rs.getString(7)),
+                    rs.getInt(8)
+                  )
+          def insert( conn : Connection, hash : Hash.SHA3_256, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], to : AddressHeader[To], subject : String, templateParams : TemplateParams, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString         (1, hash.hex)
-              ps.setString         (2, from)
-              setStringOptional(ps, 3, Types.VARCHAR, replyTo)
+              ps.setString         (2, from.toString())
+              setStringOptional(ps, 3, Types.VARCHAR, replyTo.map(_.toString()))
               ps.setString         (4, to.toString())
               ps.setString         (5, subject)
               ps.setString         (6, templateParams.toString())
               ps.setInt            (7, retried)
               ps.executeUpdate()
-          def insertBatch( conn : Connection, hash : Hash.SHA3_256, from : String, replyTo : Option[String], tosWithTemplateParams : Set[(Destination,TemplateParams)], subject : String, retried : Int ) =
+          def insertBatch( conn : Connection, hash : Hash.SHA3_256, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], tosWithTemplateParams : Set[(AddressHeader[To],TemplateParams)], subject : String, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               tosWithTemplateParams.foreach: (to, templateParams) =>
                 ps.setString         (1, hash.hex)
-                ps.setString         (2, from)
-                setStringOptional(ps, 3, Types.VARCHAR, replyTo)
+                ps.setString         (2, from.toString())
+                setStringOptional(ps, 3, Types.VARCHAR, replyTo.map(_.toString()))
                 ps.setString         (4, to.toString())
                 ps.setString         (5, subject)
                 ps.setString         (6, templateParams.toString())
