@@ -77,7 +77,7 @@ object Main extends AbstractMain, SelfLogging:
                 case Array(key, value) => Validated.valid(Tuple2(key, value))
                 case _ => Validated.invalidNel(s"Invalid key:value pair: ${s}")
             }.sequence
-          Opts.options[String]("extra-params", "Extra params your subscription type might support, or that renderers might use.", metavar = "key:value")
+          Opts.options[String]("extra-param", "An extra params your notification renderers might use.", metavar = "key:value")
             .map( _.toList)
             .withDefault(Nil)
             .mapValidated( validate )
