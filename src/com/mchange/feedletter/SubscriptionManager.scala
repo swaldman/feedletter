@@ -207,7 +207,7 @@ sealed trait SubscriptionManager:
   def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestination( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean
-  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ??? // XXX: temporary, make abstract when we stabilize
+  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ???
   def factory : SubscriptionManager.Factory
   def tag : SubscriptionManager.Tag = factory.tag
   def json : String
