@@ -65,25 +65,23 @@ Next there are items:
 CREATE TABLE item(
   feed_id          INTEGER,
   guid             VARCHAR(1024),
-  title            VARCHAR(1024),
-  author           VARCHAR(1024),
-  article          TEXT,
-  publication_date TIMESTAMP,
+  single_item_rss  TEXT,
+  content_hash     INTEGER, -- ItemContent.contentHash
   link             VARCHAR(1024),
-  content_hash     INTEGER NOT NULL,   -- ItemContent.## (hashCode)
   first_seen       TIMESTAMP NOT NULL,
   last_checked     TIMESTAMP NOT NULL,
   stable_since     TIMESTAMP NOT NULL,
   assignability    ItemAssignability NOT NULL,
   PRIMARY KEY(feed_id, guid),
   FOREIGN KEY(feed_id) REFERENCES feed(id)
-)
+)""".stripMargin
 ```
 
 * `feed_id` and `guid` identify an item.
-* `title`, `author`, `article`, `publication_date`, and `link` _cache_ the parts of the RSS item we us in notifications.
+* `single_item_rss` _caches_ the RSS item.
    We want to cache this, in case by the time we get around to notifying, the item is no longer available in the feed.
 * `content_hash` is a hash based on the prior five fields. We use it to identify whether an item has changed.
+* `link` may eventually be used as a neurotic double-check so we never notify the same human-perceived item twice
 * `first_seen`, `last_checked`, and `stable_since` are pretty self-explanatory timestamps, We use these to
   calculate whether an item has stabilized and so can be "assigned". (See below.)
 * `assignability`: items can be in one of four states

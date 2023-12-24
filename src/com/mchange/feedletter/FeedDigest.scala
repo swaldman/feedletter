@@ -19,7 +19,7 @@ object FeedDigest:
         case other => throw new UnsupportedFeedType(s"'${other}' cannot be the root element of a supported feed type.")
     val items : Seq[Elem] = (rssElem \\ "item").map( _.asInstanceOf[Elem] )
     val orderedGuids = items.map( _ \ "guid" ).map( _.text.trim ).map( Guid.apply )
-    val itemContents = items.map( ItemContent.fromItemElem )
+    val itemContents = orderedGuids.map( g => ItemContent.fromRssGuid(rssElem,g.toString()) ) 
     val guidToItemContent = orderedGuids.zip( itemContents ).toMap
     FeedDigest( orderedGuids, guidToItemContent, asOf )
 

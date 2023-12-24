@@ -189,12 +189,9 @@ object PgSchema:
             """|CREATE TABLE item(
                |  feed_id          INTEGER,
                |  guid             VARCHAR(1024),
-               |  title            VARCHAR(1024),
-               |  author           VARCHAR(1024),
-               |  article          TEXT,
-               |  publication_date TIMESTAMP,
+               |  single_item_rss  TEXT,
+               |  content_hash     INTEGER, -- ItemContent.contentHash
                |  link             VARCHAR(1024),
-               |  content_hash     INTEGER NOT NULL,   -- ItemContent.## (hashCode)
                |  first_seen       TIMESTAMP NOT NULL,
                |  last_checked     TIMESTAMP NOT NULL,
                |  stable_since     TIMESTAMP NOT NULL,
@@ -207,23 +204,23 @@ object PgSchema:
                |FROM item
                |WHERE feed_id = ? AND guid = ?""".stripMargin
           private val SelectExcluded =
-            s"""|SELECT feed_id, guid, title, author, publication_date, link
+            s"""|SELECT feed_id, guid, link
                 |FROM item
                 |WHERE assignability = '${ItemAssignability.Excluded}'""".stripMargin
           private val Insert =
-            """|INSERT INTO item(feed_id, guid, title, author, article, publication_date, link, content_hash, first_seen, last_checked, stable_since, assignability)
-               |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST( ? AS ItemAssignability ) )""".stripMargin
+            """|INSERT INTO item(feed_id, guid, single_item_rss, content_hash, link, first_seen, last_checked, stable_since, assignability)
+               |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, CAST( ? AS ItemAssignability ) )""".stripMargin
           private val UpdateChanged =
             """|UPDATE item
-               |SET title = ?, author = ?, article = ?, publication_date = ?, link = ?, content_hash = ?, last_checked = ?, stable_since = ?, assignability = CAST( ? AS ItemAssignability )
+               |SET single_item_rss = ?, content_hash = ?, link = ?, last_checked = ?, stable_since = ?, assignability = CAST( ? AS ItemAssignability )
                |WHERE feed_id = ? AND guid = ?""".stripMargin
           private val UpdateStable =
             """|UPDATE item
                |SET last_checked = ?
                |WHERE feed_id = ? AND guid = ?""".stripMargin
-          private val UpdateAssignability =
+          private val UpdateLastCheckedAssignability =
             """|UPDATE item
-               |SET assignability = CAST( ? AS ItemAssignability )
+               |SET last_checked = ?, assignability = CAST( ? AS ItemAssignability )
                |WHERE feed_id = ? AND guid = ?""".stripMargin
           // See
           //   https://stackoverflow.com/questions/178479/preparedstatement-in-clause-alternatives
@@ -246,7 +243,7 @@ object PgSchema:
           def selectExcluded( conn : Connection ) : Set[ExcludedItem] =
             Using.resource( conn.prepareStatement(SelectExcluded) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => ExcludedItem( FeedId( rs.getInt(1) ), rs.getString(2), Option( rs.getString(3) ), Option( rs.getString(4) ), Option( rs.getTimestamp(5) ).map( _.toInstant ), Option( rs.getString(6) ) ) )
+                toSet(rs)( rs => ExcludedItem( FeedId(rs.getInt(1)), Guid(rs.getString(2)), Option(rs.getString(3)) ) )
           def updateStable( conn : Connection, feedId : FeedId, guid : Guid, lastChecked : Instant ) =
             Using.resource( conn.prepareStatement( this.UpdateStable) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastChecked))
@@ -255,39 +252,34 @@ object PgSchema:
               ps.executeUpdate()
           def updateChanged( conn : Connection, feedId : FeedId, guid : Guid, newContent : ItemContent, newStatus : ItemStatus ) =
             Using.resource( conn.prepareStatement( this.UpdateChanged ) ): ps =>
-              setStringOptional   (ps,  1, Types.VARCHAR, newContent.title )
-              setStringOptional   (ps,  2, Types.VARCHAR, newContent.author )
-              setStringOptional   (ps,  3, Types.CLOB, newContent.article )
-              setTimestampOptional(ps,  4, newContent.pubDate.map( Timestamp.from ))
-              setStringOptional   (ps,  5, Types.VARCHAR, newContent.link)
-              ps.setInt               ( 6, newStatus.contentHash)
-              ps.setTimestamp         ( 7, Timestamp.from(newStatus.lastChecked))
-              ps.setTimestamp         ( 8, Timestamp.from(newStatus.stableSince))
-              ps.setString            ( 9, newStatus.assignability.toString())
-              ps.setInt               (10, feedId.toInt)
-              ps.setString            (11, guid.toString())
+              ps.setString            ( 1, newContent.rssElem.toString )
+              ps.setInt               ( 2, newStatus.contentHash)
+              setStringOptional   (ps,  3, Types.VARCHAR, newContent.link)
+              ps.setTimestamp         ( 4, Timestamp.from(newStatus.lastChecked))
+              ps.setTimestamp         ( 5, Timestamp.from(newStatus.stableSince))
+              ps.setString            ( 6, newStatus.assignability.toString())
+              ps.setInt               ( 7, feedId.toInt)
+              ps.setString            ( 8, guid.toString())
               ps.executeUpdate()
-          def updateAssignability( conn : Connection, feedId : FeedId, guid : Guid, assignability : ItemAssignability ) =
-            Using.resource( conn.prepareStatement( this.UpdateAssignability) ): ps =>
-              ps.setString(1, assignability.toString())
-              ps.setInt   (2, feedId.toInt)
-              ps.setString(3, guid.toString())
+          def updateLastCheckedAssignability( conn : Connection, feedId : FeedId, guid : Guid, lastChecked : Instant, assignability : ItemAssignability ) =
+            Using.resource( conn.prepareStatement( this.UpdateLastCheckedAssignability) ): ps =>
+              ps.setTimestamp(1, Timestamp.from(lastChecked))
+              ps.setString   (2, assignability.toString())
+              ps.setInt      (3, feedId.toInt)
+              ps.setString   (4, guid.toString())
               ps.executeUpdate()
-          def insertNew( conn : Connection, feedId : FeedId, guid : Guid, itemContent : ItemContent, assignability : ItemAssignability ) : Int =
+          def insertNew( conn : Connection, feedId : FeedId, guid : Guid, itemContent : Option[ItemContent], assignability : ItemAssignability ) : Int =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               val now = Instant.now
               ps.setInt              (  1, feedId.toInt )
               ps.setString           (  2, guid.toString() )
-              setStringOptional   (ps,  3, Types.VARCHAR, itemContent.title)
-              setStringOptional   (ps,  4, Types.VARCHAR, itemContent.author)
-              setStringOptional   (ps,  5, Types.CLOB, itemContent.article)
-              setTimestampOptional(ps,  6, itemContent.pubDate.map( Timestamp.from ))
-              setStringOptional   (ps,  7, Types.VARCHAR, itemContent.link)
-              ps.setInt              (  8, itemContent.## )
-              ps.setTimestamp        (  9, Timestamp.from( now ) )
-              ps.setTimestamp        ( 10, Timestamp.from( now ) )
-              ps.setTimestamp        ( 11, Timestamp.from( now ) )
-              ps.setString           ( 12, assignability.toString() )
+              itemContent.fold(ps.setNull(3, Types.CLOB))   (ic => ps.setString(3, ic.rssElem.toString() ))
+              itemContent.fold(ps.setNull(4, Types.INTEGER))(ic => ps.setInt(4, ic.contentHash ))
+              itemContent.fold(ps.setNull(5, Types.VARCHAR))(ic => setStringOptional(ps, 5, Types.VARCHAR, ic.link))
+              ps.setTimestamp        (  6, Timestamp.from( now ) )
+              ps.setTimestamp        (  7, Timestamp.from( now ) )
+              ps.setTimestamp        (  8, Timestamp.from( now ) )
+              ps.setString           (  9, assignability.toString() )
               ps.executeUpdate()
         object Subscribable extends Creatable:
           protected val Create =
@@ -637,7 +629,7 @@ object PgSchema:
         end ItemSubscribable
         object ItemAssignment:
           private val SelectItemContentsForAssignable =
-            """|SELECT title, author, article, publication_date, link
+            """|SELECT single_item_rss
                |FROM item
                |INNER JOIN assignment
                |ON item.guid = assignment.guid
@@ -647,7 +639,7 @@ object PgSchema:
               ps.setString(1, subscribableName.toString())
               ps.setString(2, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
-                toSet( rs )( rs => ItemContent( Option( rs.getString(1) ), Option( rs.getString(2) ), Option( rs.getString(3) ), Option( rs.getTimestamp(4) ).map( _.toInstant ), Option( rs.getString(5) ) ) )
+                toSet( rs )( rs => ItemContent.unsafeUnpickle( rs.getString(1) ) )
         end ItemAssignment
         object ItemAssignableAssignment:
           private val SelectLiveAssignedGuids =
@@ -657,7 +649,7 @@ object PgSchema:
                 |ON assignable.subscribable_name = assignment.subscribable_name AND assignable.within_type_id = assignment.within_type_id""".stripMargin
           private val ClearOldCache =
              s"""|UPDATE item
-                 |SET title = NULL, author = NULL, article = NULL, publication_date = NULL, link = NULL, content_hash = ${ItemContent.EmptyHashCode}, assignability = 'Cleared'
+                 |SET single_item_rss = NULL, content_hash = NULL, assignability = 'Cleared'            -- note that we leave link alone...
                  |WHERE assignability = 'Assigned' AND NOT item.guid IN ( ${SelectLiveAssignedGuids} )""".stripMargin
           def clearOldCache( conn : Connection ) =
             Using.resource( conn.prepareStatement( ClearOldCache ) )( _.executeUpdate() )

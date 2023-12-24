@@ -48,7 +48,7 @@ final case class FeedInfo( feedId : Option[FeedId], feedUrl : FeedUrl, minDelayM
   def assertFeedId : FeedId = feedId.getOrElse:
     throw new FeedletterException( s"FeedInfo which should be for an extant feed, with id defined, has no feedId set: ${this}" )
 
-final case class ExcludedItem( feedId : FeedId, guid : String, title : Option[String], author : Option[String], publicationDate : Option[Instant], link : Option[String] )
+final case class ExcludedItem( feedId : FeedId, guid : Guid, link : Option[String] )
 
 final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination )
 

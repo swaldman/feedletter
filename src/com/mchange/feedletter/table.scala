@@ -29,13 +29,11 @@ def printConfigurationTuplesTable( tups : Set[Tuple2[ConfigKey,String]] ) : Task
 val ExcludedItemsColumns = Seq(
   texttable.Column("Feed ID"),
   texttable.Column("GUID"),
-  texttable.Column("Title"),
-  texttable.Column("Author"),
-  texttable.Column("Pub Date")
+  texttable.Column("Link")
 )
 
 def extractExcludedItem( ei : ExcludedItem ) : Seq[String] =
-  ei.feedId.toString() :: ei.guid.toString() :: ei.title.getOrElse("") :: ei.author.getOrElse("") :: ei.publicationDate.map( ISO_INSTANT.format ).getOrElse("") :: Nil
+  ei.feedId.toString() :: ei.guid.toString() :: ei.link.getOrElse("") :: Nil
 
 def printExcludedItemsTable( eis : Set[ExcludedItem] ) : Task[Unit] =
   ZIO.attempt( texttable.printTable( ExcludedItemsColumns, extractExcludedItem )( eis.map(texttable. Row.apply) ) )

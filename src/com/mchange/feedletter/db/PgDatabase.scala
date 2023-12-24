@@ -204,15 +204,15 @@ object PgDatabase extends Migratory, SelfLogging:
     TRACE.log( s"assign( $conn, $feedId, $guid, $content, $status )" )
     val subscribableNames = LatestSchema.Table.Subscribable.selectSubscribableNamesByFeedId( conn, feedId )
     subscribableNames.foreach( subscribableName => assignForSubscribable( conn, subscribableName, feedId, guid, content, status ) )
-    LatestSchema.Table.Item.updateAssignability( conn, feedId, guid, ItemAssignability.Assigned )
+    LatestSchema.Table.Item.updateLastCheckedAssignability( conn, feedId, guid, status.lastChecked, ItemAssignability.Assigned )
 
   private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : Guid, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     TRACE.log( s"updateAssignItem( $conn, $fi, $guid, $dbStatus, $freshContent, $now )" )
     dbStatus match
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Unassigned ) ) =>
-        val newContentHash = freshContent.##
+        val newContentHash = freshContent.contentHash
         /* don't update empty over actual content, treat empty content (rare, since guid would still have been found) as just stability */
-        if newContentHash == contentHash || newContentHash == ItemContent.EmptyHashCode then
+        if newContentHash == contentHash then
           val newLastChecked = now
           LatestSchema.Table.Item.updateStable( conn, fi.assertFeedId, guid, newLastChecked )
           val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.SECONDS ) / 60     // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
@@ -227,14 +227,14 @@ object PgDatabase extends Migratory, SelfLogging:
           val newLastChecked = now
           LatestSchema.Table.Item.updateChanged( conn, fi.assertFeedId, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Assigned ) ) => /* update cache only */
-        val newContentHash = freshContent.##
-        if newContentHash != contentHash && newContentHash != ItemContent.EmptyHashCode then
+        val newContentHash = freshContent.contentHash
+        if newContentHash != contentHash then
           LatestSchema.Table.Item.updateChanged( conn, fi.assertFeedId, guid, freshContent, prev )
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Cleared ) )  => /* ignore, we're done with this one */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
         def doInsert() =
-          LatestSchema.Table.Item.insertNew(conn, fi.assertFeedId, guid, freshContent, ItemAssignability.Unassigned)
+          LatestSchema.Table.Item.insertNew(conn, fi.assertFeedId, guid, Some(freshContent), ItemAssignability.Unassigned)
           val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid ).getOrElse:
             throw new AssertionError("Just inserted row is not found???")
           if fi.minDelayMinutes <= 0 && fi.awaitStabilizationMinutes <= 0 then // if eligible for immediate assignment...
@@ -308,7 +308,7 @@ object PgDatabase extends Migratory, SelfLogging:
       try
         val fd = FeedDigest( fi.feedUrl )
         fd.guidToItemContent.foreach: (guid, itemContent) =>
-          LatestSchema.Table.Item.insertNew( conn, newFeedId, guid, ItemContent.Empty, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
+          LatestSchema.Table.Item.insertNew( conn, newFeedId, guid, None, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
       catch
         case NonFatal(t) =>
           WARNING.log(s"Failed to exclude existing content from assignment when adding feed '${fi.feedUrl}'. Existing content may be distributed.", t)
