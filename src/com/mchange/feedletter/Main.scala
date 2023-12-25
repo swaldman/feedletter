@@ -166,8 +166,9 @@ object Main extends AbstractMain, SelfLogging:
           val help = "The name of an already-defined subscription."
           Opts.option[String]("subscription-name",help=help,metavar="name").map( SubscribableName.apply )
         val destination = CommonOpts.AnyDestination
-        ( subscriptionName, destination ) mapN: (sn, d) =>
-          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(sn, d) )
+        val unconfirmed = Opts.flag("unconfirmed", help="Mark the subscription unconfirmed.").orFalse
+        ( subscriptionName, destination, unconfirmed ) mapN: (sn, d, uc) =>
+          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(sn, d, !uc) ) // ! our flag is unconfirmed, our field is confirmed
       Command("subscribe", header=header)( opts )
 
   object Crank:

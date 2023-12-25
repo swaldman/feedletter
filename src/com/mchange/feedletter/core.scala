@@ -50,7 +50,7 @@ final case class FeedInfo( feedId : Option[FeedId], feedUrl : FeedUrl, minDelayM
 
 final case class ExcludedItem( feedId : FeedId, guid : Guid, link : Option[String] )
 
-final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination )
+final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination, confirmed : Boolean )
 
 object TemplateParams:
   def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )

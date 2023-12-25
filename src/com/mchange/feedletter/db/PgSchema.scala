@@ -461,28 +461,30 @@ object PgSchema:
           protected val Create =
             """|CREATE TABLE subscription(
                |  subscription_id   BIGINT,
-               |  destination_json  JSONB,
-               |  subscribable_name VARCHAR(64),
+               |  destination_json  JSONB       NOT NULL,
+               |  subscribable_name VARCHAR(64) NOT NULL,
+               |  confirmed         BOOLEAN     NOT NULL,
                |  PRIMARY KEY( subscription_id ),
                |  FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
                |)""".stripMargin
           private val SelectDestinationJsonsForSubscribable =
             """|SELECT destination_json
                |FROM subscription
-               |WHERE subscribable_name = ?""".stripMargin
+               |WHERE subscribable_name = ? AND confirmed = TRUE""".stripMargin
           private val Insert =
-            """|INSERT INTO subscription(subscription_id, destination_json, subscribable_name)
-               |VALUES ( ?, CAST( ? AS JSONB ), ? )""".stripMargin
+            """|INSERT INTO subscription(subscription_id, destination_json, subscribable_name, confirmed)
+               |VALUES ( ?, CAST( ? AS JSONB ), ?, ? )""".stripMargin
           def selectDestinationJsonsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[Destination.Json] =
             Using.resource( conn.prepareStatement( this.SelectDestinationJsonsForSubscribable ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => Destination.Json( rs.getString(1) ) )
-          def insert( conn : Connection, subscriptionId : SubscriptionId, destinationJson : Destination.Json, subscribableName : SubscribableName ) =
+          def insert( conn : Connection, subscriptionId : SubscriptionId, destinationJson : Destination.Json, subscribableName : SubscribableName, confirmed : Boolean ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               ps.setLong  (1, subscriptionId.toLong)
               ps.setString(2, destinationJson.toString())
               ps.setString(3, subscribableName.toString())
+              ps.setBoolean(4, confirmed)
               ps.executeUpdate()
           object Sequence:
             object SubscriptionSeq extends Creatable:
