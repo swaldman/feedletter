@@ -180,8 +180,9 @@ by the `SubscriptionManager`.
 ```sql
 CREATE TABLE subscription(
   subscription_id   BIGINT,
-  destination_json  JSONB,
-  subscribable_name VARCHAR(64),
+  destination_json  JSONB       NOT NULL,
+  subscribable_name VARCHAR(64) NOT NULL,
+  confirmed         BOOLEAN     NOT NULL,
   PRIMARY KEY( subscription_id ),
   FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
 )
