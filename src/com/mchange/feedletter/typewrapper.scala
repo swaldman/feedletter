@@ -1,9 +1,5 @@
 package com.mchange.feedletter
 
-object Destination:
-  def apply( s : String ) : Destination = s
-opaque type Destination = String
-
 object FeedId:
   def apply( i : Int ) : FeedId = i
 opaque type FeedId = Int
@@ -29,3 +25,15 @@ opaque type SubscriptionId = Long
 
 extension (sid : SubscriptionId)
   def toLong : Long = sid
+
+opaque type Json = String
+
+object SubscriptionManagerJson:
+  def apply( s : String ) : SubscriptionManagerJson = s
+opaque type SubscriptionManagerJson <: Json = String
+
+object DestinationJson:
+  def apply( s : String ) : DestinationJson = s
+opaque type DestinationJson <: Json = String
+
+

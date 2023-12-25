@@ -100,7 +100,7 @@ def serveComposeSingleUntemplate(
   subscriptionName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
   withinTypeId        : String,
-  destination         : Destination,
+  destination         : subscriptionManager.D,
   feedUrl             : FeedUrl,
   digest              : FeedDigest,
   guid                : Guid,
@@ -114,7 +114,8 @@ def serveComposeSingleUntemplate(
     val untemplateOutput = untemplate( composeInfo ).text
     subscriptionManager match
       case templating : SubscriptionManager.Templating =>
-        val templateParams = templating.templateParams( subscriptionName, withinTypeId, feedUrl, destination, Set(contents) )
+        val d : templating.D = destination.asInstanceOf[templating.D] // how can I let th compiler know templating == subscriptionManager?
+        val templateParams = templating.templateParams( subscriptionName, withinTypeId, feedUrl, d, Set(contents) )
         templateParams.fill( untemplateOutput )
    // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
    //   untemplateOutput 

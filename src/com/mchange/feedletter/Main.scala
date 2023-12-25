@@ -163,9 +163,9 @@ object Main extends AbstractMain, SelfLogging:
       val header = "Subscribe to a defined subscription."
       val opts =
         val name =
-          val help = "The name of the defined subscription."
+          val help = "The name of an already-defined subscription."
           Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
-        val destination = Opts.argument[String](metavar="destination-to-be-subscribed").map( Destination.apply )
+        val destination = CommonOpts.AnyDestination
         ( name, destination ) mapN: (n, d) =>
           CommandConfig.Admin.Subscribe( AdminSubscribeOptions(n, d) )
       Command("subscribe", header=header)( opts )

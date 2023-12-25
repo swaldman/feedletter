@@ -14,3 +14,4 @@ object Jsoniter:
       def encodeValue(cs : Charset, out: JsonWriter): Unit = out.writeKey( cs.name() )
 
     given addressCodec : JsonValueCodec[Smtp.Address] = JsonCodecMaker.make
+

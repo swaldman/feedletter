@@ -26,6 +26,8 @@ import com.github.plokhotnyuk.jsoniter_scala.{core as jsoniter}
 import MLevel.*
 
 object SubscriptionManager extends SelfLogging:
+  val  Json = SubscriptionManagerJson
+  type Json = SubscriptionManagerJson
 
   object Tag:
     def apply( s : String ) : Tag = s
@@ -33,10 +35,10 @@ object SubscriptionManager extends SelfLogging:
 
   sealed trait Untemplated:
     def untemplateName : String
-  sealed trait Templating:
-    def templateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : TemplateParams
+  sealed trait Templating extends SubscriptionManager:
+    def templateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : this.D, contents : Set[ItemContent] ) : TemplateParams
   sealed trait Factory:
-    def fromJson( json : String ) : SubscriptionManager
+    def fromJson( json : Json ) : SubscriptionManager
     def tag : Tag
 
   val Factories =
@@ -45,7 +47,7 @@ object SubscriptionManager extends SelfLogging:
 
   object Email:
     object Each extends Factory:
-      override def fromJson( json : String ) : Each = jsoniter.readFromString[Each](json)
+      override def fromJson( json : Json ) : Each = jsoniter.readFromString[Each](json.toString())
       override def tag : Tag = "Email.Each"
       given jsoniter.JsonValueCodec[Each] = JsonCodecMaker.make
     case class Each( from : Smtp.Address, replyTo : Option[Smtp.Address], untemplateName : String, extraParams : Map[String,String] ) extends Email:
@@ -54,16 +56,16 @@ object SubscriptionManager extends SelfLogging:
 
       override val factory = Each
 
-      override lazy val json = jsoniter.writeToString(this)
+      override lazy val json = Json( jsoniter.writeToString(this) )
 
-      override lazy val jsonPretty = jsoniter.writeToString(this, jsoniter.WriterConfig.withIndentionStep(4))
+      override lazy val jsonPretty = Json( jsoniter.writeToString(this, jsoniter.WriterConfig.withIndentionStep(4)) )
 
       override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[D] ) : Unit =
         val uniqueContent = contents.uniqueOr: (c, nu) =>
           throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
@@ -74,7 +76,7 @@ object SubscriptionManager extends SelfLogging:
           compose( info ).text
         val tosWithTemplateParams =
           destinations.map: destination =>
-            ( AddressHeader[To](destination.toString()), templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
+            ( AddressHeader[To](destination.rendered), templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
         PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
@@ -82,7 +84,7 @@ object SubscriptionManager extends SelfLogging:
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
     object Weekly extends Factory:
-      override def fromJson( json : String ) : Weekly = jsoniter.readFromString[Weekly](json)
+      override def fromJson( json : Json ) : Weekly = jsoniter.readFromString[Weekly](json.toString())
       override def tag : Tag = "Email.Weekly"
       given jsoniter.JsonValueCodec[Weekly] = JsonCodecMaker.make
     final case class Weekly( from : Smtp.Address, replyTo : Option[Smtp.Address], untemplateName : String, extraParams : Map[String,String] ) extends Email:
@@ -92,9 +94,9 @@ object SubscriptionManager extends SelfLogging:
 
       override val factory = Weekly
 
-      override lazy val json = jsoniter.writeToString(this)
+      override lazy val json = Json( jsoniter.writeToString(this) )
 
-      override lazy val jsonPretty = jsoniter.writeToString(this, jsoniter.WriterConfig.withIndentionStep(4))
+      override lazy val jsonPretty = Json( jsoniter.writeToString(this, jsoniter.WriterConfig.withIndentionStep(4)) )
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -123,7 +125,7 @@ object SubscriptionManager extends SelfLogging:
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[D] ) : Unit =
         if contents.nonEmpty then
           val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
           val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
@@ -133,7 +135,7 @@ object SubscriptionManager extends SelfLogging:
             compose( info ).text
           val tosWithTemplateParams =
             destinations.map: destination =>
-              ( AddressHeader[To](destination.toString()), templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
+              ( AddressHeader[To](destination.rendered), templateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, contents ) )
           PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
       private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
@@ -146,7 +148,7 @@ object SubscriptionManager extends SelfLogging:
         val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
         s"[${subscribableName}] All posts, ${weekStart} to ${weekEnd}"
 
-      override def defaultTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : Map[String,String] =
+      override def defaultTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, contents : Set[ItemContent] ) : Map[String,String] =
         val mainDefaultTemplateParams = super.defaultTemplateParams(subscribableName, withinTypeId, feedUrl, destination, contents)
         val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
         mainDefaultTemplateParams ++ (("weekStart", weekStart)::("weekEnd", weekEnd)::Nil)
@@ -157,7 +159,11 @@ object SubscriptionManager extends SelfLogging:
     def untemplateName : String
     def extraParams    : Map[String,String]
 
-    override def sampleDestination : Destination = Destination("user@example.com")
+    type D = Destination.Email
+
+    override val destinationFactory = Destination.Email
+
+    override def sampleDestination : Destination.Email = Destination.Email("user@example.com", Some("Some User"))
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
       val args = ( subscribableName, withinTypeId, feedUrl, contents )
@@ -166,13 +172,14 @@ object SubscriptionManager extends SelfLogging:
 
     def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String
 
-    def templateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : TemplateParams =
-      val args = ( subscribableName, withinTypeId, feedUrl, destination, contents )
-      TemplateParams( defaultTemplateParams.tupled( args ) ++ config.TemplateParamCustomizers.get( subscribableName ).fold(Nil)( _.tupled.apply(args) ) )
+    def templateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, contents : Set[ItemContent] ) : TemplateParams =
+      val localArgs = ( subscribableName, withinTypeId, feedUrl, destination, contents )
+      val customizerArgs = ( subscribableName, withinTypeId, feedUrl, destination : Destination, contents )
+      TemplateParams( defaultTemplateParams.tupled( localArgs ) ++ config.TemplateParamCustomizers.get( subscribableName ).fold(Nil)( _.tupled.apply(customizerArgs) ) )
 
-    def defaultTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) : Map[String,String] =
-      val toFull = destination.toString()
-      val toAddress = Smtp.Address.parseSingle( toFull )
+    def defaultTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, contents : Set[ItemContent] ) : Map[String,String] =
+      val toAddress = destination.toAddress
+      val toFull = toAddress.rendered
       val toNickname = toAddress.displayName
       val toEmail  = toAddress.email
       extraParams.toMap ++ Map(
@@ -186,29 +193,47 @@ object SubscriptionManager extends SelfLogging:
         "numItems"          -> contents.size.toString()
       ).filter( _._2.nonEmpty )
 
-    override def validateDestination( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean =
-      try
-        Smtp.Address.parseSingle( destination.toString(), strict = true  )
-        true
-      catch
-        case failure : SmtpAddressParseFailed =>
-          WARNING.log( s"[${subscribableName}] Could not validate destination for email subscription '${destination}'. Rejecting." )
-          false
+    override def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit =
+      destination match
+        case emailDestination : Destination.Email => Some( emailDestination )
+        case _ =>
+          throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
   end Email
 
-  def materialize( tag : Tag, json : String ) : SubscriptionManager =
+  def materialize( tag : Tag, json : Json ) : SubscriptionManager =
     val factory = Factories.get(tag).getOrElse:
       throw new InvalidSubscriptionManager(s"Tag '${tag}' unknown for $json")
     factory.fromJson( json )  
 
-sealed trait SubscriptionManager:
+sealed trait SubscriptionManager extends Jsonable:
+  type D <: Destination
+
+  def destinationFactory : Destination.Factory[D]
+
   def sampleWithinTypeId : String
-  def sampleDestination  : Destination
+  def sampleDestination  : D
   def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
-  def validateDestination( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean
-  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[Destination] ) : Unit = ???
+  def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit
+  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[D] ) : Unit
   def factory : SubscriptionManager.Factory
   def tag : SubscriptionManager.Tag = factory.tag
-  def json : String
-  def jsonPretty : String
+  def json : SubscriptionManager.Json
+  def jsonPretty : SubscriptionManager.Json
+
+  def materializeDestination( destinationJson : Destination.Json ): D =
+    Destination.materialize( destinationFactory.tag, destinationJson ).asInstanceOf[D]
+
+  def narrowDestinationOrThrow( destination : Destination ) : D =
+    try
+      destination.asInstanceOf[D]
+    catch
+      case cce : ClassCastException => throw new InvalidDestination(s"Destination '$destination' is not valid for SubscriptionManager '$this'.", cce)
+
+  def narrowDestination( destination : Destination ) : Option[D] =
+    try
+      Some(destination.asInstanceOf[D])
+    catch
+      case cce : ClassCastException => None
+
+

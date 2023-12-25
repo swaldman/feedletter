@@ -68,7 +68,7 @@ object CommandConfig extends SelfLogging:
                         subscribableName,
                         sman,
                         withinTypeId.getOrElse( sman.sampleWithinTypeId ),
-                        destination.getOrElse( sman.sampleDestination ),
+                        destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         fu,
                         dig,
                         g,
@@ -119,11 +119,11 @@ object CommandConfig extends SelfLogging:
           sman       <- PgDatabase.subscriptionManagerForSubscribableName( ds, name )
           updated    <- withTemp { temp =>
                           for
-                            _        <- ZIO.attemptBlocking( os.write.over(temp, sman.jsonPretty) )
+                            _        <- ZIO.attemptBlocking( os.write.over(temp, sman.jsonPretty.toString()) )
                             editor   =  sys.env.get("EDITOR").getOrElse:
                                           throw new EditorNotDefined("Please define environment variable EDITOR if you wish to edit a subscription.")
                             ec       <- ZIO.attemptBlocking( os.proc(List(editor,temp.toString)).call(stdin=os.Inherit,stdout=os.Inherit,stderr=os.Inherit).exitCode )
-                            contents <- ZIO.attemptBlocking( os.read( temp ) )
+                            contents <- ZIO.attemptBlocking( SubscriptionManager.Json( os.read( temp ) ) )
                             updated  =  SubscriptionManager.materialize( sman.tag, contents )
                           yield updated
                       }

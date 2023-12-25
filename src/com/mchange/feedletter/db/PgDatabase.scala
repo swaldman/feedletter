@@ -269,7 +269,9 @@ object PgDatabase extends Migratory, SelfLogging:
   private def route( conn : Connection, assignableKey : AssignableKey, sman : SubscriptionManager ) : Unit =
     val AssignableKey( subscribableName, withinTypeId ) = assignableKey
     val contents = materializeAssignable(conn, assignableKey)
-    val destinations = LatestSchema.Table.Subscription.selectDestinationsForSubscribable( conn, subscribableName )
+    val destinations =
+      val jsons = LatestSchema.Table.Subscription.selectDestinationJsonsForSubscribable( conn, subscribableName )
+      jsons.map( sman.materializeDestination )
     sman.route(conn, assignableKey, contents, destinations )
 
   def queueForMailing( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], tosWithParams : Set[(AddressHeader[To],TemplateParams)], subject : String ) : Unit = 
@@ -326,12 +328,21 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscribable.insert( conn, subscribableName, feedId, subscriptionManager )
 
+  def addSubscription( ds : DataSource, subscribableName : SubscribableName, destinationJson : Destination.Json ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, subscribableName )
+      val destination = subscriptionManager.materializeDestination( destinationJson )
+      addSubscription( conn, subscribableName, subscriptionManager, destinationJson, destination )
+
   def addSubscription( ds : DataSource, subscribableName : SubscribableName, destination : Destination ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, subscribableName )
-      subscriptionManager.validateDestination( conn, destination, subscribableName )
-      val newId = LatestSchema.Table.Subscription.Sequence.SubscriptionSeq.selectNext( conn )
-      LatestSchema.Table.Subscription.insert( conn, newId, destination, subscribableName )
+      addSubscription( conn, subscribableName, subscriptionManager, destination.json, destination )
+
+  def addSubscription( conn : Connection, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, destinationJson : Destination.Json, destination : Destination ) : Unit =
+    subscriptionManager.validateDestinationOrThrow( conn, destination, subscribableName )
+    val newId = LatestSchema.Table.Subscription.Sequence.SubscriptionSeq.selectNext( conn )
+    LatestSchema.Table.Subscription.insert( conn, newId, destinationJson, subscribableName )
 
   def listSubscribables( ds : DataSource ) : Task[Set[(SubscribableName,FeedId,SubscriptionManager)]] =
     withConnectionTransactional( ds ): conn =>

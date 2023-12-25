@@ -19,9 +19,7 @@ object ComposeMain extends AbstractMain:
         val random = Opts.flag("random",help="Choose random item from feed to display").map( _ => ComposeSelection.Single.Random )
         val guid   = Opts.option[String]("guid",help="Choose guid of item to display.").map( s => ComposeSelection.Single.Guid(Guid(s)) )
         ( first orElse random orElse guid ).withDefault( ComposeSelection.Single.First )
-      val destination =  
-        val help = "A subscription-type specific sample destination (e.g. email address) for the notification."
-        Opts.option[String]("destination",help=help,metavar="string").map( Destination.apply ).orNone
+      val destination = CommonOpts.AnyDestination.orNone
       val withinTypeId =
         val help = "A subscription-type specific sample within-type-id for the notification."
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone

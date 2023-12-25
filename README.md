@@ -179,12 +179,14 @@ by the `SubscriptionManager`.
 
 ```sql
 CREATE TABLE subscription(
-  destination       VARCHAR(1024),
+  subscription_id   BIGINT,
+  destination_json  JSONB,
   subscribable_name VARCHAR(64),
-  PRIMARY KEY( destination, subscribable_name ),
+  PRIMARY KEY( subscription_id ),
   FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
 )
 ```
 
-That's it for the base schema! There are also tables that represent destinations specific to subscription
-types, basically queues for notification. I'm omitting those for now.
+That's it for the base schema! There are also tables that convert destinations specific to subscription
+types into their various queues for notification. I'm omitting those for now.
+

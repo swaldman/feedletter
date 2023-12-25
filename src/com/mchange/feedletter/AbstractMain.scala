@@ -4,12 +4,14 @@ import zio.*
 import java.lang.System
 
 import com.monovore.decline.*
+import cats.implicits.* // for mapN
 
 import java.nio.file.{Path as JPath}
 import java.util.{Properties, Map as JMap}
 import javax.sql.DataSource
 import org.postgresql.replication.fluent.CommonOptions
 
+import com.mchange.mailutil.*
 
 trait AbstractMain:
   object CommonOpts:
@@ -18,6 +20,20 @@ trait AbstractMain:
       val opt  = Opts.option[JPath]("secrets",help=help,metavar="propsfile")
       val env  = Opts.env[JPath]("FEEDLETTER_SECRETS", help=help)
       (opt orElse env).orNone
+    val AnyDestination : Opts[Destination] =
+      val email =
+        val general = Opts.option[String]("e-mail",help="The e-mail address to subscribe.",metavar="address")
+        val displayName = Opts.option[String]("display-name",help="A display name to wrap around the e-mail address.",metavar="name").orNone
+        ( general, displayName ) mapN: (g, dn) =>
+          val tmp = Destination.Email( Smtp.Address.parseSingle( g ) )
+          dn.fold(tmp)( n => tmp.copy( displayNamePart = Some(n) ) )
+      val sms = Opts.option[String]("sms",help="The number to which messages should be sent.",metavar="number").map( n => Destination.Sms(number=n) )
+      val mastodon =
+        val instanceName = Opts.option[String]("masto-instance-name",help="A private name for this Mastodon instance.",metavar="name")
+        val instanceUrl = Opts.option[String]("masto-instance-url",help="The URL of the Mastodon instance",metavar="url")
+        ( instanceName, instanceUrl ) mapN: (in, iu) =>
+          Destination.Mastodon( name = in, instanceUrl = iu )
+      email orElse sms orElse mastodon
   end CommonOpts
 
   val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] =
