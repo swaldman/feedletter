@@ -474,6 +474,10 @@ object PgSchema:
           private val Insert =
             """|INSERT INTO subscription(subscription_id, destination_json, subscribable_name, confirmed)
                |VALUES ( ?, CAST( ? AS JSONB ), ?, ? )""".stripMargin
+          private val UpdateConfirmed =
+            """|UPDATE subscription
+               |SET confirmed = ?
+               |WHERE subscriptionId = ?""".stripMargin
           def selectDestinationJsonsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[Destination.Json] =
             Using.resource( conn.prepareStatement( this.SelectDestinationJsonsForSubscribable ) ): ps =>
               ps.setString(1, subscribableName.toString())
@@ -481,10 +485,15 @@ object PgSchema:
                 toSet(rs)( rs => Destination.Json( rs.getString(1) ) )
           def insert( conn : Connection, subscriptionId : SubscriptionId, destinationJson : Destination.Json, subscribableName : SubscribableName, confirmed : Boolean ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
-              ps.setLong  (1, subscriptionId.toLong)
-              ps.setString(2, destinationJson.toString())
-              ps.setString(3, subscribableName.toString())
+              ps.setLong   (1, subscriptionId.toLong)
+              ps.setString (2, destinationJson.toString())
+              ps.setString (3, subscribableName.toString())
               ps.setBoolean(4, confirmed)
+              ps.executeUpdate()
+          def updateConfirmed( conn : Connection, subscriptionId : SubscriptionId, confirmed : Boolean ) =
+            Using.resource( conn.prepareStatement( UpdateConfirmed ) ): ps =>
+              ps.setBoolean(1, confirmed)
+              ps.setLong   (2, subscriptionId.toLong)
               ps.executeUpdate()
           object Sequence:
             object SubscriptionSeq extends Creatable:
@@ -493,7 +502,10 @@ object PgSchema:
               def selectNext( conn : Connection ) : SubscriptionId =
                 Using.resource( conn.prepareStatement(SelectNext) ): ps =>
                   Using.resource( ps.executeQuery() ): rs =>
-                    uniqueResult("select-next-feed-seq", rs)( rs => SubscriptionId( rs.getInt(1) ) )
+                    uniqueResult("select-next-feed-seq", rs)( rs => SubscriptionId( rs.getLong(1) ) )
+          object Index:
+            object SubscriptionIdConfirmed extends Creatable:
+              protected val Create = "CREATE INDEX subscription_id_confirmed ON subscription(subscription_id, confirmed)"
 
         // publication-related tables should be decoupled from, unrelated to the
         // tables above. logically, we should be listening for "completion" above

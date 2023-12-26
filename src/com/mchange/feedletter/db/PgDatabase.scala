@@ -120,6 +120,7 @@ object PgDatabase extends Migratory, SelfLogging:
           PgSchema.V1.Table.Assignment.create( stmt )
           PgSchema.V1.Table.Subscription.create( stmt )
           PgSchema.V1.Table.Subscription.Sequence.SubscriptionSeq.create( stmt )
+          PgSchema.V1.Table.Subscription.Index.SubscriptionIdConfirmed.create( stmt )
           PgSchema.V1.Table.MailableTemplate.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
@@ -465,3 +466,10 @@ object PgDatabase extends Migratory, SelfLogging:
 
   def updateSubscriptionManagerJson( ds : DataSource, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager ) : Task[Unit] =
     withConnectionTransactional( ds )( conn => updateSubscriptionManagerJson(conn, subscribableName, subscriptionManager) )
+
+  def updateConfirmed( conn : Connection, subscriptionId : SubscriptionId, confirmed : Boolean ) : Unit =
+    LatestSchema.Table.Subscription.updateConfirmed( conn, subscriptionId, confirmed )
+
+  def updateConfirmed( ds : DataSource, subscriptionId : SubscriptionId, confirmed : Boolean ) : Task[Unit] =
+    withConnectionTransactional( ds )( conn => updateConfirmed(conn, subscriptionId, confirmed) )
+
