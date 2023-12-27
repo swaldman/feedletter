@@ -465,6 +465,7 @@ object PgSchema:
                |  destination_unique VARCHAR(1024) NOT NULL,
                |  subscribable_name  VARCHAR(64)   NOT NULL,
                |  confirmed          BOOLEAN       NOT NULL,
+               |  added              TIMESTAMP     NOT NULL,
                |  PRIMARY KEY( subscription_id ),
                |  FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
                |)""".stripMargin
@@ -474,7 +475,7 @@ object PgSchema:
                |WHERE subscribable_name = ? AND confirmed = TRUE""".stripMargin
           private val Insert =
             """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed)
-               |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ? )""".stripMargin
+               |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ?, ? )""".stripMargin
           /*
           private val Upsert =
             """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed)
@@ -491,13 +492,14 @@ object PgSchema:
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => Destination.Json( rs.getString(1) ) )
-          def insert( conn : Connection, subscriptionId : SubscriptionId, destination : Destination, subscribableName : SubscribableName, confirmed : Boolean ) =
+          def insert( conn : Connection, subscriptionId : SubscriptionId, destination : Destination, subscribableName : SubscribableName, confirmed : Boolean, now : Instant ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
-              ps.setLong   (1, subscriptionId.toLong)
-              ps.setString (2, destination.json.toString())
-              ps.setString (3, destination.unique)
-              ps.setString (4, subscribableName.toString())
-              ps.setBoolean(5, confirmed)
+              ps.setLong     (1, subscriptionId.toLong)
+              ps.setString   (2, destination.json.toString())
+              ps.setString   (3, destination.unique)
+              ps.setString   (4, subscribableName.toString())
+              ps.setBoolean  (5, confirmed)
+              ps.setTimestamp(6, Timestamp.from(now))
               ps.executeUpdate()
           def updateConfirmed( conn : Connection, subscriptionId : SubscriptionId, confirmed : Boolean ) =
             Using.resource( conn.prepareStatement( UpdateConfirmed ) ): ps =>

@@ -197,7 +197,7 @@ object CommandConfig extends SelfLogging:
         for
           ds <- ZIO.service[DataSource]
           _  <- PgDatabase.ensureDb( ds )
-          _  <- PgDatabase.addSubscription( ds, aso.subscribableName, aso.destination, aso.confirmed )
+          _  <- PgDatabase.addSubscription( ds, aso.subscribableName, aso.destination, aso.confirmed, aso.now )
         yield ()
       end zcommand
   object Crank:

@@ -42,7 +42,7 @@ object Main extends AbstractMain, SelfLogging:
           val help = "Check feed as often as possible, notify as soon as possible, regardless of (in)stability."
           Opts.flag("ping",help=help).map( _ => (0,0,0,0) )
         val timings = ping orElse setTimings
-        val feedUrl = Opts.argument[String](metavar="feed-url")  
+        val feedUrl = Opts.argument[String](metavar="feed-url")
         (timings, feedUrl) mapN: (t, fu) =>
           val fi = FeedInfo.forNewFeed(FeedUrl(fu), t(0), t(1), t(2), t(3) )
           CommandConfig.Admin.AddFeed( fi )
@@ -168,7 +168,7 @@ object Main extends AbstractMain, SelfLogging:
         val destination = CommonOpts.AnyDestination
         val unconfirmed = Opts.flag("unconfirmed", help="Mark the subscription unconfirmed.").orFalse
         ( subscriptionName, destination, unconfirmed ) mapN: (sn, d, uc) =>
-          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(sn, d, !uc) ) // ! our flag is unconfirmed, our field is confirmed
+          CommandConfig.Admin.Subscribe( AdminSubscribeOptions(sn, d, !uc, Instant.now) ) // ! our flag is unconfirmed, our field is confirmed
       Command("subscribe", header=header)( opts )
 
   object Crank:
