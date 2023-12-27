@@ -27,11 +27,12 @@ object Destination:
     def fromJson( json : Json ) : Email = readFromString[Email]( json.toString() )
     def tag : Tag = "Email"
   case class Email( addressPart : String, displayNamePart : Option[String] ) extends Destination:
-    override val factory = Email
     lazy val toAddress : Smtp.Address = Smtp.Address( addressPart, displayNamePart )
     lazy val rendered = toAddress.rendered
-    lazy val json = Json( writeToString(this) )
-    lazy val jsonPretty = Json( writeToString(this, WriterConfig.withIndentionStep(4)) )
+    override val factory = Email
+    override def unique = s"e-mail:${addressPart}"
+    override lazy val json = Json( writeToString(this) )
+    override lazy val jsonPretty = Json( writeToString(this, WriterConfig.withIndentionStep(4)) )
 
   object Mastodon extends Factory[Mastodon]:
     given JsonValueCodec[Mastodon] = JsonCodecMaker.make
@@ -39,8 +40,9 @@ object Destination:
     def tag : Tag = "Mastodon"
   case class Mastodon( name : String, instanceUrl : String ) extends Destination:
     override val factory = Mastodon
-    lazy val json = Json( writeToString(this) )
-    lazy val jsonPretty = Json( writeToString(this, WriterConfig.withIndentionStep(4)) )
+    override def unique = s"mastodon:${instanceUrl}"
+    override lazy val json = Json( writeToString(this) )
+    override lazy val jsonPretty = Json( writeToString(this, WriterConfig.withIndentionStep(4)) )
 
   object Sms extends Factory[Sms]:
     given JsonValueCodec[Sms] = JsonCodecMaker.make
@@ -48,8 +50,9 @@ object Destination:
     def tag : Tag = "Sms"
   case class Sms( number : String ) extends Destination:
     override val factory = Sms
-    lazy val json = Json( writeToString(this) )
-    lazy val jsonPretty = Json( writeToString(this, WriterConfig.withIndentionStep(4)) )
+    override def unique = s"sms:${number}"
+    override lazy val json = Json( writeToString(this) )
+    override lazy val jsonPretty = Json( writeToString(this, WriterConfig.withIndentionStep(4)) )
 
   def materialize( tag : Tag, json : Json ) : Destination =
     val factory = Factories.get(tag).getOrElse:
@@ -57,6 +60,12 @@ object Destination:
     factory.fromJson( json )
 
 sealed trait Destination extends Jsonable:
+   /**
+    *  Within any subscribable (subscription definiton), a String that should be
+    *  kept unique, in order to avoid the possibility of people becoming annoyingly
+    *  multiply subscribed.
+    */
+  def unique : String
   def factory : Destination.Factory[Destination]
   def tag : Destination.Tag = factory.tag
   def json : Destination.Json

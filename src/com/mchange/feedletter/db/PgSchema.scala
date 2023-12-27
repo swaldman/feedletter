@@ -460,10 +460,11 @@ object PgSchema:
         object Subscription extends Creatable:
           protected val Create =
             """|CREATE TABLE subscription(
-               |  subscription_id   BIGINT,
-               |  destination_json  JSONB       NOT NULL,
-               |  subscribable_name VARCHAR(64) NOT NULL,
-               |  confirmed         BOOLEAN     NOT NULL,
+               |  subscription_id    BIGINT,
+               |  destination_json   JSONB         NOT NULL,
+               |  destination_unique VARCHAR(1024) NOT NULL,
+               |  subscribable_name  VARCHAR(64)   NOT NULL,
+               |  confirmed          BOOLEAN       NOT NULL,
                |  PRIMARY KEY( subscription_id ),
                |  FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
                |)""".stripMargin
@@ -472,8 +473,8 @@ object PgSchema:
                |FROM subscription
                |WHERE subscribable_name = ? AND confirmed = TRUE""".stripMargin
           private val Insert =
-            """|INSERT INTO subscription(subscription_id, destination_json, subscribable_name, confirmed)
-               |VALUES ( ?, CAST( ? AS JSONB ), ?, ? )""".stripMargin
+            """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed)
+               |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ? )""".stripMargin
           private val UpdateConfirmed =
             """|UPDATE subscription
                |SET confirmed = ?
@@ -483,12 +484,13 @@ object PgSchema:
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => Destination.Json( rs.getString(1) ) )
-          def insert( conn : Connection, subscriptionId : SubscriptionId, destinationJson : Destination.Json, subscribableName : SubscribableName, confirmed : Boolean ) =
+          def insert( conn : Connection, subscriptionId : SubscriptionId, destination : Destination, subscribableName : SubscribableName, confirmed : Boolean ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               ps.setLong   (1, subscriptionId.toLong)
-              ps.setString (2, destinationJson.toString())
-              ps.setString (3, subscribableName.toString())
-              ps.setBoolean(4, confirmed)
+              ps.setString (2, destination.json.toString())
+              ps.setString (3, destination.unique)
+              ps.setString (4, subscribableName.toString())
+              ps.setBoolean(5, confirmed)
               ps.executeUpdate()
           def updateConfirmed( conn : Connection, subscriptionId : SubscriptionId, confirmed : Boolean ) =
             Using.resource( conn.prepareStatement( UpdateConfirmed ) ): ps =>
@@ -506,6 +508,8 @@ object PgSchema:
           object Index:
             object SubscriptionIdConfirmed extends Creatable:
               protected val Create = "CREATE INDEX subscription_id_confirmed ON subscription(subscription_id, confirmed)"
+            object SubscribableDestinationUnique extends Creatable:  
+              protected val Create = "CREATE UNIQUE INDEX subscribable_destination_unique ON subscription(subscribable_name, destination_unique)"
 
         // publication-related tables should be decoupled from, unrelated to the
         // tables above. logically, we should be listening for "completion" above
