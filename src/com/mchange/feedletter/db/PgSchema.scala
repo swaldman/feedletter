@@ -475,6 +475,13 @@ object PgSchema:
           private val Insert =
             """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed)
                |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ? )""".stripMargin
+          /*
+          private val Upsert =
+            """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed)
+               |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ? )
+               |ON CONFLICT(destination_unique, subscribable_name) DO UPDATE
+               |SET destination_json = ?, destination_unique = ?""".stripMargin
+          */
           private val UpdateConfirmed =
             """|UPDATE subscription
                |SET confirmed = ?
@@ -508,8 +515,8 @@ object PgSchema:
           object Index:
             object SubscriptionIdConfirmed extends Creatable:
               protected val Create = "CREATE INDEX subscription_id_confirmed ON subscription(subscription_id, confirmed)"
-            object SubscribableDestinationUnique extends Creatable:  
-              protected val Create = "CREATE UNIQUE INDEX subscribable_destination_unique ON subscription(subscribable_name, destination_unique)"
+            object DestinationUniqueSubscribableName extends Creatable:  
+              protected val Create = "CREATE UNIQUE INDEX destination_unique_subscribable_name ON subscription(destination_unique, subscribable_name)"
 
         // publication-related tables should be decoupled from, unrelated to the
         // tables above. logically, we should be listening for "completion" above

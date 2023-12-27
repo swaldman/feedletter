@@ -121,7 +121,7 @@ object PgDatabase extends Migratory, SelfLogging:
           PgSchema.V1.Table.Subscription.create( stmt )
           PgSchema.V1.Table.Subscription.Sequence.SubscriptionSeq.create( stmt )
           PgSchema.V1.Table.Subscription.Index.SubscriptionIdConfirmed.create( stmt )
-          PgSchema.V1.Table.Subscription.Index.SubscribableDestinationUnique.create( stmt )
+          PgSchema.V1.Table.Subscription.Index.DestinationUniqueSubscribableName.create( stmt )
           PgSchema.V1.Table.MailableTemplate.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
