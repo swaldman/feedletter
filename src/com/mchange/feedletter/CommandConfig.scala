@@ -49,7 +49,7 @@ object CommandConfig extends SelfLogging:
             guid
       def untemplateName( sman : SubscriptionManager ) : String =
         sman match
-          case stu : SubscriptionManager.Untemplated => stu.untemplateName
+          case stu : SubscriptionManager.UntemplatedCompose => stu.composeUntemplateName
           //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
           //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $sman")
 
@@ -79,26 +79,42 @@ object CommandConfig extends SelfLogging:
         yield ()
       end zcommand
     case class DefineEmailSubscription(
-      feedId           : FeedId,
-      subscribableName : SubscribableName,
-      from             : String,
-      replyTo          : Option[String],
-      mbUntemplateName : Option[String],
-      smanFactory      : SubscriptionManager.Factory,
-      extraParams      : Map[String,String]
+      feedId                      : FeedId,
+      subscribableName            : SubscribableName,
+      from                        : String,
+      replyTo                     : Option[String],
+      mbComposeUntemplateName     : Option[String],
+      mbConfirmUntemplateName     : Option[String],
+      mbApiResponseUntemplateName : Option[String],
+      smanFactory                 : SubscriptionManager.Factory,
+      extraParams                 : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
-        val untemplateName =
-          smanFactory match
-            case SubscriptionManager.Email.Each   => mbUntemplateName.getOrElse( Default.UntemplateSingle )
-            case SubscriptionManager.Email.Weekly => mbUntemplateName.getOrElse( Default.UntemplateMultiple )
+        val confirmUntemplateName     = mbConfirmUntemplateName.getOrElse( Default.Email.ConfirmUntemplate )
+        val apiResponseUntemplateName = mbApiResponseUntemplateName.getOrElse( Default.Email.ApiResponseUntemplate )
 
         val subscriptionManager =
           smanFactory match
             case SubscriptionManager.Email.Each =>
-              SubscriptionManager.Email.Each( from = Smtp.Address.parseSingle(from), replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ), untemplateName, extraParams )
+              val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateSingle )
+              SubscriptionManager.Email.Each (
+                from = Smtp.Address.parseSingle(from),
+                replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ),
+                composeUntemplateName = composeUntemplateName,
+                confirmUntemplateName = confirmUntemplateName,
+                apiResponseUntemplateName = apiResponseUntemplateName,
+                extraParams = extraParams
+              )
             case SubscriptionManager.Email.Weekly =>
-              SubscriptionManager.Email.Weekly( from = Smtp.Address.parseSingle(from), replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ), untemplateName, extraParams )
+              val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
+              SubscriptionManager.Email.Weekly (
+                from = Smtp.Address.parseSingle(from),
+                replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ),
+                composeUntemplateName = composeUntemplateName,
+                confirmUntemplateName = confirmUntemplateName,
+                apiResponseUntemplateName = apiResponseUntemplateName,
+                extraParams = extraParams
+              )
 
         for
           ds   <- ZIO.service[DataSource]

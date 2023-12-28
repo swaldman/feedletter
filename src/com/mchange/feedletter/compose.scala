@@ -5,14 +5,21 @@ import zio.*
 import untemplate.Untemplate
 
 import db.AssignableKey
-import com.mchange.feedletter.ComposeMain.single
 
-val ComposeUntemplates         = IndexedUntemplates.filter( (k,v) => isCompose(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Universal,Nothing]]) )
+object ComposeInfo:
+  sealed trait Universal:
+    def feedUrl             : String
+    def subscriptionName    : String
+    def subscriptionManager : SubscriptionManager
+    def withinTypeId        : String
+    def contents            : ItemContent | Set[ItemContent]
+  end Universal
+  case class Single( feedUrl : String, subscriptionName : String, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal
+  case class Multiple( feedUrl : String, subscriptionName : String, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal
+
+val ComposeUntemplates         = AllUntemplates.get.filter( (k,v) => isCompose(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Universal,Nothing]]) )
 val ComposeUntemplatesSingle   = ComposeUntemplates.filter( (k,v) => isComposeSingle(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Single,Nothing]])    )
 val ComposeUntemplatesMultiple = ComposeUntemplates.filter( (k,v) => isComposeMultiple(v) ) map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Multiple,Nothing]])  )
-
-def untemplateInputType( template : Untemplate.AnyUntemplate ) : String =
-  template.UntemplateInputTypeCanonical.getOrElse( template.UntemplateInputTypeDeclared )
 
 def isCompose( candidate : Untemplate.AnyUntemplate ) : Boolean =
   candidate.UntemplateInputTypeCanonical match
@@ -40,7 +47,6 @@ def isComposeMultiple( candidate : Untemplate.AnyUntemplate ) : Boolean =
       val prefixes = "ComposeInfo.Multiple" :: "com.mchange.feedletter.ComposeInfo.Multiple" :: "feedletter.ComposeInfo.Multiple" :: Nil
       prefixes.find( checkMe == _ ).nonEmpty
 
-
 def findComposeUntemplate( fqn : String, single : Boolean ) : Untemplate.AnyUntemplate =
   val (expectedDesc, otherDesc, expectedLoc, otherLoc) =
     if single then
@@ -50,26 +56,15 @@ def findComposeUntemplate( fqn : String, single : Boolean ) : Untemplate.AnyUnte
   expectedLoc.get( fqn ).getOrElse:
     val isCrosswise = otherLoc.contains(fqn)
     if isCrosswise then
-      throw new UntemplateNotFound( s"Untemplate '$fqn' is a ${otherDesc}-item-accepting untemplate, not available in contexts thar render a ${expectedDesc} item." )
+      throw new UntemplateNotFound( s"Compose ntemplate '$fqn' is a ${otherDesc}-item-accepting untemplate, not available in contexts thar render a ${expectedDesc} item." )
     else
-      throw new UntemplateNotFound( s"Untemplate '$fqn' does not appear to be defined." )
+      throw new UntemplateNotFound( s"Compose untemplate '$fqn' does not appear to be defined." )
 
 def findComposeUntemplateSingle( fqn : String ) : untemplate.Untemplate[ComposeInfo.Single,Nothing] =
   findComposeUntemplate(fqn, single=true).asInstanceOf[untemplate.Untemplate[ComposeInfo.Single,Nothing]]
 
 def findComposeUntemplateMultiple( fqn : String ) : untemplate.Untemplate[ComposeInfo.Multiple,Nothing] =
   findComposeUntemplate(fqn, single=false).asInstanceOf[untemplate.Untemplate[ComposeInfo.Multiple,Nothing]]
-
-object ComposeInfo:
-  sealed trait Universal:
-    def feedUrl             : String
-    def subscriptionName    : String
-    def subscriptionManager : SubscriptionManager
-    def withinTypeId        : String
-    def contents            : ItemContent | Set[ItemContent]
-  end Universal
-  case class Single( feedUrl : String, subscriptionName : String, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal
-  case class Multiple( feedUrl : String, subscriptionName : String, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal
 
 object ComposeSelection:
   object Single:
@@ -83,17 +78,6 @@ object ComposeSelection:
 def composeMultipleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionManager, contents : Set[ItemContent] ) : String = ???
 
 // def composeSingleItemHtmlMailTemplate( assignableKey : AssignableKey, stype : SubscriptionManager, contents : ItemContent ) : String = ???
-
-def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
-  import zio.http.Server
-  import sttp.tapir.ztapir.*
-  import sttp.tapir.server.ziohttp.ZioHttpInterpreter
-
-  val rootEndpoint = endpoint.get.out( htmlBodyUtf8 )
-  val indexEndpoint = endpoint.in("index.html").get.out( htmlBodyUtf8 )
-  val logic : Unit => UIO[String] = _ => ZIO.succeed( html )
-  val httpApp = ZioHttpInterpreter().toHttp( List(rootEndpoint.zServerLogic(logic), indexEndpoint.zServerLogic(logic) ) )
-  Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.port(port)), Server.live)
 
 def serveComposeSingleUntemplate(
   untemplateName      : String,
@@ -113,9 +97,9 @@ def serveComposeSingleUntemplate(
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
     subscriptionManager match
-      case templating : SubscriptionManager.Templating =>
+      case templating : SubscriptionManager.TemplatingCompose =>
         val d : templating.D = destination.asInstanceOf[templating.D] // how can I let th compiler know templating == subscriptionManager?
-        val templateParams = templating.templateParams( subscriptionName, withinTypeId, feedUrl, d, Set(contents) )
+        val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, Set(contents) )
         templateParams.fill( untemplateOutput )
    // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
    //   untemplateOutput 

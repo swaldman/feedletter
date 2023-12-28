@@ -34,7 +34,6 @@ object SecretsKey:
   val FeedletterJdbcPassword = "feedletter.jdbc.password"
   val FeedletterSecretSalt   = "feedletter.secret.salt"
 
-
 type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) => Map[String,String]
 
@@ -52,15 +51,31 @@ final case class ExcludedItem( feedId : FeedId, guid : Guid, link : Option[Strin
 
 final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant )
 
+def untemplateInputType( template : Untemplate.AnyUntemplate ) : String =
+  template.UntemplateInputTypeCanonical.getOrElse( template.UntemplateInputTypeDeclared )
+
+// We define this mutable(!) registry, rather than using IndexedUntemplates directly,
+// because we may in future wish to define "binary" distributions that nevertheless
+// permit the definition of new untemplates.
+//
+// Those distributions could index the untemplates under whatever name users like,
+// but would need to add them to this registry at app startup.
+
+object AllUntemplates:
+  private val untemplates = scala.collection.mutable.Map.from( IndexedUntemplates )
+
+  def add( more : IterableOnce[(String,Untemplate.AnyUntemplate)] ) : Unit = this.synchronized:
+    untemplates.addAll(more)
+
+  def get : Map[String,Untemplate.AnyUntemplate] = this.synchronized:
+    Map.from( untemplates )
+
 object TemplateParams:
   def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )
-  //val defaults : String => String = key => s"<i>&lt;oops! could not insert param '$key'&gt;</i>" 
+  val empty = TemplateParams( Map.empty )
 case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
   def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
-
-
-
 
 
 

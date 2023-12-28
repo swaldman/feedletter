@@ -25,7 +25,7 @@ object ComposeMain extends AbstractMain:
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
       val port =
         val help = "The port on which to run a local HTTP server, which will serve the rendered untemplate."
-        Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.ComposePort )
+        Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.StylePort )
       ( subscriptionName, selection, destination, withinTypeId, port ) mapN: ( sn, s, d, wti, p ) =>
         CommandConfig.Admin.ComposeUntemplateSingle( sn, s, d, wti, p )
     Command("single",header=header)( opts )

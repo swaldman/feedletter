@@ -5,7 +5,7 @@ import com.mchange.feedletter.{SubjectCustomizer,SubscribableName,TemplateParamC
 // keys are subscription type names
 val SubjectCustomizers = Map[SubscribableName,SubjectCustomizer](
 )
-val TemplateParamCustomizers = Map[SubscribableName,TemplateParamCustomizer](
+val ComposeTemplateParamCustomizers = Map[SubscribableName,TemplateParamCustomizer](
 )
 
 

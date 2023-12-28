@@ -62,9 +62,15 @@ object Main extends AbstractMain, SelfLogging:
         val replyTo =
           val help = "E-mail address to which recipients should reply (if different from the 'from' address)."
           Opts.option[String]("reply-to",help=help,metavar="e-mail address").orNone
-        val untemplateName =
+        val composeUntemplateName =
           val help = "Fully qualified name of untemplate that will render notifications."
-          Opts.option[String]("untemplate-name",help=help,metavar="fully-qualified-name").orNone
+          Opts.option[String]("compose-untemplate",help=help,metavar="fully-qualified-name").orNone
+        val confirmUntemplateName =
+          val help = "Fully qualified name of untemplate that will ask for e-mail confirmations."
+          Opts.option[String]("confirm-untemplate",help=help,metavar="fully-qualified-name").orNone
+        val apiResponseUntemplateName =
+          val help = "Fully qualified name of untemplate that will render results of GET request to the API."
+          Opts.option[String]("api-response-untemplate",help=help,metavar="fully-qualified-name").orNone
          // modified from decline's docs
         val kind =
           val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionManager.Email.Each )
@@ -83,8 +89,8 @@ object Main extends AbstractMain, SelfLogging:
             .mapValidated( validate )
             .map( Map.from )
         end extraParams
-        ( feedId, name, from, replyTo, untemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, un, k, ep ) =>
-          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, un, k, ep )
+        ( feedId, name, from, replyTo, composeUntemplateName, confirmUntemplateName, apiResponseUntemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, comun, conun, apiresun, k, ep ) =>
+          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, comun, conun, apiresun, k, ep )
       Command("define-email-subscription",header=header)( opts )
     val editSubscriptionDefinition =
       val header = "Edit a subscription definition."

@@ -8,7 +8,11 @@ object Default:
   val MailBatchSize             = 100
   val MailBatchDelaySeconds     = 15 * 60 // 15 mins
   val MailMaxRetries            = 5
-  val ComposePort               = 8080
-  val UntemplateSingle          = "com.mchange.feedletter.default.defaultComposeSingle"
-  val UntemplateMultiple        = "com.mchange.feedletter.default.defaultComposeMultiple"
+  val StylePort               = 8080
+
+  object Email:
+    val ComposeUntemplateSingle          = "com.mchange.feedletter.default.email.composeSingle"
+    val ComposeUntemplateMultiple        = "com.mchange.feedletter.default.email.composeMultiple"
+    val ConfirmUntemplate                = "com.mchange.feedletter.default.email.confirm"
+    val ApiResponseUntemplate            = "com.mchange.feedletter.default.email.apiResponse"
 
