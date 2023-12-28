@@ -8,8 +8,8 @@
 
 # A bit (well, very) fragile...
 
-# NOTE: For now, compose commands are run by a separate feedletter-compose launcher.
-#       Running a compose subcommand will fail.
+# NOTE: For now, style commands are run by a separate feedletter-style launcher.
+#       Running a style subcommand will fail.
 #       But we might want to reintegrate sometime in the future, so I've included the case
 
 MAINCMD=$0
@@ -33,7 +33,7 @@ if [[ "$MAINCMD" == "./feedletter" || "$MAINCMD" == "feedletter" ]]; then
 	else
 	    ./millw --no-server runMain com.mchange.feedletter.Main "$@"
 	fi
-    elif [[ "$SUBCMD" == "compose" ]]; then                            # we need to watch and rerun server in background
+    elif [[ "$SUBCMD" == "style" ]]; then                            # we need to watch and rerun server in background
 	./millw --no-server --watch runMainBackground com.mchange.feedletter.Main "$@"
     else
 	./millw --no-server runMain com.mchange.feedletter.Main "$@"

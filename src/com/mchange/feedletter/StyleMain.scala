@@ -6,10 +6,10 @@ import cats.data.{NonEmptyList,Validated,ValidatedNel}
 
 import java.nio.file.{Path as JPath}
 
-object ComposeMain extends AbstractMain:
+object StyleMain extends AbstractMain:
 
   val single =
-    val header = "Compose a template for a single post."
+    val header = "Style a template for a single post."
     val opts =
       val subscriptionName =
         val help = "The name of an already defined subscription that will use this template."
@@ -27,17 +27,17 @@ object ComposeMain extends AbstractMain:
         val help = "The port on which to run a local HTTP server, which will serve the rendered untemplate."
         Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.StylePort )
       ( subscriptionName, selection, destination, withinTypeId, port ) mapN: ( sn, s, d, wti, p ) =>
-        CommandConfig.Admin.ComposeUntemplateSingle( sn, s, d, wti, p )
+        CommandConfig.Style.ComposeUntemplateSingle( sn, s, d, wti, p )
     Command("single",header=header)( opts )
 
-  val feedletterCompose =
+  val feedletterStyle =
     val header = "Iteratively edit and review the untemplates through which your posts will be notified."
     val opts : Opts[(Option[JPath], CommandConfig)] =
       val secrets = CommonOpts.Secrets
       val subcommands = Opts.subcommands( single )
       ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )
-    Command("feedletter-compose", header=header)( opts )
+    Command("feedletter-style", header=header)( opts )
 
-  val baseCommand = feedletterCompose
+  val baseCommand = feedletterStyle
 
-end ComposeMain
+end StyleMain

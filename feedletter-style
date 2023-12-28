@@ -1,0 +1,5 @@
+#!/bin/bash
+
+./millw --no-server --watch runMainBackground com.mchange.feedletter.StyleMain "$@"
+
+
