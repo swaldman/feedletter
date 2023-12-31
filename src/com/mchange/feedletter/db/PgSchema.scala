@@ -487,6 +487,13 @@ object PgSchema:
             """|UPDATE subscription
                |SET confirmed = ?
                |WHERE subscriptionId = ?""".stripMargin
+          private val Delete =
+            """|DELETE FROM subscription
+               |WHERE subscription_id = ?""".stripMargin
+          def delete( conn : Connection, subscriptionId : SubscriptionId ) =
+            Using.resource( conn.prepareStatement( Delete ) ): ps =>
+              ps.setLong(1, subscriptionId.toLong)
+              ps.executeQuery()
           def selectDestinationJsonsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[Destination.Json] =
             Using.resource( conn.prepareStatement( this.SelectDestinationJsonsForSubscribable ) ): ps =>
               ps.setString(1, subscribableName.toString())

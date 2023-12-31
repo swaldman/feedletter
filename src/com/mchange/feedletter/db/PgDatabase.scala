@@ -485,3 +485,9 @@ object PgDatabase extends Migratory, SelfLogging:
 
   def subscriptionInfoForSubscriptionId( conn : Connection, id : SubscriptionId ) : SubscriptionInfo =
     LatestSchema.Join.SubscribableSubscription.selectSubscriptionInfoForSubscriptionId( conn, id )
+
+  def unsubscribe( conn : Connection, id : SubscriptionId ) : SubscriptionInfo =
+    val out = subscriptionInfoForSubscriptionId( conn, id )
+    LatestSchema.Table.Subscription.delete( conn, id )
+    out
+

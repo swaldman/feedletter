@@ -68,10 +68,10 @@ object V0:
           nascent.copy( invitation = regenInvitation( nascent, secretSalt ) )
       case class Confirm( subscriptionId : Long, invitation : String ) extends RequestPayload.Invited
       object Remove extends Bouncer[Remove]("RemoveSuffix"):
-        def fromQueryParams( queryParams : QueryParams ) : Confirm =
+        def fromQueryParams( queryParams : QueryParams ) : Remove =
           val subscriptionId : Long   = queryParams.assertParam( "subscriptionId" ).toLong
           val invitation     : String = queryParams.assertParam( "invitation" )
-          Confirm( subscriptionId, invitation )
+          Remove( subscriptionId, invitation )
         def noninvitationContentsBytes( req : Remove ) = req.subscriptionId.toByteSeqBigEndian
         def invite( subscriptionId : Long, secretSalt : String ) : Remove =
           val nascent = Remove( subscriptionId, "" )
@@ -182,12 +182,31 @@ object V0:
           RequestPayload.Subscription.Confirm.assertInvitation( sconfirm, as.secretSalt )
           PgDatabase.updateConfirmed( conn, sid, true )
           val sinfo = PgDatabase.subscriptionInfoForSubscriptionId( conn, sid )
-          ( sinfo, ResponsePayload.Subscription.Confirmed(s"Subscription ${sid} successfully confirmed.", sid.toLong) )
+          ( sinfo, ResponsePayload.Subscription.Confirmed(s"Subscription ${sid} of '${sinfo.destination.unique}' successfully confirmed.", sid.toLong) )
       mapError( mainTask )
+
+    def subscriptionConfirmLogicPost( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZPostOut[ResponsePayload.Subscription.Confirmed] =
+      subscriptionConfirmLogicShared( ds, as )( sconfirm ).map( _(1) )
 
     def subscriptionConfirmLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
       val sconfirm = RequestPayload.Subscription.Confirm.fromQueryParams(qps)
       val sharedOut = subscriptionConfirmLogicShared( ds, as )( sconfirm )
+      sharedToGet( sharedOut )
+
+    def subscriptionRemoveLogicShared( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZSharedOut[ResponsePayload.Subscription.Removed] =
+      val mainTask =
+        withConnectionTransactional( ds ): conn =>
+          val sid   = SubscriptionId(sremove.subscriptionId)
+          val sinfo = PgDatabase.unsubscribe( conn, sid )
+          ( sinfo, ResponsePayload.Subscription.Removed(s"Unsubscribed. Subscription ${sid} of '${sinfo.destination.unique}' successfully removed.", sid.toLong) )
+      mapError( mainTask )
+
+    def subscriptionRemoveLogicPost( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZPostOut[ResponsePayload.Subscription.Removed] =
+      subscriptionRemoveLogicShared( ds, as )( sremove ).map( _(1) )
+
+    def subscriptionRemoveLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
+      val sremove = RequestPayload.Subscription.Remove.fromQueryParams(qps)
+      val sharedOut = subscriptionRemoveLogicShared( ds, as )( sremove )
       sharedToGet( sharedOut )
 
 
