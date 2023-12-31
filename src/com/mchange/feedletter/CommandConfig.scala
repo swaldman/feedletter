@@ -132,8 +132,8 @@ object CommandConfig extends SelfLogging:
     case object ListSubscribables extends CommandConfig:
       override def zcommand : ZCommand =
         for
-          ds  <- ZIO.service[DataSource]
-          _   <- PgDatabase.ensureDb( ds )
+          ds   <- ZIO.service[DataSource]
+          _    <- PgDatabase.ensureDb( ds )
           tups <- PgDatabase.listSubscribables(ds)
           _    <- printSubscribablesTable(tups)
         yield ()
@@ -143,8 +143,8 @@ object CommandConfig extends SelfLogging:
         for
           as <- ZIO.service[AppSetup]
           _  <- ZIO.attemptBlocking:
-                      given Smtp.Context = as.smtpContext
-                      Smtp.sendSimplePlaintext("This is a test message from feedletter.", subject="FEEDLETTER TEST MESSAGE", from=from, to=to )
+                  given Smtp.Context = as.smtpContext
+                  Smtp.sendSimplePlaintext("This is a test message from feedletter.", subject="FEEDLETTER TEST MESSAGE", from=from, to=to )
           _  <- Console.printLine( s"Test email sent from '$from' to '$to'." )
         yield ()
       end zcommand
@@ -170,16 +170,16 @@ object CommandConfig extends SelfLogging:
       override def zcommand : ZCommand =
         for
           ds <- ZIO.service[DataSource]
-          _ <- PgDatabase.ensureDb( ds )
-          _ <- PgDatabase.updateAssignItems(ds)
+          _  <- PgDatabase.ensureDb( ds )
+          _  <- PgDatabase.updateAssignItems(ds)
         yield ()
       end zcommand
     case object Complete extends CommandConfig:
       override def zcommand : ZCommand =
         for
           ds <- ZIO.service[DataSource]
-          _ <- PgDatabase.ensureDb( ds )
-          _ <- PgDatabase.completeAssignables( ds )
+          _  <- PgDatabase.ensureDb( ds )
+          _  <- PgDatabase.completeAssignables( ds )
         yield ()
       end zcommand
     case object SendMailGroup extends CommandConfig:
@@ -187,8 +187,8 @@ object CommandConfig extends SelfLogging:
         for
           as <- ZIO.service[AppSetup]
           ds <- ZIO.service[DataSource]
-          _ <- PgDatabase.ensureDb( ds )
-          _ <- PgDatabase.forceMailNextGroup( ds, as.smtpContext )
+          _  <- PgDatabase.ensureDb( ds )
+          _  <- PgDatabase.forceMailNextGroup( ds, as.smtpContext )
         yield ()
       end zcommand
   object Db:
