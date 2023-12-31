@@ -68,9 +68,9 @@ object Main extends AbstractMain, SelfLogging:
         val confirmUntemplateName =
           val help = "Fully qualified name of untemplate that will ask for e-mail confirmations."
           Opts.option[String]("confirm-untemplate",help=help,metavar="fully-qualified-name").orNone
-        val apiResponseUntemplateName =
+        val statusChangedUntemplateName =
           val help = "Fully qualified name of untemplate that will render results of GET request to the API."
-          Opts.option[String]("api-response-untemplate",help=help,metavar="fully-qualified-name").orNone
+          Opts.option[String]("status-changed-untemplate",help=help,metavar="fully-qualified-name").orNone
          // modified from decline's docs
         val kind =
           val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionManager.Email.Each )
@@ -89,8 +89,8 @@ object Main extends AbstractMain, SelfLogging:
             .mapValidated( validate )
             .map( Map.from )
         end extraParams
-        ( feedId, name, from, replyTo, composeUntemplateName, confirmUntemplateName, apiResponseUntemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, comun, conun, apiresun, k, ep ) =>
-          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, comun, conun, apiresun, k, ep )
+        ( feedId, name, from, replyTo, composeUntemplateName, confirmUntemplateName, statusChangedUntemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, comun, conun, scun, k, ep ) =>
+          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, comun, conun, scun, k, ep )
       Command("define-email-subscription",header=header)( opts )
     val editSubscriptionDefinition =
       val header = "Edit a subscription definition."

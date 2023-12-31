@@ -683,10 +683,27 @@ object PgSchema:
                 |ON assignable.subscribable_name = assignment.subscribable_name AND assignable.within_type_id = assignment.within_type_id""".stripMargin
           private val ClearOldCache =
              s"""|UPDATE item
-                 |SET single_item_rss = NULL, content_hash = NULL, assignability = 'Cleared'            -- note that we leave link alone...
+                 |SET single_item_rss = NULL, content_hash = NULL, assignability = 'Cleared'      -- note that we leave link alone...
                  |WHERE assignability = 'Assigned' AND NOT item.guid IN ( ${SelectLiveAssignedGuids} )""".stripMargin
           def clearOldCache( conn : Connection ) =
             Using.resource( conn.prepareStatement( ClearOldCache ) )( _.executeUpdate() )
         end ItemAssignableAssignment
+        object SubscribableSubscription:
+          private val SelectSubscriptionInfoForSubscriptionId =
+            """|SELECT subscribable.subscription_name, subscription_manager_tag, subscription_manager_json, destination
+               |FROM subscribable
+               |INNER JOIN subscription
+               |ON subscribable.subscribable_name = subscription.subscribable_name
+               |WHERE subscription_id = ?""".stripMargin
+          def selectSubscriptionInfoForSubscriptionId( conn : Connection, subscriptionId : SubscriptionId ) : SubscriptionInfo =
+            Using.resource( conn.prepareStatement( SelectSubscriptionInfoForSubscriptionId ) ): ps =>
+              ps.setLong(1, subscriptionId.toLong)
+              Using.resource( ps.executeQuery() ): rs =>
+                uniqueResult("select-sub-manager-for-sub-id", rs): rs =>
+                  val sname = SubscribableName( rs.getString(1) )
+                  val sman = SubscriptionManager.materialize( SubscriptionManager.Tag( rs.getString(2) ), SubscriptionManager.Json( rs.getString(3) ) )
+                  val dest = Destination.materialize( sman.destinationFactory.tag, Destination.Json( rs.getString(4) ) )
+                  SubscriptionInfo( sname, sman, dest )
+        end SubscribableSubscription
       end Join
 

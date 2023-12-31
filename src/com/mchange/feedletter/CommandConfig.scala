@@ -28,19 +28,19 @@ object CommandConfig extends SelfLogging:
         yield ()
       end zcommand
     case class DefineEmailSubscription(
-      feedId                      : FeedId,
-      subscribableName            : SubscribableName,
-      from                        : String,
-      replyTo                     : Option[String],
-      mbComposeUntemplateName     : Option[String],
-      mbConfirmUntemplateName     : Option[String],
-      mbApiResponseUntemplateName : Option[String],
-      smanFactory                 : SubscriptionManager.Factory,
-      extraParams                 : Map[String,String]
+      feedId                        : FeedId,
+      subscribableName              : SubscribableName,
+      from                          : String,
+      replyTo                       : Option[String],
+      mbComposeUntemplateName       : Option[String],
+      mbConfirmUntemplateName       : Option[String],
+      mbStatusChangedUntemplateName : Option[String],
+      smanFactory                   : SubscriptionManager.Factory,
+      extraParams                   : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
         val confirmUntemplateName     = mbConfirmUntemplateName.getOrElse( Default.Email.ConfirmUntemplate )
-        val apiResponseUntemplateName = mbApiResponseUntemplateName.getOrElse( Default.Email.ApiResponseUntemplate )
+        val statusChangedUntemplateName = mbStatusChangedUntemplateName.getOrElse( Default.Email.StatusChangedUntemplate )
 
         val subscriptionManager =
           smanFactory match
@@ -51,7 +51,7 @@ object CommandConfig extends SelfLogging:
                 replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ),
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
-                apiResponseUntemplateName = apiResponseUntemplateName,
+                statusChangedUntemplateName = statusChangedUntemplateName,
                 extraParams = extraParams
               )
             case SubscriptionManager.Email.Weekly =>
@@ -61,7 +61,7 @@ object CommandConfig extends SelfLogging:
                 replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ),
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
-                apiResponseUntemplateName = apiResponseUntemplateName,
+                statusChangedUntemplateName = statusChangedUntemplateName,
                 extraParams = extraParams
               )
 
@@ -108,7 +108,7 @@ object CommandConfig extends SelfLogging:
     case object ListComposeUntemplates extends CommandConfig:
       override def zcommand : ZCommand =
         for
-          _ <- printUntemplatesTable( ComposeUntemplates )
+          _ <- printUntemplatesTable( AllUntemplates.compose )
         yield ()
       end zcommand
     case object ListExcludedItems extends CommandConfig:

@@ -456,7 +456,6 @@ object PgDatabase extends Migratory, SelfLogging:
     LatestSchema.Table.Feed.selectUrl(conn, feedId).getOrElse:
       throw new FeedletterException( s"Expected a URL assigned for Feed ID '$feedId', none found.")
 
-
   def feedIdUrlForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedId, FeedUrl ) =
     LatestSchema.Join.ItemSubscribable.selectFeedIdUrlForSubscribableName( conn, subscribableName )
 
@@ -484,4 +483,5 @@ object PgDatabase extends Migratory, SelfLogging:
   def updateConfirmed( ds : DataSource, subscriptionId : SubscriptionId, confirmed : Boolean ) : Task[Unit] =
     withConnectionTransactional( ds )( conn => updateConfirmed(conn, subscriptionId, confirmed) )
 
-
+  def subscriptionInfoForSubscriptionId( conn : Connection, id : SubscriptionId ) : SubscriptionInfo =
+    LatestSchema.Join.SubscribableSubscription.selectSubscriptionInfoForSubscriptionId( conn, id )

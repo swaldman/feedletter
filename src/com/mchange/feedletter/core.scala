@@ -12,7 +12,7 @@ import scala.util.Using
 
 import db.AssignableKey
 
-import scala.collection.immutable
+import scala.collection.{immutable,mutable}
 
 import com.mchange.conveniences.www.*
 import trivialtemplate.TrivialTemplate
@@ -28,6 +28,11 @@ enum ConfigKey:
   case MailMaxRetries
   case TimeZone
 
+enum SubscriptionStatusChanged:
+  case Created
+  case Confirmed
+  case Removed
+
 object SecretsKey:
   val FeedletterJdbcUrl      = "feedletter.jdbc.url"
   val FeedletterJdbcUser     = "feedletter.jdbc.user"
@@ -38,6 +43,8 @@ type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : S
 type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) => Map[String,String]
 
 val LineSep = System.lineSeparator()
+
+case class SubscriptionInfo( name : SubscribableName, manager : SubscriptionManager, destination : Destination )
 
 object FeedInfo:
   def forNewFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ): FeedInfo =
@@ -53,22 +60,6 @@ final case class AdminSubscribeOptions( subscribableName : SubscribableName, des
 
 def untemplateInputType( template : Untemplate.AnyUntemplate ) : String =
   template.UntemplateInputTypeCanonical.getOrElse( template.UntemplateInputTypeDeclared )
-
-// We define this mutable(!) registry, rather than using IndexedUntemplates directly,
-// because we may in future wish to define "binary" distributions that nevertheless
-// permit the definition of new untemplates.
-//
-// Those distributions could index the untemplates under whatever name users like,
-// but would need to add them to this registry at app startup.
-
-object AllUntemplates:
-  private val untemplates = scala.collection.mutable.Map.from( IndexedUntemplates )
-
-  def add( more : IterableOnce[(String,Untemplate.AnyUntemplate)] ) : Unit = this.synchronized:
-    untemplates.addAll(more)
-
-  def get : Map[String,Untemplate.AnyUntemplate] = this.synchronized:
-    Map.from( untemplates )
 
 object TemplateParams:
   def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )

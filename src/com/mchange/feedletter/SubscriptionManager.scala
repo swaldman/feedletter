@@ -24,6 +24,7 @@ import com.github.plokhotnyuk.jsoniter_scala.macros.*
 import com.github.plokhotnyuk.jsoniter_scala.{core as jsoniter}
 
 import MLevel.*
+import com.mchange.feedletter.api.V0.ResponsePayload
 
 object SubscriptionManager extends SelfLogging:
   val  Json = SubscriptionManagerJson
@@ -37,8 +38,8 @@ object SubscriptionManager extends SelfLogging:
     def composeUntemplateName : String
   sealed trait UntemplatedConfirm:
     def confirmUntemplateName : String
-  sealed trait UntemplatedApiResponse:
-    def apiResponseUntemplateName : String
+  sealed trait UntemplatedStatusChanged:
+    def statusChangedUntemplateName : String
   sealed trait TemplatingCompose extends SubscriptionManager:
     def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : this.D, contents : Set[ItemContent] ) : TemplateParams
   sealed trait Factory:
@@ -54,7 +55,14 @@ object SubscriptionManager extends SelfLogging:
       override def fromJson( json : Json ) : Each = jsoniter.readFromString[Each](json.toString())
       override def tag : Tag = "Email.Each"
       given jsoniter.JsonValueCodec[Each] = JsonCodecMaker.make
-    case class Each( from : Smtp.Address, replyTo : Option[Smtp.Address], composeUntemplateName : String, confirmUntemplateName : String, apiResponseUntemplateName : String, extraParams : Map[String,String] ) extends Email:
+    case class Each(
+      from                        : Smtp.Address,
+      replyTo                     : Option[Smtp.Address],
+      composeUntemplateName       : String,
+      confirmUntemplateName       : String,
+      statusChangedUntemplateName : String,
+      extraParams                 : Map[String,String]
+    ) extends Email:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
 
@@ -76,7 +84,7 @@ object SubscriptionManager extends SelfLogging:
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
         val fullTemplate =
           val info = ComposeInfo.Single( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
-          val compose = findComposeUntemplateSingle(composeUntemplateName)
+          val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
           compose( info ).text
         val tosWithTemplateParams =
           destinations.map: destination =>
@@ -91,7 +99,14 @@ object SubscriptionManager extends SelfLogging:
       override def fromJson( json : Json ) : Weekly = jsoniter.readFromString[Weekly](json.toString())
       override def tag : Tag = "Email.Weekly"
       given jsoniter.JsonValueCodec[Weekly] = JsonCodecMaker.make
-    final case class Weekly( from : Smtp.Address, replyTo : Option[Smtp.Address], composeUntemplateName : String, confirmUntemplateName : String, apiResponseUntemplateName : String, extraParams : Map[String,String] ) extends Email:
+    final case class Weekly(
+      from                        : Smtp.Address,
+      replyTo                     : Option[Smtp.Address],
+      composeUntemplateName       : String,
+      confirmUntemplateName       : String,
+      statusChangedUntemplateName : String,
+      extraParams                 : Map[String,String]
+    ) extends Email:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
       override val sampleWithinTypeId = "2023-week50"
@@ -135,7 +150,7 @@ object SubscriptionManager extends SelfLogging:
           val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
           val fullTemplate =
             val info = ComposeInfo.Multiple( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents )
-            val compose = findComposeUntemplateMultiple(composeUntemplateName)
+            val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
             compose( info ).text
           val tosWithTemplateParams =
             destinations.map: destination =>
@@ -157,13 +172,13 @@ object SubscriptionManager extends SelfLogging:
         val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
         mainDefaultTemplateParams ++ (("weekStart", weekStart)::("weekEnd", weekEnd)::Nil)
 
-  trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedApiResponse, TemplatingCompose:
-    def from                      : Smtp.Address
-    def replyTo                   : Option[Smtp.Address]
-    def composeUntemplateName     : String
-    def confirmUntemplateName     : String
-    def apiResponseUntemplateName : String
-    def extraParams               : Map[String,String]
+  trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChanged, TemplatingCompose:
+    def from                        : Smtp.Address
+    def replyTo                     : Option[Smtp.Address]
+    def composeUntemplateName       : String
+    def confirmUntemplateName       : String
+    def statusChangedUntemplateName : String
+    def extraParams                 : Map[String,String]
 
     type D = Destination.Email
 
@@ -204,7 +219,7 @@ object SubscriptionManager extends SelfLogging:
     override def maybeConfirmSubscription( conn : Connection, destination : D, subscribableName : SubscribableName, subscriptionId : SubscriptionId, secretSalt : String ) : Boolean =
       val subject = s"[${subscribableName}] Please confirm your new subscription" // XXX: Hardcoded subject, revisit someday
       val mailText =
-        val confirmUntemplate = findConfirmUntemplate( confirmUntemplateName )
+        val confirmUntemplate = AllUntemplates.findConfirmUntemplate( confirmUntemplateName )
         val confirmInfo = ConfirmInfo( destination, subscribableName, this, subscriptionId, secretSalt )
         confirmUntemplate( confirmInfo ).text
       PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
@@ -215,12 +230,17 @@ object SubscriptionManager extends SelfLogging:
         case emailDestination : Destination.Email => Some( emailDestination )
         case _ =>
           throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
+
+    override def htmlForStatusChanged( statusChangedInfo : StatusChangedInfo ) : String =
+      val untemplate = AllUntemplates.findStatusChangedUntemplate(statusChangedUntemplateName)
+      untemplate( statusChangedInfo ).text
+
   end Email
 
   def materialize( tag : Tag, json : Json ) : SubscriptionManager =
     val factory = Factories.get(tag).getOrElse:
       throw new InvalidSubscriptionManager(s"Tag '${tag}' unknown for $json")
-    factory.fromJson( json )  
+    factory.fromJson( json )
 
 sealed trait SubscriptionManager extends Jsonable:
   type D <: Destination
@@ -239,7 +259,9 @@ sealed trait SubscriptionManager extends Jsonable:
   def json : SubscriptionManager.Json
   def jsonPretty : SubscriptionManager.Json
 
-  def materializeDestination( destinationJson : Destination.Json ): D =
+  def htmlForStatusChanged( statusChangedInfo : StatusChangedInfo ) : String
+
+  def materializeDestination( destinationJson : Destination.Json ) : D =
     Destination.materialize( destinationFactory.tag, destinationJson ).asInstanceOf[D]
 
   def narrowDestinationOrThrow( destination : Destination ) : D =

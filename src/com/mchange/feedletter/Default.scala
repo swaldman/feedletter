@@ -14,5 +14,5 @@ object Default:
     val ComposeUntemplateSingle          = "com.mchange.feedletter.default.email.composeSingle"
     val ComposeUntemplateMultiple        = "com.mchange.feedletter.default.email.composeMultiple"
     val ConfirmUntemplate                = "com.mchange.feedletter.default.email.confirm"
-    val ApiResponseUntemplate            = "com.mchange.feedletter.default.email.apiResponse"
+    val StatusChangedUntemplate          = "com.mchange.feedletter.default.email.statusChanged"
 
