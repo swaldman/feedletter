@@ -1,6 +1,6 @@
 package com.mchange.feedletter.api
 
-import com.mchange.feedletter.{Destination,StatusChangedInfo,SubscribableName,SubscriptionId,SubscriptionInfo,SubscriptionStatusChanged,toLong}
+import com.mchange.feedletter.*
 import com.mchange.feedletter.db.PgDatabase
 
 import com.mchange.cryptoutil.{*,given}
@@ -26,8 +26,9 @@ import com.mchange.feedletter.AppSetup
 import com.mchange.feedletter.api.V0.RequestPayload.Subscription
 import com.mchange.feedletter.SubscriptionManager
 
+object V0 extends SelfLogging:
+  import MLevel.*
 
-object V0:
   given JsonValueCodec[RequestPayload]                      = JsonCodecMaker.make
   given JsonValueCodec[RequestPayload.Subscription.Create]  = JsonCodecMaker.make
   given JsonValueCodec[RequestPayload.Subscription.Confirm] = JsonCodecMaker.make
@@ -132,6 +133,18 @@ object V0:
   end TapirEndpoint
 
   object ServerEndpoint:
+    import TapirEndpoint.*
+    import sttp.tapir.ztapir.*
+
+    def allEndpoints( ds : DataSource, as : AppSetup ) : List[ZServerEndpoint[Any,Any]] =
+      List(
+        Post.Create.zServerLogic( subscriptionCreateLogicPost( ds, as ) ),
+        Post.Confirm.zServerLogic( subscriptionConfirmLogicPost( ds, as ) ),
+        Post.Remove.zServerLogic( subscriptionRemoveLogicPost( ds, as ) ),
+        Get.Confirm.zServerLogic( subscriptionConfirmLogicGet( ds, as ) ),
+        Get.Remove.zServerLogic( subscriptionRemoveLogicGet( ds, as ) ),
+      )
+
     type ZSharedOut[T <: ResponsePayload.Success] = ZIO[Any,ResponsePayload.Failure,(SubscriptionInfo,T)]
     type ZPostOut[T <: ResponsePayload.Success]   = ZIO[Any,ResponsePayload.Failure,T]
     type ZGetOut                                  = ZIO[Any,String,String]
@@ -164,16 +177,22 @@ object V0:
         sman.htmlForStatusChanged( StatusChangedInfo( sinfo, rp.statusChanged ) )
       zso.mapError( failureToPlainText ).map( successToHtmlText )
 
-    def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup, now : Instant )( screate : RequestPayload.Subscription.Create ) : ZPostOut[ResponsePayload.Subscription.Created] =
-      val mainTask =
-        withConnectionTransactional( ds ): conn =>
-          val sname = SubscribableName(screate.subscribableName)
-          val (sman, sid) = PgDatabase.addSubscription( conn, sname, screate.destination, false, now ) // validates the destination!
-          val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(screate.destination), sname, sid, as.secretSalt )
-          val confirmedMessage =
-            if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
-          ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming)
-      mapError( mainTask )
+    def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup )( screate : RequestPayload.Subscription.Create ) : ZPostOut[ResponsePayload.Subscription.Created] =
+      WARNING.log( s"subscriptionCreateLogicPost( $screate )" )
+      try
+        val mainTask =
+          withConnectionTransactional( ds ): conn =>
+            val sname = SubscribableName(screate.subscribableName)
+            val (sman, sid) = PgDatabase.addSubscription( conn, sname, screate.destination, false, Instant.now ) // validates the destination!
+            val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(screate.destination), sname, sid, as.secretSalt )
+            val confirmedMessage =
+              if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
+            ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming)
+        mapError( mainTask )
+      catch
+        case t : Throwable =>
+          t.printStackTrace()
+          throw t
 
     def subscriptionConfirmLogicShared( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZSharedOut[ResponsePayload.Subscription.Confirmed] =
       val mainTask =
@@ -189,9 +208,13 @@ object V0:
       subscriptionConfirmLogicShared( ds, as )( sconfirm ).map( _(1) )
 
     def subscriptionConfirmLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
-      val sconfirm = RequestPayload.Subscription.Confirm.fromQueryParams(qps)
-      val sharedOut = subscriptionConfirmLogicShared( ds, as )( sconfirm )
-      sharedToGet( sharedOut )
+      try
+        val sconfirm = RequestPayload.Subscription.Confirm.fromQueryParams(qps)
+        val sharedOut = subscriptionConfirmLogicShared( ds, as )( sconfirm )
+        sharedToGet( sharedOut )
+      catch
+        case t : Throwable =>
+          ZIO.fail( t.fullStackTrace )
 
     def subscriptionRemoveLogicShared( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZSharedOut[ResponsePayload.Subscription.Removed] =
       val mainTask =
@@ -205,8 +228,12 @@ object V0:
       subscriptionRemoveLogicShared( ds, as )( sremove ).map( _(1) )
 
     def subscriptionRemoveLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
-      val sremove = RequestPayload.Subscription.Remove.fromQueryParams(qps)
-      val sharedOut = subscriptionRemoveLogicShared( ds, as )( sremove )
-      sharedToGet( sharedOut )
+      try
+        val sremove = RequestPayload.Subscription.Remove.fromQueryParams(qps)
+        val sharedOut = subscriptionRemoveLogicShared( ds, as )( sremove )
+        sharedToGet( sharedOut )
+      catch
+        case t : Throwable =>
+          ZIO.fail( t.fullStackTrace )
 
 

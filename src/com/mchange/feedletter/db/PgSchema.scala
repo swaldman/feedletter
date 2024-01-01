@@ -474,7 +474,7 @@ object PgSchema:
                |FROM subscription
                |WHERE subscribable_name = ? AND confirmed = TRUE""".stripMargin
           private val Insert =
-            """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed)
+            """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed, added)
                |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ?, ? )""".stripMargin
           /*
           private val Upsert =

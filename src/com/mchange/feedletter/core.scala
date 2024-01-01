@@ -27,6 +27,9 @@ enum ConfigKey:
   case MailBatchDelaySeconds
   case MailMaxRetries
   case TimeZone
+  case WebDaemonPort
+  case WebDaemonInterface
+  case WebApiBase
 
 enum SubscriptionStatusChanged:
   case Created

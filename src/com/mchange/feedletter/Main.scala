@@ -26,16 +26,16 @@ object Main extends AbstractMain, SelfLogging:
       val opts =
         val minDelayMinutes =
           val help = "Minimum wait (in miunutes) before a newly encountered item can be notified."
-          Opts.option[Int]("min-delay-minutes", help=help, metavar="minutes").withDefault(Default.MinDelayMinutes)
+          Opts.option[Int]("min-delay-minutes", help=help, metavar="minutes").withDefault(Default.Feed.MinDelayMinutes)
         val awaitStabilizationMinutes =
           val help = "Period (in minutes) over which an item should not have changed before it is considered stable and can be notified."
-          Opts.option[Int]("await-stabilization-minutes", help=help, metavar="minutes").withDefault(Default.AwaitStabilizationMinutes)
+          Opts.option[Int]("await-stabilization-minutes", help=help, metavar="minutes").withDefault(Default.Feed.AwaitStabilizationMinutes)
         val maxDelayMinutes =
           val help = "Notwithstanding other settings, maximum period past which an item should be notified, regardless of its stability."
-          Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes").withDefault(Default.MaxDelayMinutes)
+          Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes").withDefault(Default.Feed.MaxDelayMinutes)
         val recheckEveryMinutes =
           val help = "Delay between refreshes of feeds, and redetermining items' availability for notification."
-          Opts.option[Int]("recheck-every-minutes", help=help, metavar="minutes").withDefault(Default.RecheckEveryMinutes)
+          Opts.option[Int]("recheck-every-minutes", help=help, metavar="minutes").withDefault(Default.Feed.RecheckEveryMinutes)
         val setTimings =
           (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, recheckEveryMinutes).mapN( (mindm, asm, maxdm, rem) => (mindm, asm, maxdm, rem) )
         val ping =

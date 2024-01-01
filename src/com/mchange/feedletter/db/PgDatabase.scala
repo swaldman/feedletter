@@ -125,12 +125,6 @@ object PgDatabase extends Migratory, SelfLogging:
           PgSchema.V1.Table.MailableTemplate.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
-        insertConfigKeys(
-          conn,
-          (ConfigKey.MailBatchSize, Default.MailBatchSize.toString()),
-          (ConfigKey.MailBatchDelaySeconds, Default.MailBatchDelaySeconds.toString()),
-          (ConfigKey.MailMaxRetries, Default.MailMaxRetries.toString())
-        )
         updateMetadataKeys(
           conn,
           (MetadataKey.SchemaVersion, "1"),
@@ -364,11 +358,16 @@ object PgDatabase extends Migratory, SelfLogging:
     def fetchValue( conn : Connection, key : ConfigKey ) : Option[String] = LatestSchema.Table.Config.select( conn, key )
     def zfetchValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] = ZIO.attemptBlocking( LatestSchema.Table.Config.select( conn, key ) )
     def timeZone( conn : Connection ) : ZoneId = fetchValue( conn, ConfigKey.TimeZone ).map( str => ZoneId.of(str) ).getOrElse( ZoneId.systemDefault() )
-    def mailBatchDelaySeconds( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailBatchDelaySeconds ).map( _.toInt ).getOrElse( Default.MailBatchDelaySeconds )
-    def mailMaxRetries( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailMaxRetries ).map( _.toInt ).getOrElse( Default.MailMaxRetries )
+    def mailBatchDelaySeconds( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailBatchDelaySeconds ).map( _.toInt ).getOrElse( Default.Config.MailBatchDelaySeconds )
+    def mailMaxRetries( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailMaxRetries ).map( _.toInt ).getOrElse( Default.Config.MailMaxRetries )
+    def mailBatchSize( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( Default.Config.MailBatchSize )
+    def dumpDbDir( conn : Connection ) : os.Path = fetchValue( conn, ConfigKey.DumpDbDir ).map( os.Path.apply ).getOrElse( throw new ConfigurationMissing( ConfigKey.DumpDbDir ) )
+    def webDaemonPort( conn : Connection ) : Int = fetchValue( conn, ConfigKey.WebDaemonPort ).map( _.toInt ).getOrElse( Default.Config.WebDaemonPort )
+    def webDaemonInterface( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebDaemonInterface ).getOrElse( Default.Config.WebDaemonInterface )
+    def webApiBase( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebApiBase ).getOrElse( Default.Config.WebApiBase )
 
   def pullMailGroup( conn : Connection ) : Set[MailSpec.WithTemplate] =
-    val batchSize = Config.fetchValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( Default.MailBatchSize )
+    val batchSize = Config.mailBatchSize( conn )
     val withHashes : Set[MailSpec.WithHash] = LatestSchema.Table.Mailable.selectForDelivery(conn, batchSize)
     val contentMap = mutable.Map.empty[Hash.SHA3_256,String]
     def templateFromHash( hash : Hash.SHA3_256 ) : String =
@@ -491,3 +490,6 @@ object PgDatabase extends Migratory, SelfLogging:
     LatestSchema.Table.Subscription.delete( conn, id )
     out
 
+  def webDaemonBinding( ds : DataSource ) : Task[(String,Int)] =
+    withConnectionTransactional( ds ): conn =>
+      ( Config.webDaemonInterface( conn ), Config.webDaemonPort( conn ) )

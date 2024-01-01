@@ -6,6 +6,7 @@ import com.mchange.feedletter.db.PgDatabase
 import com.mchange.mailutil.*
 
 import MLevel.*
+import com.mchange.feedletter.FeedInfo.forNewFeed
 
 object Daemon extends SelfLogging:
 
@@ -45,3 +46,29 @@ object Daemon extends SelfLogging:
       .catchAll( t => WARNING.zlog( "Retry cycle for mailNextGroupIfDue failed...", t ) )
       .schedule( CyclingSchedule.mailNextGroupIfDue ) *> ZIO.unit
 
+  def webDaemon( ds : DataSource, as : AppSetup ) : Task[Unit] =
+    import zio.http.Server
+    import sttp.tapir.ztapir.*
+    import sttp.tapir.server.ziohttp.* //ZioHttpInterpreter
+    import sttp.tapir.server.interceptor.log.DefaultServerLog
+
+    val VerboseServerInterpreterOptions : ZioHttpServerOptions[Any] =
+      // modified from https://github.com/longliveenduro/zio-geolocation-tapir-tapir-starter/blob/b79c88b9b1c44a60d7c547d04ca22f12f420d21d/src/main/scala/com/tsystems/toil/Main.scala
+      ZioHttpServerOptions
+        .customiseInterceptors
+        .serverLog(
+          DefaultServerLog[Task](
+            doLogWhenReceived = msg => ZIO.succeed(println(msg)),
+            doLogWhenHandled = (msg, error) => ZIO.succeed(error.fold(println(msg))(err => println(s"msg: ${msg}, err: ${err}"))),
+            doLogAllDecodeFailures = (msg, error) => ZIO.succeed(error.fold(println(msg))(err => println(s"msg: ${msg}, err: ${err}"))),
+            doLogExceptions = (msg: String, exc: Throwable) => ZIO.succeed(println(s"msg: ${msg}, exc: ${exc}")),
+            noLog = ZIO.unit
+          )
+        )
+        .options
+    val httpApp = ZioHttpInterpreter( VerboseServerInterpreterOptions ).toHttp( api.V0.ServerEndpoint.allEndpoints( ds, as ) )
+    for
+      tup          <- PgDatabase.webDaemonBinding( ds )
+      (host, port) =  tup
+      _            <- Server.serve(httpApp).provide( ZLayer.succeed( Server.Config.default.binding(host,port) ), Server.live )
+    yield ()
