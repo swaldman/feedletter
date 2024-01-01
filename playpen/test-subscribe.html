@@ -12,6 +12,7 @@
           const formData = new FormData(form);
           const plainFormData = Object.fromEntries(formData.entries());
           const destination = {
+              type: "Email",
               addressPart: plainFormData["e-mail"]
           }
           const request = {

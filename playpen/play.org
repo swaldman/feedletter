@@ -140,3 +140,27 @@ val json: String = {"email":"swaldman@mchange.com"}
 #+RESULTS:
 : Address(swaldman@mchange.com,Some(Steve),UTF-8)
 : Steve <swaldman@mchange.com>
+
+
+#+begin_src scala :scala-version 3.3.1 :dep '("com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:2.25.0" "com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:2.25.0" "com.mchange::mailutil:0.0.2-SNAPSHOT") 
+  import com.github.plokhotnyuk.jsoniter_scala.macros.*
+  import com.github.plokhotnyuk.jsoniter_scala.core.*
+
+  object Sum:
+    given JsonValueCodec[Sum] = JsonCodecMaker.make
+    case class A(i : Int) extends Sum
+    case class B(s : String) extends Sum
+    case class C(c : Char) extends Sum
+  sealed trait Sum
+
+  val json = writeToString[Sum](Sum.A(9))
+  println(json)
+  println( readFromString[Sum](json) )
+#+end_src
+
+#+RESULTS:
+: {"type":"A","i":9}
+: A(9)
+: // defined object Sum
+: // defined trait Sum
+: val json: String = {"type":"A","i":9}

@@ -697,7 +697,7 @@ object PgSchema:
         end ItemAssignableAssignment
         object SubscribableSubscription:
           private val SelectSubscriptionInfoForSubscriptionId =
-            """|SELECT subscribable.subscription_name, subscription_manager_tag, subscription_manager_json, destination
+            """|SELECT subscribable.subscription_name, subscription_manager_tag, subscription_manager_json, destination_json
                |FROM subscribable
                |INNER JOIN subscription
                |ON subscribable.subscribable_name = subscription.subscribable_name
@@ -709,7 +709,7 @@ object PgSchema:
                 uniqueResult("select-sub-manager-for-sub-id", rs): rs =>
                   val sname = SubscribableName( rs.getString(1) )
                   val sman = SubscriptionManager.materialize( SubscriptionManager.Tag( rs.getString(2) ), SubscriptionManager.Json( rs.getString(3) ) )
-                  val dest = Destination.materialize( sman.destinationFactory.tag, Destination.Json( rs.getString(4) ) )
+                  val dest = Destination.materialize( Destination.Json( rs.getString(4) ) )
                   SubscriptionInfo( sname, sman, dest )
         end SubscribableSubscription
       end Join

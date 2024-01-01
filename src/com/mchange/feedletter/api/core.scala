@@ -151,6 +151,7 @@ object V0 extends SelfLogging:
 
     def mapError[T]( task : Task[T] ) : ZIO[Any,ResponsePayload.Failure,T] =
       task.mapError: t =>
+        WARNING.log("An error occurred while processing an API request.", t)
         ResponsePayload.Failure(
           message = t.getMessage(),
           throwableClassName = Some( t.getClass.getName ),

@@ -182,8 +182,6 @@ object SubscriptionManager extends SelfLogging:
 
     type D = Destination.Email
 
-    override val destinationFactory = Destination.Email
-
     override def sampleDestination : Destination.Email = Destination.Email("user@example.com", Some("Some User"))
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
@@ -245,8 +243,6 @@ object SubscriptionManager extends SelfLogging:
 sealed trait SubscriptionManager extends Jsonable:
   type D <: Destination
 
-  def destinationFactory : Destination.Factory[D]
-
   def sampleWithinTypeId : String
   def sampleDestination  : D
   def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
@@ -261,8 +257,7 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def htmlForStatusChanged( statusChangedInfo : StatusChangedInfo ) : String
 
-  def materializeDestination( destinationJson : Destination.Json ) : D =
-    Destination.materialize( destinationFactory.tag, destinationJson ).asInstanceOf[D]
+  def materializeDestination( destinationJson : Destination.Json ) : D = Destination.materialize( destinationJson ).asInstanceOf[D]
 
   def narrowDestinationOrThrow( destination : Destination ) : D =
     try destination.asInstanceOf[D]
