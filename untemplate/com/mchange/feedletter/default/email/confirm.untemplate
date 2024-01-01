@@ -1,3 +1,8 @@
+val displayName =
+  val narrowed = info.subscriptionManager.narrowDestinationOrThrow( info.destination )
+  info.subscriptionManager.displayShort( narrowed )
+end displayName  
+
 ( info : ConfirmInfo )[]~()>
 
 <html>
@@ -65,9 +70,12 @@
     <title>Confirm</title>
   </head>
   <body>
-    <p>Dear %ToNicknameOrEmail%,</p>
+    <p>Dear <( displayName )>,</p>
 
-    <p>Please confirm.</p>
+    <p>Please <a href="<( info.confirmGetLink )>">confirm your new subscription.</a></p>
+
+    <p>Love,</p>
+    <p>&nnsp;&nbsp;<( info.subscriptionName )>
   </body>
 </html>
 

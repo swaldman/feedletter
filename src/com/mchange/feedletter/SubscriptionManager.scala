@@ -214,11 +214,11 @@ object SubscriptionManager extends SelfLogging:
 
     // the destination should already be validated before we get to this point.
     // we won't revalidate
-    override def maybeConfirmSubscription( conn : Connection, destination : D, subscribableName : SubscribableName, subscriptionId : SubscriptionId, secretSalt : String ) : Boolean =
+    override def maybeConfirmSubscription( conn : Connection, destination : D, subscribableName : SubscribableName, confirmGetLink : String ) : Boolean =
       val subject = s"[${subscribableName}] Please confirm your new subscription" // XXX: Hardcoded subject, revisit someday
       val mailText =
         val confirmUntemplate = AllUntemplates.findConfirmUntemplate( confirmUntemplateName )
-        val confirmInfo = ConfirmInfo( destination, subscribableName, this, subscriptionId, secretSalt )
+        val confirmInfo = ConfirmInfo( destination, subscribableName, this, confirmGetLink )
         confirmUntemplate( confirmInfo ).text
       PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
       true
@@ -232,6 +232,9 @@ object SubscriptionManager extends SelfLogging:
     override def htmlForStatusChanged( statusChangedInfo : StatusChangedInfo ) : String =
       val untemplate = AllUntemplates.findStatusChangedUntemplate(statusChangedUntemplateName)
       untemplate( statusChangedInfo ).text
+
+    override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
+    override def displayFull( destination : D ) : String = destination.toAddress.rendered
 
   end Email
 
@@ -248,7 +251,7 @@ sealed trait SubscriptionManager extends Jsonable:
   def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit
-  def maybeConfirmSubscription( conn : Connection, destination : D, subscribableName : SubscribableName, subscriptionId : SubscriptionId, secretSalt : String ) : Boolean // return false iff confirmation is unnecessary for this subscription
+  def maybeConfirmSubscription( conn : Connection, destination : D, subscribableName : SubscribableName, confirmGetLink : String ) : Boolean // return false iff confirmation is unnecessary for this subscription
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[D] ) : Unit
   def factory : SubscriptionManager.Factory
   def tag : SubscriptionManager.Tag = factory.tag
@@ -269,4 +272,6 @@ sealed trait SubscriptionManager extends Jsonable:
     catch
       case cce : ClassCastException => None
 
+  def displayShort( destination : D ) : String
+  def displayFull( destination : D ) : String
 

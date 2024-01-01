@@ -11,12 +11,15 @@ object Default:
     val StylePort = 8080
 
   object Config:
-    val MailBatchSize         = 100
-    val MailBatchDelaySeconds = 15 * 60 // 15 mins
-    val MailMaxRetries        = 5
-    val WebDaemonPort         = 8024
-    val WebDaemonInterface    = "127.0.0.1" // use IPv4 or IPv6, anything InetAddress.getByName(...) can interpret
-    val WebApiBase            = "http://localhost/"
+    val MailBatchSize         : Int         = 100
+    val MailBatchDelaySeconds : Int         = 15 * 60 // 15 mins
+    val MailMaxRetries        : Int         = 5
+    val WebDaemonPort         : Int         = 8024
+    val WebDaemonInterface    : String      = "127.0.0.1" // use IPv4 or IPv6, anything InetAddress.getByName(...) can interpret
+    val WebApiProtocol        : String      = "http"
+    val WebApiHostName        : String      = "localhost"
+    val WebApiBasePath        : String      = "/"
+    val WebApiPort            : Option[Int] = None
 
   object Email:
     val ComposeUntemplateSingle   = "com.mchange.feedletter.default.email.composeSingle"

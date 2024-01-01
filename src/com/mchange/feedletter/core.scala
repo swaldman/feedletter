@@ -29,7 +29,10 @@ enum ConfigKey:
   case TimeZone
   case WebDaemonPort
   case WebDaemonInterface
-  case WebApiBase
+  case WebApiProtocol
+  case WebApiHostName
+  case WebApiBasePath
+  case WebApiPort
 
 enum SubscriptionStatusChanged:
   case Created

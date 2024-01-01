@@ -23,6 +23,9 @@ import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}
 
 import com.mchange.feedletter.BuildInfo
+import com.mchange.feedletter.db.PgDatabase.Config.webDaemonInterface
+import com.mchange.feedletter.db.PgDatabase.Config.webApiProtocol
+import com.mchange.feedletter.db.PgDatabase.Config.webApiHostName
 
 object PgDatabase extends Migratory, SelfLogging:
   val LatestSchema = PgSchema.V1
@@ -364,7 +367,30 @@ object PgDatabase extends Migratory, SelfLogging:
     def dumpDbDir( conn : Connection ) : os.Path = fetchValue( conn, ConfigKey.DumpDbDir ).map( os.Path.apply ).getOrElse( throw new ConfigurationMissing( ConfigKey.DumpDbDir ) )
     def webDaemonPort( conn : Connection ) : Int = fetchValue( conn, ConfigKey.WebDaemonPort ).map( _.toInt ).getOrElse( Default.Config.WebDaemonPort )
     def webDaemonInterface( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebDaemonInterface ).getOrElse( Default.Config.WebDaemonInterface )
-    def webApiBase( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebApiBase ).getOrElse( Default.Config.WebApiBase )
+    def webApiProtocol( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebApiProtocol ).getOrElse( Default.Config.WebApiProtocol )
+    def webApiHostName( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebApiHostName ).getOrElse( Default.Config.WebApiHostName )
+    def webApiBasePath( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebApiBasePath ).getOrElse( Default.Config.WebApiBasePath )
+    def webApiPort( conn : Connection ) : Option[Int] = fetchValue( conn, ConfigKey.WebApiPort ).map( _.toInt ) orElse Default.Config.WebApiPort
+
+  def webApiUrlBasePath( conn : Connection ) : (String, List[String]) =
+    lazy val wdi = Config.webDaemonInterface(conn)
+    lazy val wdp = Config.webDaemonPort(conn)
+
+    val wapr = Config.webApiProtocol(conn)
+    val wahn = Config.webApiHostName(conn)
+    val wabp = Config.webApiBasePath(conn)
+
+    val wapo = Config.webApiPort(conn).orElse:
+      // special case... if we're under default localhost config, include the bound port directly for testing
+      // otherwise assume we are behind a proxy server, and no port should be inserted
+      if wahn == "localhost" && wdi == "127.0.0.1" then Some(wdp) else None
+
+    val portPart = wapo.fold("")(p => s":$p")
+    val url = s"${wapr}://${wahn}${portPart}/"
+    val bp = wabp.split('/').filter( _.nonEmpty ).toList
+    ( url, bp )
+
+  def webApiUrlBasePath( ds : DataSource ) : Task[(String, List[String])] = withConnectionTransactional( ds )( webApiUrlBasePath )
 
   def pullMailGroup( conn : Connection ) : Set[MailSpec.WithTemplate] =
     val batchSize = Config.mailBatchSize( conn )

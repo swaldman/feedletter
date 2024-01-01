@@ -66,9 +66,12 @@ object Daemon extends SelfLogging:
           )
         )
         .options
-    val httpApp = ZioHttpInterpreter( VerboseServerInterpreterOptions ).toHttp( api.V0.ServerEndpoint.allEndpoints( ds, as ) )
     for
-      tup          <- PgDatabase.webDaemonBinding( ds )
-      (host, port) =  tup
+      tup0         <- PgDatabase.webApiUrlBasePath( ds )
+      (server, bp) =  tup0
+      tup1         <- PgDatabase.webDaemonBinding( ds )
+      (host, port) =  tup1
+      tapirApi     =  api.V0.TapirApi( server, bp )
+      httpApp      = ZioHttpInterpreter( VerboseServerInterpreterOptions ).toHttp( tapirApi.ServerEndpoint.allEndpoints( ds, as ) )
       _            <- Server.serve(httpApp).provide( ZLayer.succeed( Server.Config.default.binding(host,port) ), Server.live )
     yield ()
