@@ -14,6 +14,9 @@ end ifLink
 <html>
   <head>
     <style>
+      :root {
+        font-size: 125%;
+      }
       body {
         margin-left: 1em;
         margin-right: 1em;
@@ -21,12 +24,17 @@ end ifLink
         background-color: #eeeeee;
         font-family: Garamond, serif;
       }
+      h1, h2, h3, h4, h5 {
+        font-family: Verdana, sans-serif;
+        font-weight: bold;
+      }
       .item {
         background-color: white;
         margin-top: 2rem;
         margin-left: 10%;
         margin-right: 10%;
-        padding-top: 3rem;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
         padding-left: 10%;
         padding-right: 10%;
         border: 1px solid #aaaaaa;
@@ -36,6 +44,7 @@ end ifLink
         font-size: 150%;
         font-family: Verdana, sans-serif;
         font-weight: bold;
+        padding-top: 1rem;
       }
       .item-title a {
         text-decoration: none;
@@ -46,7 +55,8 @@ end ifLink
         text-decoration: underline;
       }
       .item-author {
-        padding-top: 0.25rem;
+        margin-top: 0.25rem;
+        margin-bottom: 1rem;
         font-family: Verdana, sans-serif;
         font-style: italic;
         font-size: 80%;
@@ -62,6 +72,9 @@ end ifLink
         font-size: 80%;
       }
       .item-contents {
+      }
+      .unsubscribe {
+        padding-top: 0.5rem;
       }
       @media screen and (max-width: 600px) {
         .item {
@@ -111,9 +124,11 @@ end ifLink
 <()
   }
 ()>
-      <div class="unsubscribe">
-        Please click <a href="%removeLink%">here</a> to unsubscribe.
-      </div>
+    </div>
+    <div class="unsubscribe">
+      <p>You are subscribed as <code>%ToEmail%</code> to the mailing list <( info.subscriptionName )>.</p>
+
+      <p>Please click <a href="%RemoveLink%">here</a> to unsubscribe.</p>
     </div>
   </body>
 </html>

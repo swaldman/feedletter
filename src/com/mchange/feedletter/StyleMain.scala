@@ -8,8 +8,8 @@ import java.nio.file.{Path as JPath}
 
 object StyleMain extends AbstractMain:
 
-  val single =
-    val header = "Style a template for a single post."
+  val composeSingle =
+    val header = "Style a template that composes a single post."
     val opts =
       val subscriptionName =
         val help = "The name of an already defined subscription that will use this template."
@@ -28,13 +28,13 @@ object StyleMain extends AbstractMain:
         Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.Style.StylePort )
       ( subscriptionName, selection, destination, withinTypeId, port ) mapN: ( sn, s, d, wti, p ) =>
         CommandConfig.Style.ComposeUntemplateSingle( sn, s, d, wti, p )
-    Command("single",header=header)( opts )
+    Command("compose-single",header=header)( opts )
 
   val feedletterStyle =
     val header = "Iteratively edit and review the untemplates through which your posts will be notified."
     val opts : Opts[(Option[JPath], CommandConfig)] =
       val secrets = CommonOpts.Secrets
-      val subcommands = Opts.subcommands( single )
+      val subcommands = Opts.subcommands( composeSingle )
       ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )
     Command("feedletter-style", header=header)( opts )
 
