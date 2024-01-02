@@ -129,8 +129,8 @@ object V0 extends SelfLogging:
     val removePathElements  = basePathElements ::: "remove"  :: Nil
 
     val createFullPath  = createPathElements.mkString("/","/","")
-    val confirmFullPath = createPathElements.mkString("/","/","")
-    val removeFullPath  = createPathElements.mkString("/","/","")
+    val confirmFullPath = confirmPathElements.mkString("/","/","")
+    val removeFullPath  = removePathElements.mkString("/","/","")
 
     val confirmEndpointUrl = pathJoin( serverUrl, confirmFullPath )
     val removeEndpointUrl = pathJoin( serverUrl, removeFullPath )
@@ -255,6 +255,7 @@ object V0 extends SelfLogging:
             ZIO.fail( t.fullStackTrace )
 
       def subscriptionRemoveLogicShared( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZSharedOut[ResponsePayload.Subscription.Removed] =
+        WARNING.log( s"subscriptionRemoveLogicShared( $sremove )" )
         val mainTask =
           withConnectionTransactional( ds ): conn =>
             val sid   = SubscriptionId(sremove.subscriptionId)

@@ -492,14 +492,14 @@ object PgSchema:
           private val UpdateConfirmed =
             """|UPDATE subscription
                |SET confirmed = ?
-               |WHERE subscriptionId = ?""".stripMargin
+               |WHERE subscription_id = ?""".stripMargin
           private val Delete =
             """|DELETE FROM subscription
                |WHERE subscription_id = ?""".stripMargin
           def delete( conn : Connection, subscriptionId : SubscriptionId ) =
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setLong(1, subscriptionId.toLong)
-              ps.executeQuery()
+              ps.executeUpdate()
           /*
           def selectDestinationJsonsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[Destination.Json] =
             Using.resource( conn.prepareStatement( this.SelectDestinationJsonsForSubscribable ) ): ps =>
@@ -710,7 +710,7 @@ object PgSchema:
         end ItemAssignableAssignment
         object SubscribableSubscription:
           private val SelectSubscriptionInfoForSubscriptionId =
-            """|SELECT subscribable.subscription_name, subscription_manager_tag, subscription_manager_json, destination_json
+            """|SELECT subscribable.subscribable_name, subscription_manager_tag, subscription_manager_json, destination_json
                |FROM subscribable
                |INNER JOIN subscription
                |ON subscribable.subscribable_name = subscription.subscribable_name
