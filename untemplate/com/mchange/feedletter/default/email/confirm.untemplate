@@ -72,10 +72,10 @@ end displayName
   <body>
     <p>Dear <( displayName )>,</p>
 
-    <p>Please <a href="<( info.confirmGetLink )>">confirm your new subscription.</a></p>
+    <p>Please <a href="<( info.confirmGetLink )>">confirm your new subscription</a>.</p>
 
     <p>Love,</p>
-    <p>&nnsp;&nbsp;<( info.subscriptionName )>
+    <p>&nbsp;&nbsp;<( info.subscriptionName )>
   </body>
 </html>
 

@@ -514,12 +514,12 @@ object PgDatabase extends Migratory, SelfLogging:
   def updateConfirmed( ds : DataSource, subscriptionId : SubscriptionId, confirmed : Boolean ) : Task[Unit] =
     withConnectionTransactional( ds )( conn => updateConfirmed(conn, subscriptionId, confirmed) )
 
-  def subscriptionInfoForSubscriptionId( conn : Connection, id : SubscriptionId ) : SubscriptionInfo =
+  def subscriptionInfoForSubscriptionId( conn : Connection, id : SubscriptionId ) : Option[SubscriptionInfo] =
     LatestSchema.Join.SubscribableSubscription.selectSubscriptionInfoForSubscriptionId( conn, id )
 
-  def unsubscribe( conn : Connection, id : SubscriptionId ) : SubscriptionInfo =
+  def unsubscribe( conn : Connection, id : SubscriptionId ) : Option[SubscriptionInfo] =
     val out = subscriptionInfoForSubscriptionId( conn, id )
-    LatestSchema.Table.Subscription.delete( conn, id )
+    out.foreach( _ => LatestSchema.Table.Subscription.delete( conn, id ) )
     out
 
   def webDaemonBinding( ds : DataSource ) : Task[(String,Int)] =

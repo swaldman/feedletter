@@ -715,11 +715,11 @@ object PgSchema:
                |INNER JOIN subscription
                |ON subscribable.subscribable_name = subscription.subscribable_name
                |WHERE subscription_id = ?""".stripMargin
-          def selectSubscriptionInfoForSubscriptionId( conn : Connection, subscriptionId : SubscriptionId ) : SubscriptionInfo =
+          def selectSubscriptionInfoForSubscriptionId( conn : Connection, subscriptionId : SubscriptionId ) : Option[SubscriptionInfo] =
             Using.resource( conn.prepareStatement( SelectSubscriptionInfoForSubscriptionId ) ): ps =>
               ps.setLong(1, subscriptionId.toLong)
               Using.resource( ps.executeQuery() ): rs =>
-                uniqueResult("select-sub-manager-for-sub-id", rs): rs =>
+                zeroOrOneResult("select-sub-manager-for-sub-id", rs): rs =>
                   val sname = SubscribableName( rs.getString(1) )
                   val sman = SubscriptionManager.materialize( SubscriptionManager.Tag( rs.getString(2) ), SubscriptionManager.Json( rs.getString(3) ) )
                   val dest = Destination.materialize( Destination.Json( rs.getString(4) ) )

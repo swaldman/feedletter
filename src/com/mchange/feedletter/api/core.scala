@@ -181,7 +181,7 @@ object V0 extends SelfLogging:
           Get.Remove.zServerLogic( subscriptionRemoveLogicGet( ds, as ) ),
         )
 
-      type ZSharedOut[T <: ResponsePayload.Success] = ZIO[Any,ResponsePayload.Failure,(SubscriptionInfo,T)]
+      type ZSharedOut[T <: ResponsePayload.Success] = ZIO[Any,ResponsePayload.Failure,(Option[SubscriptionInfo],T)]
       type ZPostOut[T <: ResponsePayload.Success]   = ZIO[Any,ResponsePayload.Failure,T]
       type ZGetOut                                  = ZIO[Any,String,String]
 
@@ -208,29 +208,36 @@ object V0 extends SelfLogging:
                 |$fst
                 |""".stripMargin
           f.fullStackTrace.fold(base)(fst => base + throwablePart(fst))
-        def successToHtmlText( sharedSuccess : (SubscriptionInfo,ResponsePayload.Success) ) : String =
-          val (sinfo, rp) = sharedSuccess
-          val sman = sinfo.manager
-          sman.htmlForStatusChanged( StatusChangedInfo( sinfo, rp.statusChanged ) )
+        def successToHtmlText( sharedSuccess : (Option[SubscriptionInfo],ResponsePayload.Success) ) : String =
+          val (mbSinfo, rp) = sharedSuccess
+          mbSinfo match
+            case Some( sinfo ) =>
+              val sman = sinfo.manager
+              sman.htmlForStatusChanged( StatusChangedInfo( rp.statusChanged, Some(sinfo) ) )
+            case None if rp.isInstanceOf[ResponsePayload.Subscription.Removed] =>
+              """|<html>
+                 |  <head><title>Subscription Re-removed</title></head>
+                 |  <body>
+                 |    <h1>Subscription Re-removed</h1>
+                 |    <p>The subscription you are trying to remove has already been unsubscribed. Have a nice day!</p>
+                 |  </body>
+                 |</html>""".stripMargin
+            case None =>
+              throw new AssertionError("SubscriptionInfo should always have been available for all API actions but (re)removes.")
         zso.mapError( failureToPlainText ).map( successToHtmlText )
 
       def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup )( screate : RequestPayload.Subscription.Create ) : ZPostOut[ResponsePayload.Subscription.Created] =
         WARNING.log( s"subscriptionCreateLogicPost( $screate )" )
-        try
-          val mainTask =
-            withConnectionTransactional( ds ): conn =>
-              val sname = SubscribableName(screate.subscribableName)
-              val (sman, sid) = PgDatabase.addSubscription( conn, sname, screate.destination, false, Instant.now ) // validates the destination!
-              val cgl = confirmGetLink( sid )
-              val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(screate.destination), sname, cgl )
-              val confirmedMessage =
-                if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
-              ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming)
-          mapError( mainTask )
-        catch
-          case t : Throwable =>
-            t.printStackTrace()
-            throw t
+        val mainTask =
+          withConnectionTransactional( ds ): conn =>
+            val sname = SubscribableName(screate.subscribableName)
+            val (sman, sid) = PgDatabase.addSubscription( conn, sname, screate.destination, false, Instant.now ) // validates the destination!
+            val cgl = confirmGetLink( sid )
+            val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(screate.destination), sname, cgl )
+            val confirmedMessage =
+              if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
+            ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming)
+        mapError( mainTask )
 
       def subscriptionConfirmLogicShared( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZSharedOut[ResponsePayload.Subscription.Confirmed] =
         val mainTask =
@@ -238,8 +245,10 @@ object V0 extends SelfLogging:
             val sid = SubscriptionId(sconfirm.subscriptionId)
             RequestPayload.Subscription.Confirm.assertInvitation( sconfirm, as.secretSalt )
             PgDatabase.updateConfirmed( conn, sid, true )
-            val sinfo = PgDatabase.subscriptionInfoForSubscriptionId( conn, sid )
-            ( sinfo, ResponsePayload.Subscription.Confirmed(s"Subscription ${sid} of '${sinfo.destination.unique}' successfully confirmed.", sid.toLong) )
+            val mbSinfo = PgDatabase.subscriptionInfoForSubscriptionId( conn, sid )
+            val sinfo = mbSinfo.getOrElse:
+              throw new AssertionError( s"If a subscription successfully confirmed, it ought to be available to select from the database!")
+            ( mbSinfo, ResponsePayload.Subscription.Confirmed(s"Subscription ${sid} of '${sinfo.destination.unique}' successfully confirmed.", sid.toLong) )
         mapError( mainTask )
 
       def subscriptionConfirmLogicPost( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZPostOut[ResponsePayload.Subscription.Confirmed] =
@@ -259,8 +268,11 @@ object V0 extends SelfLogging:
         val mainTask =
           withConnectionTransactional( ds ): conn =>
             val sid   = SubscriptionId(sremove.subscriptionId)
-            val sinfo = PgDatabase.unsubscribe( conn, sid )
-            ( sinfo, ResponsePayload.Subscription.Removed(s"Unsubscribed. Subscription ${sid} of '${sinfo.destination.unique}' successfully removed.", sid.toLong) )
+            val mbSinfo = PgDatabase.unsubscribe( conn, sid )
+            val message =
+              mbSinfo.fold("Subscription with ID ${sid} has already removed."): sinfo =>
+                s"Unsubscribed. Subscription ${sid} of '${sinfo.destination.unique}' successfully removed."
+            ( mbSinfo, ResponsePayload.Subscription.Removed(message, sid.toLong) )
         mapError( mainTask )
 
       def subscriptionRemoveLogicPost( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZPostOut[ResponsePayload.Subscription.Removed] =
