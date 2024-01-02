@@ -5,6 +5,7 @@ import zio.*
 import untemplate.Untemplate
 
 import db.AssignableKey
+import com.mchange.feedletter.api.ApiLinkGenerator
 
 object ComposeInfo:
   sealed trait Universal:
@@ -49,7 +50,8 @@ def serveComposeSingleUntemplate(
     subscriptionManager match
       case templating : SubscriptionManager.TemplatingCompose =>
         val d : templating.D = destination.asInstanceOf[templating.D] // how can I let th compiler know templating == subscriptionManager?
-        val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, Set(contents) )
+        val sid = SubscriptionId(0)
+        val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, sid, ApiLinkGenerator.Dummy.removeGetLink(sid) )
         templateParams.fill( untemplateOutput )
    // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
    //   untemplateOutput 

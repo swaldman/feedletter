@@ -469,8 +469,14 @@ object PgSchema:
                |  PRIMARY KEY( subscription_id ),
                |  FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
                |)""".stripMargin
+          /*
           private val SelectDestinationJsonsForSubscribable =
             """|SELECT destination_json
+               |FROM subscription
+               |WHERE subscribable_name = ? AND confirmed = TRUE""".stripMargin
+          */
+          private val SelectConfirmedIdentifiedDestinationsForSubscribable =
+            """|SELECT subscription_id, destination_json
                |FROM subscription
                |WHERE subscribable_name = ? AND confirmed = TRUE""".stripMargin
           private val Insert =
@@ -494,11 +500,18 @@ object PgSchema:
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setLong(1, subscriptionId.toLong)
               ps.executeQuery()
+          /*
           def selectDestinationJsonsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[Destination.Json] =
             Using.resource( conn.prepareStatement( this.SelectDestinationJsonsForSubscribable ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => Destination.Json( rs.getString(1) ) )
+          */
+          def selectConfirmedIdentifiedDestinationsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[IdentifiedDestination[Destination]] =
+            Using.resource( conn.prepareStatement( SelectConfirmedIdentifiedDestinationsForSubscribable ) ): ps =>
+              ps.setString(1, subscribableName.toString())
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet(rs)( rs => IdentifiedDestination( SubscriptionId( rs.getLong(1) ), Destination.materialize( Destination.Json( rs.getString(2) ) ) ) )
           def insert( conn : Connection, subscriptionId : SubscriptionId, destination : Destination, subscribableName : SubscribableName, confirmed : Boolean, now : Instant ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               ps.setLong     (1, subscriptionId.toLong)

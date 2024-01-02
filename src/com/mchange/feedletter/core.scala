@@ -46,10 +46,11 @@ object SecretsKey:
   val FeedletterSecretSalt   = "feedletter.secret.salt"
 
 type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
-type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, contents : Set[ItemContent] ) => Map[String,String]
+type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
 
 val LineSep = System.lineSeparator()
 
+case class IdentifiedDestination[T <: Destination]( subscriptionId : SubscriptionId, destination : T )
 case class SubscriptionInfo( name : SubscribableName, manager : SubscriptionManager, destination : Destination )
 
 object FeedInfo:

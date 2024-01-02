@@ -23,9 +23,7 @@ import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}
 
 import com.mchange.feedletter.BuildInfo
-import com.mchange.feedletter.db.PgDatabase.Config.webDaemonInterface
-import com.mchange.feedletter.db.PgDatabase.Config.webApiProtocol
-import com.mchange.feedletter.db.PgDatabase.Config.webApiHostName
+import com.mchange.feedletter.api.ApiLinkGenerator
 
 object PgDatabase extends Migratory, SelfLogging:
   val LatestSchema = PgSchema.V1
@@ -261,17 +259,25 @@ object PgDatabase extends Migratory, SelfLogging:
   private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Set[ItemContent] =
     LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.subscribableName, assignableKey.withinTypeId )
 
-  private def route( conn : Connection, assignableKey : AssignableKey ) : Unit =
+  private def route( conn : Connection, assignableKey : AssignableKey, apiLinkGenerator : ApiLinkGenerator ) : Unit =
     val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, assignableKey.subscribableName )
-    route( conn, assignableKey, subscriptionManager )
+    route( conn, assignableKey, subscriptionManager, apiLinkGenerator )
 
-  private def route( conn : Connection, assignableKey : AssignableKey, sman : SubscriptionManager ) : Unit =
+  private def route( conn : Connection, assignableKey : AssignableKey, sman : SubscriptionManager, apiLinkGenerator : ApiLinkGenerator ) : Unit =
     val AssignableKey( subscribableName, withinTypeId ) = assignableKey
     val contents = materializeAssignable(conn, assignableKey)
-    val destinations =
-      val jsons = LatestSchema.Table.Subscription.selectDestinationJsonsForSubscribable( conn, subscribableName )
-      jsons.map( sman.materializeDestination )
-    sman.route(conn, assignableKey, contents, destinations )
+    val idestinations = LatestSchema.Table.Subscription.selectConfirmedIdentifiedDestinationsForSubscribable( conn, subscribableName )
+    val narrowed =
+      val eithers = idestinations.map( sman.narrowIdentifiedDestination )
+      val tmp = Set.newBuilder[IdentifiedDestination[sman.D]]
+      eithers.foreach: either =>
+        either match
+          case Left( badIdDestination ) =>
+            WARNING.log( s"Destination '${badIdDestination.destination.unique}' is unsuitable for subscription '${assignableKey.subscribableName}', and will be ignored." )
+          case Right( goodIdDestination ) =>
+            tmp += goodIdDestination
+      tmp.result()
+    sman.route(conn, assignableKey, contents, narrowed, apiLinkGenerator)
 
   def queueForMailing( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], to : AddressHeader[To], templateParams : TemplateParams, subject : String ) : Unit =
     queueForMailing( conn, contents, from, replyTo, Set(Tuple2(to,templateParams)), subject )
@@ -285,7 +291,7 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Feed.selectAll( conn ).foreach( updateAssignItems( conn, _ ) )
 
-  def completeAssignables( ds : DataSource ) : Task[Unit] =
+  def completeAssignables( ds : DataSource, apiLinkGenerator : ApiLinkGenerator ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Assignable.selectOpen( conn ).foreach: ak =>
         val AssignableKey( subscribableName, withinTypeId ) = ak
@@ -294,7 +300,7 @@ object PgDatabase extends Migratory, SelfLogging:
         val lastAssigned = LatestSchema.Table.Feed.selectLastAssigned( conn, feedId ).getOrElse:
           throw new AssertionError( s"DB constraints should have ensured a row for feed with ID '${feedId}' with a NOT NULL lastAssigned, but did not?" )
         if subscriptionManager.isComplete( conn, withinTypeId, count, lastAssigned ) then
-          route( conn, ak, subscriptionManager )
+          route( conn, ak, subscriptionManager, apiLinkGenerator )
           cleanUpPreviouslyCompleted( conn, subscribableName ) // we have to do this BEFORE updateCompleted, or we'll clean away the latest last completed.
           LatestSchema.Table.Assignable.updateCompleted( conn, subscribableName, withinTypeId, Some(Instant.now) )
 

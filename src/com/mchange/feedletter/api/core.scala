@@ -29,6 +29,14 @@ import com.mchange.feedletter.api.V0.RequestPayload.Subscription
 import com.mchange.feedletter.SubscriptionManager
 import sttp.tapir.EndpointIO.annotations.endpointInput
 
+object ApiLinkGenerator:
+  val Dummy = new ApiLinkGenerator:
+    def confirmGetLink( sid : SubscriptionId ) : String = "http://localhost:8024/v0/subscription/confirm?subscriptionId=0&invitation=fake"
+    def removeGetLink( sid : SubscriptionId ) : String  = "http://localhost:8024/v0/subscription/remove?subscriptionId=0&invitation=fake"
+trait ApiLinkGenerator:
+  def confirmGetLink( sid : SubscriptionId ) : String
+  def removeGetLink( sid : SubscriptionId ) : String
+
 object V0 extends SelfLogging:
   import MLevel.*
 
@@ -112,10 +120,10 @@ object V0 extends SelfLogging:
     def success : Boolean
     def message : String
 
-  class TapirApi(val serverUrl : String, val locationPathElements : List[String]):
+  class TapirApi(val serverUrl : String, val locationPathElements : List[String], val secretSalt : String) extends ApiLinkGenerator:
 
     val basePathElements = locationPathElements ::: "v0" :: "subscription" :: Nil
-    
+
     val createPathElements  = basePathElements ::: "create"  :: Nil
     val confirmPathElements = basePathElements ::: "confirm" :: Nil
     val removePathElements  = basePathElements ::: "remove"  :: Nil
@@ -123,6 +131,17 @@ object V0 extends SelfLogging:
     val createFullPath  = createPathElements.mkString("/","/","")
     val confirmFullPath = createPathElements.mkString("/","/","")
     val removeFullPath  = createPathElements.mkString("/","/","")
+
+    val confirmEndpointUrl = pathJoin( serverUrl, confirmFullPath )
+    val removeEndpointUrl = pathJoin( serverUrl, removeFullPath )
+
+    def confirmGetLink( sid : SubscriptionId ) : String =
+      val confirmRequest = RequestPayload.Subscription.Confirm.invite(sid.toLong, secretSalt)
+      confirmEndpointUrl + "?" + confirmRequest.toGetParams
+
+    def removeGetLink( sid : SubscriptionId ) : String =
+      val removeRequest = RequestPayload.Subscription.Remove.invite(sid.toLong, secretSalt)
+      removeEndpointUrl + "?" + removeRequest.toGetParams
 
     object BasicEndpoint:
       import sttp.tapir.ztapir.*
@@ -202,11 +221,8 @@ object V0 extends SelfLogging:
             withConnectionTransactional( ds ): conn =>
               val sname = SubscribableName(screate.subscribableName)
               val (sman, sid) = PgDatabase.addSubscription( conn, sname, screate.destination, false, Instant.now ) // validates the destination!
-              val confirmGetLink : String =
-                val endpointUrl = pathJoin( serverUrl, confirmFullPath )
-                val confirmRequest = RequestPayload.Subscription.Confirm.invite(sid.toLong, as.secretSalt)
-                endpointUrl + "?" + confirmRequest.toGetParams
-              val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(screate.destination), sname, confirmGetLink )
+              val cgl = confirmGetLink( sid )
+              val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(screate.destination), sname, cgl )
               val confirmedMessage =
                 if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
               ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming)

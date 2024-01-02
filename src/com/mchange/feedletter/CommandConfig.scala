@@ -178,8 +178,10 @@ object CommandConfig extends SelfLogging:
       override def zcommand : ZCommand =
         for
           ds <- ZIO.service[DataSource]
+          as <- ZIO.service[AppSetup]
           _  <- PgDatabase.ensureDb( ds )
-          _  <- PgDatabase.completeAssignables( ds )
+          tapirApi <- com.mchange.feedletter.Daemon.tapirApi( ds, as )
+          _  <- PgDatabase.completeAssignables( ds, tapirApi )
         yield ()
       end zcommand
     case object SendMailGroup extends CommandConfig:
@@ -229,9 +231,10 @@ object CommandConfig extends SelfLogging:
         for
           as <- ZIO.service[AppSetup]
           ds <- ZIO.service[DataSource]
-          _  <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds ).fork
+          tapirApi <- com.mchange.feedletter.Daemon.tapirApi( ds, as )
+          _  <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds, tapirApi ).fork
           _  <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds, as.smtpContext ).fork
-          _  <- com.mchange.feedletter.Daemon.webDaemon(ds, as)
+          _  <- com.mchange.feedletter.Daemon.webDaemon(ds, as, tapirApi)
           _  <- ZIO.unit.forever
         yield ()
       end zcommand
