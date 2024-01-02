@@ -14,75 +14,7 @@ end ifLink
 <html>
   <head>
     <style>
-      :root {
-        font-size: 125%;
-      }
-      body {
-        margin-left: 1em;
-        margin-right: 1em;
-        color: black;
-        background-color: #eeeeee;
-        font-family: Garamond, serif;
-      }
-      h1, h2, h3, h4, h5 {
-        font-family: Verdana, sans-serif;
-        font-weight: bold;
-      }
-      .item {
-        background-color: white;
-        margin-top: 2rem;
-        margin-left: 10%;
-        margin-right: 10%;
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-        padding-left: 10%;
-        padding-right: 10%;
-        border: 1px solid #aaaaaa;
-        line-height: 150%;
-      }
-      .item-title {
-        font-size: 150%;
-        font-family: Verdana, sans-serif;
-        font-weight: bold;
-        padding-top: 1rem;
-      }
-      .item-title a {
-        text-decoration: none;
-        color: black;
-        line-height: 120%;
-      }
-      .item-title a:hover {
-        text-decoration: underline;
-      }
-      .item-author {
-        margin-top: 0.25rem;
-        margin-bottom: 1rem;
-        font-family: Verdana, sans-serif;
-        font-style: italic;
-        font-size: 80%;
-        border-bottom: 1px solid black;
-      }
-      .item-date {
-        margin-top: 0.4rem;
-        border-top: 1px solid black;
-        padding-top: 0.2rem;
-        text-align: right;
-        font-family: Verdana, sans-serif;
-        font-style: italic;
-        font-size: 80%;
-      }
-      .item-contents {
-      }
-      .unsubscribe {
-        padding-top: 0.5rem;
-      }
-      @media screen and (max-width: 600px) {
-        .item {
-          margin-left: 2%;
-          margin-right: 2%;
-          margin-top: 1rem;
-        }
-      }
+<( style() )>
     </style>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

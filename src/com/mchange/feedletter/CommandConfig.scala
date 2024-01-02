@@ -264,7 +264,6 @@ object CommandConfig extends SelfLogging:
           case stu : SubscriptionManager.UntemplatedCompose => stu.composeUntemplateName
           //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
           //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $sman")
-
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
@@ -275,7 +274,7 @@ object CommandConfig extends SelfLogging:
           dig      =  digest( fu )
           g        =  guid( dig )
           un       = untemplateName(sman)
-          _        <- serveComposeSingleUntemplate(
+          _        <- styleComposeSingleUntemplate(
                         un,
                         subscribableName,
                         sman,
@@ -284,6 +283,33 @@ object CommandConfig extends SelfLogging:
                         fu,
                         dig,
                         g,
+                        port
+                      ).fork
+          _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _       <- ZIO.unit.forever
+        yield ()
+      end zcommand
+    end ComposeUntemplateSingle
+    case class Confirm( subscribableName : SubscribableName, destination : Option[Destination], port : Int ) extends CommandConfig:
+      def untemplateName( sman : SubscriptionManager ) : String =
+        sman match
+          case stu : SubscriptionManager.UntemplatedConfirm => stu.confirmUntemplateName
+          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $sman")
+      override def zcommand : ZCommand =
+        for
+          ds       <- ZIO.service[DataSource]
+          _        <- PgDatabase.ensureDb( ds )
+          pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
+          fu       =  pair(0)
+          sman     =  pair(1)
+          un       = untemplateName(sman)
+          _        <- styleConfirmUntemplate(
+                        un,
+                        subscribableName,
+                        sman,
+                        destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
+                        fu,
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
