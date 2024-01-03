@@ -35,7 +35,7 @@ object CommandConfig extends SelfLogging:
       mbComposeUntemplateName       : Option[String],
       mbConfirmUntemplateName       : Option[String],
       mbStatusChangedUntemplateName : Option[String],
-      smanFactory                   : SubscriptionManager.Factory,
+      emailCompanion                : SubscriptionManager.Email.Companion,
       extraParams                   : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
@@ -43,7 +43,7 @@ object CommandConfig extends SelfLogging:
         val statusChangedUntemplateName = mbStatusChangedUntemplateName.getOrElse( Default.Email.StatusChangedUntemplate )
 
         val subscriptionManager =
-          smanFactory match
+          emailCompanion match
             case SubscriptionManager.Email.Each =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateSingle )
               SubscriptionManager.Email.Each (
@@ -89,7 +89,7 @@ object CommandConfig extends SelfLogging:
                                           throw new EditorNotDefined("Please define environment variable EDITOR if you wish to edit a subscription.")
                             ec       <- ZIO.attemptBlocking( os.proc(List(editor,temp.toString)).call(stdin=os.Inherit,stdout=os.Inherit,stderr=os.Inherit).exitCode )
                             contents <- ZIO.attemptBlocking( SubscriptionManager.Json( os.read( temp ) ) )
-                            updated  =  SubscriptionManager.materialize( sman.tag, contents )
+                            updated  =  SubscriptionManager.materialize( contents )
                           yield updated
                       }
           _           <- PgDatabase.updateSubscriptionManagerJson( ds, name, updated )

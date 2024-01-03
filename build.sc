@@ -34,11 +34,12 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     ivy"com.mchange::mailutil:0.0.2-SNAPSHOT",
     ivy"com.mchange::cryptoutil:0.0.2-SNAPSHOT",
     ivy"com.mchange::conveniences:0.0.2-SNAPSHOT",
+    ivy"com.lihaoyi::upickle:3.1.3",
     ivy"com.softwaremill.sttp.tapir::tapir-zio:${TapirVersion}",
     ivy"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
-    ivy"com.softwaremill.sttp.tapir::tapir-jsoniter-scala:${TapirVersion}",
+    ivy"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
     ivy"com.mchange::untemplate:0.1.2-SNAPSHOT",
-    ivy"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:2.25.0"
+    //ivy"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:2.25.0"
     //ivy"com.mchange::unstatic:${UnstaticVersion}",
     //ivy"com.mchange::unstatic-ztapir:${UnstaticVersion}",
   )

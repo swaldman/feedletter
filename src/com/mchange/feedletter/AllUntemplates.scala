@@ -4,6 +4,8 @@ import untemplate.Untemplate
 
 import scala.collection.mutable
 
+import api.V0.SubscriptionStatusChanged
+
 // We define this mutable(!) registry, rather than using IndexedUntemplates directly,
 // because we may in future wish to define "binary" distributions that nevertheless
 // permit the definition of new untemplates.
@@ -23,7 +25,7 @@ object AllUntemplates:
     lazy val ComposeUntemplatesSingle   = ComposeUntemplates.filter( (k,v) => isComposeSingle(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Single,Nothing]])    )
     lazy val ComposeUntemplatesMultiple = ComposeUntemplates.filter( (k,v) => isComposeMultiple(v) ) map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Multiple,Nothing]])  )
     lazy val ConfirmUntemplates         = AllUntemplates.all.filter( (k,v) => isConfirm(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ConfirmInfo,Nothing]]) )
-    lazy val StatusChangedUntemplates   = AllUntemplates.all.filter( (k,v) => isStatusChanged(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[StatusChangedInfo,Nothing]]) )
+    lazy val StatusChangedUntemplates   = AllUntemplates.all.filter( (k,v) => isStatusChanged(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[SubscriptionStatusChanged,Nothing]]) )
 
   def cache : LazyCache = this.synchronized( _cache )
 
@@ -53,7 +55,7 @@ object AllUntemplates:
         this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Confirm untemplate '$fqn' does not appear to be defined." ) ): ut =>
           throw new UnsuitableUntemplate( s"'$fqn' appears not to be a confirm untemplate. (input type: ${untemplateInputType(ut)})" )
 
-  def findStatusChangedUntemplate( fqn : String ) : untemplate.Untemplate[StatusChangedInfo,Nothing] =
+  def findStatusChangedUntemplate( fqn : String ) : untemplate.Untemplate[SubscriptionStatusChanged,Nothing] =
     this.statusChanged
       .get( fqn )
       .getOrElse:
@@ -111,10 +113,10 @@ object AllUntemplates:
 
   private def isStatusChanged( candidate : Untemplate.AnyUntemplate ) : Boolean =
     candidate.UntemplateInputTypeCanonical match
-      case Some( ctype ) => ctype == "com.mchange.feedletter.StatusChangedInfo"
+      case Some( ctype ) => ctype == "com.mchange.feedletter.api.V0.SubscriptionStatusChanged"
       case None =>
         val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "StatusChangedInfo" :: "com.mchange.feedletter.StatusChangedInfo" :: "feedletter.StatusChangedInfo" :: Nil
+        val prefixes = "SubscriptionStatusChanged" :: "com.mchange.feedletter.api.V0.SubscriptionStatusChanged" :: "feedletter.api.V0.SubscriptionStatusChanged" :: Nil
         prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
 
 

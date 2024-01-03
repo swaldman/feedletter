@@ -20,20 +20,14 @@ import com.mchange.feedletter.db.PgDatabase
 import com.mchange.mailutil.*
 import scala.util.control.NonFatal
 
-import Jsoniter.{*, given}
-import com.github.plokhotnyuk.jsoniter_scala.macros.*
-import com.github.plokhotnyuk.jsoniter_scala.{core as jsoniter}
-
 import MLevel.*
-import com.mchange.feedletter.api.V0.ResponsePayload
+import com.mchange.feedletter.api.V0.SubscriptionStatusChanged
+
+import upickle.default.*
 
 object SubscriptionManager extends SelfLogging:
   val  Json = SubscriptionManagerJson
   type Json = SubscriptionManagerJson
-
-  object Tag:
-    def apply( s : String ) : Tag = s
-  opaque type Tag = String
 
   sealed trait UntemplatedCompose:
     def composeUntemplateName : String
@@ -43,19 +37,10 @@ object SubscriptionManager extends SelfLogging:
     def statusChangedUntemplateName : String
   sealed trait TemplatingCompose extends SubscriptionManager:
     def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : this.D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams
-  sealed trait Factory:
-    def fromJson( json : Json ) : SubscriptionManager
-    def tag : Tag
-
-  val Factories =
-    val all = Email.Each :: Email.Weekly :: Nil
-    all.map( f => (f.tag, f) ).toMap
 
   object Email:
-    object Each extends Factory:
-      override def fromJson( json : Json ) : Each = jsoniter.readFromString[Each](json.toString())
-      override def tag : Tag = "Email.Each"
-      given jsoniter.JsonValueCodec[Each] = JsonCodecMaker.make
+    type Companion = Each.type | Weekly.type
+
     case class Each(
       from                        : Smtp.Address,
       replyTo                     : Option[Smtp.Address],
@@ -66,12 +51,6 @@ object SubscriptionManager extends SelfLogging:
     ) extends Email:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
-
-      override val factory = Each
-
-      override lazy val json = Json( jsoniter.writeToString(this) )
-
-      override lazy val jsonPretty = Json( jsoniter.writeToString(this, jsoniter.WriterConfig.withIndentionStep(4)) )
 
       override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
         Some( guid.toString() )
@@ -94,10 +73,6 @@ object SubscriptionManager extends SelfLogging:
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
-    object Weekly extends Factory:
-      override def fromJson( json : Json ) : Weekly = jsoniter.readFromString[Weekly](json.toString())
-      override def tag : Tag = "Email.Weekly"
-      given jsoniter.JsonValueCodec[Weekly] = JsonCodecMaker.make
     final case class Weekly(
       from                        : Smtp.Address,
       replyTo                     : Option[Smtp.Address],
@@ -109,12 +84,6 @@ object SubscriptionManager extends SelfLogging:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
       override val sampleWithinTypeId = "2023-week50"
-
-      override val factory = Weekly
-
-      override lazy val json = Json( jsoniter.writeToString(this) )
-
-      override lazy val jsonPretty = Json( jsoniter.writeToString(this, jsoniter.WriterConfig.withIndentionStep(4)) )
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -164,7 +133,7 @@ object SubscriptionManager extends SelfLogging:
         val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
         s"[${subscribableName}] All posts, ${weekStart} to ${weekEnd}"
 
-  trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChanged, TemplatingCompose:
+  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChanged, TemplatingCompose:
     def from                        : Smtp.Address
     def replyTo                     : Option[Smtp.Address]
     def composeUntemplateName       : String
@@ -228,19 +197,78 @@ object SubscriptionManager extends SelfLogging:
         case _ =>
           throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
 
-    override def htmlForStatusChanged( statusChangedInfo : StatusChangedInfo ) : String =
+    override def htmlForStatusChanged( subscriptionStatusChanged : SubscriptionStatusChanged ) : String =
       val untemplate = AllUntemplates.findStatusChangedUntemplate(statusChangedUntemplateName)
-      untemplate( statusChangedInfo ).text
+      untemplate( subscriptionStatusChanged ).text
 
     override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
     override def displayFull( destination : D ) : String = destination.toAddress.rendered
 
   end Email
 
-  def materialize( tag : Tag, json : Json ) : SubscriptionManager =
-    val factory = Factories.get(tag).getOrElse:
-      throw new InvalidSubscriptionManager(s"Tag '${tag}' unknown for $json")
-    factory.fromJson( json )
+  def materialize( json : Json ) : SubscriptionManager = read[SubscriptionManager]( json.toString() )
+
+  object Tag:
+    def forJsonVal( jsonVal : String ) : Option[Tag] = Tag.values.find( _.jsonVal == jsonVal )
+  enum Tag(val jsonVal : String):
+    case Email_Each   extends Tag("Email.Each")
+    case Email_Weekly extends Tag("Email.Weekly")
+
+  private given ReadWriter[Smtp.Address] = readwriter[ujson.Value].bimap[Smtp.Address](
+    address => ujson.Obj.from( Seq( "email" -> ujson.Str(address.email) ) ++ address.displayName.map( dn => ("displayName" -> ujson.Str(dn)) ) ),
+    value => Smtp.Address( email = value.obj("email").str, displayName = value.obj.get("displayName").map( _.str ) )
+  )
+  private def toUJsonV1( subscriptionManager : SubscriptionManager ) : ujson.Value =
+    def esf( emailsub : Email.Each | Email.Weekly ) : ujson.Obj =
+      val values = Seq(
+        "from" -> writeJs[Smtp.Address]( emailsub.from ),
+        "composeUntemplateName" -> ujson.Str( emailsub.composeUntemplateName ),
+        "confirmUntemplateName" -> ujson.Str( emailsub.confirmUntemplateName ),
+        "statusChangedUntemplateName" -> ujson.Str( emailsub.statusChangedUntemplateName ),
+        "extraParams" -> writeJs( emailsub.extraParams ) 
+      ) ++ emailsub.replyTo.map( rt => ("replyTo" -> writeJs[Smtp.Address](rt) ) )
+      ujson.Obj.from( values )
+    def eef( each : Email.Each ) : ujson.Obj = esf( each )
+    def ewf( weekly : Email.Weekly ) : ujson.Obj = esf( weekly )
+    val (fields, tpe) =
+      subscriptionManager match
+        case each   : Email.Each   => (eef(each), Tag.Email_Each)
+        case weekly : Email.Weekly => (ewf(weekly),  Tag.Email_Weekly)
+    val headerFields =
+       ujson.Obj(
+         "version" -> 1,
+         "type" -> tpe.jsonVal
+       )
+    ujson.Obj.from(headerFields.obj ++ fields.obj)
+
+  private def fromUJsonV1( jsonValue : ujson.Value ) : SubscriptionManager =
+    val obj = jsonValue.obj
+    val version = obj.get("version").map( _.num.toInt )
+    if version.nonEmpty && version != Some(1) then
+      throw new InvalidSubscriptionManager(s"Unpickling SubscriptionManager, found version ${version.get}, expected version 1: " + obj.mkString(", "))
+    else
+      val tpe = obj("type").str
+      val tag = Tag.forJsonVal(tpe).getOrElse:
+        throw new InvalidSubscriptionManager(s"While unpickling a subscription manager, found unknown tag '$tpe': " + jsonValue)
+      tag match
+        case Tag.Email_Each => Email.Each(
+          from = read[Smtp.Address](obj("from")),
+          replyTo = obj.get("replyTo").map( rtv => read[Smtp.Address](rtv) ),
+          composeUntemplateName       = obj("composeUntemplateName").str,
+          confirmUntemplateName       = obj("confirmUntemplateName").str,
+          statusChangedUntemplateName = obj("statusChangedUntemplateName").str,
+          extraParams                 = read[Map[String,String]](obj("extraParams"))
+        )
+        case Tag.Email_Weekly => Email.Weekly(
+          from = read[Smtp.Address](obj("from")),
+          replyTo = obj.get("replyTo").map( rtv => read[Smtp.Address](rtv) ),
+          composeUntemplateName       = obj("composeUntemplateName").str,
+          confirmUntemplateName       = obj("confirmUntemplateName").str,
+          statusChangedUntemplateName = obj("statusChangedUntemplateName").str,
+          extraParams                 = read[Map[String,String]](obj("extraParams"))
+        )
+
+  given ReadWriter[SubscriptionManager] = readwriter[ujson.Value].bimap[SubscriptionManager]( toUJsonV1, fromUJsonV1 )
 
 sealed trait SubscriptionManager extends Jsonable:
   type D <: Destination
@@ -252,12 +280,11 @@ sealed trait SubscriptionManager extends Jsonable:
   def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit
   def maybeConfirmSubscription( conn : Connection, destination : D, subscribableName : SubscribableName, confirmGetLink : String ) : Boolean // return false iff confirmation is unnecessary for this subscription
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
-  def factory : SubscriptionManager.Factory
-  def tag : SubscriptionManager.Tag = factory.tag
-  def json : SubscriptionManager.Json
-  def jsonPretty : SubscriptionManager.Json
 
-  def htmlForStatusChanged( statusChangedInfo : StatusChangedInfo ) : String
+  def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )
+  def jsonPretty : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this, indent=4) )
+
+  def htmlForStatusChanged( subscriptionStatusChanged : SubscriptionStatusChanged ) : String
 
   def materializeDestination( destinationJson : Destination.Json ) : D = Destination.materialize( destinationJson ).asInstanceOf[D]
 

@@ -283,25 +283,24 @@ object PgSchema:
             """|CREATE TABLE subscribable(
                |  subscribable_name         VARCHAR(64),
                |  feed_id                   INTEGER NOT NULL,
-               |  subscription_manager_tag  VARCHAR(64) NOT NULL,
                |  subscription_manager_json JSONB NOT NULL,
                |  PRIMARY KEY (subscribable_name),
                |  FOREIGN KEY (feed_id) REFERENCES feed(id)
                |)""".stripMargin
-          private val Select = "SELECT subscribable_name, feed_id, subscription_manager_tag, subscription_manager_json FROM subscribable"
+          private val Select = "SELECT subscribable_name, feed_id, subscription_manager_json FROM subscribable"
           private val SelectFeedIdAndManager =
-            """|SELECT feed_id, subscription_manager_tag, subscription_manager_json
+            """|SELECT feed_id, subscription_manager_json
                |FROM subscribable
                |WHERE subscribable_name = ?""".stripMargin
           private val SelectManager =
-            """|SELECT subscription_manager_tag, subscription_manager_json
+            """|SELECT subscription_manager_json
                |FROM subscribable
                |WHERE subscribable_name = ?""".stripMargin
           private val UpdateManagerJson =
             """|UPDATE subscribable
                |SET subscription_manager_json = CAST( ? AS JSONB )
                |WHERE subscribable_name = ?""".stripMargin
-          private val Insert = "INSERT INTO subscribable VALUES ( ?, ?, ?, CAST( ? AS JSONB ) )"
+          private val Insert = "INSERT INTO subscribable VALUES ( ?, ?, CAST( ? AS JSONB ) )"
           private val SelectSubscribableNamesByFeedId =
             """|SELECT DISTINCT subscribable_name
                |FROM subscribable
@@ -319,23 +318,22 @@ object PgSchema:
           def select( conn : Connection ) : Set[(SubscribableName, FeedId, SubscriptionManager)] =
             Using.resource( conn.prepareStatement( Select ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => ( SubscribableName( rs.getString(1) ), FeedId( rs.getInt(2) ), SubscriptionManager.materialize( SubscriptionManager.Tag(rs.getString(3)), SubscriptionManager.Json(rs.getString(4)) ) ) )
+                toSet(rs)( rs => ( SubscribableName( rs.getString(1) ), FeedId( rs.getInt(2) ), SubscriptionManager.materialize(SubscriptionManager.Json(rs.getString(3)) ) ) )
           def selectManager( conn : Connection, subscribableName : SubscribableName ) : SubscriptionManager =
             Using.resource( conn.prepareStatement( SelectManager ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
-                uniqueResult("select-subscription-manager", rs)( rs => SubscriptionManager.materialize( SubscriptionManager.Tag(rs.getString(1)), SubscriptionManager.Json(rs.getString(2)) ) )
+                uniqueResult("select-subscription-manager", rs)( rs => SubscriptionManager.materialize(SubscriptionManager.Json(rs.getString(1)) ) )
           def selectFeedIdAndManager( conn : Connection, subscribableName : SubscribableName ) : (FeedId, SubscriptionManager) =
             Using.resource( conn.prepareStatement( SelectFeedIdAndManager ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
-                uniqueResult("select-feed-id-and-subscription-manager", rs)( rs => ( FeedId( rs.getInt(1) ), SubscriptionManager.materialize( SubscriptionManager.Tag( rs.getString(2) ), SubscriptionManager.Json(rs.getString(3)) ) ) )
+                uniqueResult("select-feed-id-and-subscription-manager", rs)( rs => ( FeedId( rs.getInt(1) ), SubscriptionManager.materialize(SubscriptionManager.Json(rs.getString(2)) ) ) )
           def insert( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, subscriptionManager : SubscriptionManager ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               ps.setString(1, subscribableName.toString())
               ps.setInt   (2, feedId.toInt)
-              ps.setString(3, subscriptionManager.tag.toString())
-              ps.setString(4, subscriptionManager.json.toString())
+              ps.setString(3, subscriptionManager.json.toString())
               ps.executeUpdate()
         object Assignable extends Creatable:
           protected val Create = // an assignable represents a collection of posts for a single mail
@@ -669,7 +667,7 @@ object PgSchema:
                 uniqueResult("select-feed-id-url-for-subname", rs): rs =>
                   ( FeedId( rs.getInt(1) ), FeedUrl( rs.getString(2) ) )
           private val SelectFeedUrlSubscriptionManagerForSubscribableName =
-            """|SELECT url, subscription_manager_tag, subscription_manager_json
+            """|SELECT url, subscription_manager_json
                |FROM feed
                |INNER JOIN subscribable
                |ON feed.id = subscribable.feed_id
@@ -679,7 +677,7 @@ object PgSchema:
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult("select-feed-url-subscription-type-for-subname", rs): rs =>
-                  ( FeedUrl( rs.getString(1) ), SubscriptionManager.materialize( SubscriptionManager.Tag( rs.getString(2) ), SubscriptionManager.Json(rs.getString(3)) ) )
+                  ( FeedUrl( rs.getString(1) ), SubscriptionManager.materialize( SubscriptionManager.Json(rs.getString(2)) ) )
         end ItemSubscribable
         object ItemAssignment:
           private val SelectItemContentsForAssignable =
@@ -710,7 +708,7 @@ object PgSchema:
         end ItemAssignableAssignment
         object SubscribableSubscription:
           private val SelectSubscriptionInfoForSubscriptionId =
-            """|SELECT subscribable.subscribable_name, subscription_manager_tag, subscription_manager_json, destination_json
+            """|SELECT subscribable.subscribable_name, subscription_manager_json, destination_json
                |FROM subscribable
                |INNER JOIN subscription
                |ON subscribable.subscribable_name = subscription.subscribable_name
@@ -721,8 +719,8 @@ object PgSchema:
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("select-sub-manager-for-sub-id", rs): rs =>
                   val sname = SubscribableName( rs.getString(1) )
-                  val sman = SubscriptionManager.materialize( SubscriptionManager.Tag( rs.getString(2) ), SubscriptionManager.Json( rs.getString(3) ) )
-                  val dest = Destination.materialize( Destination.Json( rs.getString(4) ) )
+                  val sman = SubscriptionManager.materialize( SubscriptionManager.Json( rs.getString(2) ) )
+                  val dest = Destination.materialize( Destination.Json( rs.getString(3) ) )
                   SubscriptionInfo( sname, sman, dest )
         end SubscribableSubscription
       end Join

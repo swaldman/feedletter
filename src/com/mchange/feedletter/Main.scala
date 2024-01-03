@@ -75,7 +75,7 @@ object Main extends AbstractMain, SelfLogging:
         val kind =
           val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionManager.Email.Each )
           val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionManager.Email.Weekly )
-          (each orElse weekly).withDefault( SubscriptionManager.Email.Each )
+          (each orElse weekly).withDefault[SubscriptionManager.Email.Companion]( SubscriptionManager.Email.Each )
         val extraParams =
           def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
             strings.map{ s =>

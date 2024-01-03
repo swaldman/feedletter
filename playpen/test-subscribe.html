@@ -16,6 +16,7 @@
               addressPart: plainFormData["e-mail"]
           }
           const request = {
+              $type: "com.mchange.feedletter.api.V0.RequestPayload.Subscription.Create",
               subscribableName: "testable",
               destination:      destination,
           }

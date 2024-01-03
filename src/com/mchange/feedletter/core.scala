@@ -34,11 +34,6 @@ enum ConfigKey:
   case WebApiBasePath
   case WebApiPort
 
-enum SubscriptionStatusChanged:
-  case Created
-  case Confirmed
-  case Removed
-
 object SecretsKey:
   val FeedletterJdbcUrl      = "feedletter.jdbc.url"
   val FeedletterJdbcUser     = "feedletter.jdbc.user"

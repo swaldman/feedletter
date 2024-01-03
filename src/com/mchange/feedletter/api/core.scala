@@ -5,12 +5,11 @@ import com.mchange.feedletter.db.PgDatabase
 
 import com.mchange.cryptoutil.{*,given}
 
+import com.mchange.mailutil.Smtp
+
 import com.mchange.conveniences.string.*
 import com.mchange.conveniences.throwable.*
 import com.mchange.conveniences.www.*
-
-import com.github.plokhotnyuk.jsoniter_scala.macros.*
-import com.github.plokhotnyuk.jsoniter_scala.core.*
 
 import sttp.model.QueryParams
 import sttp.tapir.Schema
@@ -20,14 +19,15 @@ import zio.*
 import java.time.Instant
 import javax.sql.DataSource
 
+import scala.io.Codec
 import scala.collection.immutable
 
 import com.mchange.feedletter.db.withConnectionTransactional
-import com.mchange.feedletter.FeedInfo.forNewFeed
 import com.mchange.feedletter.AppSetup
-import com.mchange.feedletter.api.V0.RequestPayload.Subscription
 import com.mchange.feedletter.SubscriptionManager
-import sttp.tapir.EndpointIO.annotations.endpointInput
+
+import upickle.default.*
+import sttp.tapir.json.upickle.*
 
 object ApiLinkGenerator:
   val Dummy = new ApiLinkGenerator:
@@ -40,25 +40,30 @@ trait ApiLinkGenerator:
 object V0 extends SelfLogging:
   import MLevel.*
 
-  given JsonValueCodec[RequestPayload]                      = JsonCodecMaker.make
-  given JsonValueCodec[RequestPayload.Subscription.Create]  = JsonCodecMaker.make
-  given JsonValueCodec[RequestPayload.Subscription.Confirm] = JsonCodecMaker.make
-  given JsonValueCodec[RequestPayload.Subscription.Remove]  = JsonCodecMaker.make
+  given ReadWriter[RequestPayload.Subscription.Create]  = ReadWriter.derived
+  given ReadWriter[RequestPayload.Subscription.Confirm] = ReadWriter.derived
+  given ReadWriter[RequestPayload.Subscription.Remove]  = ReadWriter.derived
 
-  given JsonValueCodec[ResponsePayload.Subscription.Created]   = JsonCodecMaker.make
-  given JsonValueCodec[ResponsePayload.Subscription.Confirmed] = JsonCodecMaker.make
-  given JsonValueCodec[ResponsePayload.Subscription.Removed]   = JsonCodecMaker.make
-  given JsonValueCodec[ResponsePayload.Failure]                = JsonCodecMaker.make
+  given ReadWriter[SubscriptionStatusChanged.Info]         = ReadWriter.derived
+  given ReadWriter[SubscriptionStatusChanged]              = ReadWriter.derived
+  given ReadWriter[ResponsePayload.Subscription.Created]   = ReadWriter.derived
+  given ReadWriter[ResponsePayload.Subscription.Confirmed] = ReadWriter.derived
+  given ReadWriter[ResponsePayload.Subscription.Removed]   = ReadWriter.derived
+  given ReadWriter[ResponsePayload.Failure]                = ReadWriter.derived
 
-  given Schema[Destination]                         = Schema.derived[Destination]
-  given Schema[RequestPayload.Subscription.Create]  = Schema.derived[RequestPayload.Subscription.Create]
-  given Schema[RequestPayload.Subscription.Confirm] = Schema.derived[RequestPayload.Subscription.Confirm]
-  given Schema[RequestPayload.Subscription.Remove]  = Schema.derived[RequestPayload.Subscription.Remove]
+  // given Schema[Destination]                         = Schema.derived[Destination]
+  // given Schema[SubscriptionStatusChanged.Info]      = Schema.derived[SubscriptionStatusChanged.Info]
+  // given Schema[SubscriptionStatusChanged]           = Schema.derived[SubscriptionStatusChanged]
+  // given Schema[RequestPayload.Subscription.Create]  = Schema.derived[RequestPayload.Subscription.Create]
+  // given Schema[RequestPayload.Subscription.Confirm] = Schema.derived[RequestPayload.Subscription.Confirm]
+  // given Schema[RequestPayload.Subscription.Remove]  = Schema.derived[RequestPayload.Subscription.Remove]
 
-  given Schema[ResponsePayload.Subscription.Created]   = Schema.derived[ResponsePayload.Subscription.Created]
-  given Schema[ResponsePayload.Subscription.Confirmed] = Schema.derived[ResponsePayload.Subscription.Confirmed]
-  given Schema[ResponsePayload.Subscription.Removed]   = Schema.derived[ResponsePayload.Subscription.Removed]
-  given Schema[ResponsePayload.Failure]                = Schema.derived[ResponsePayload.Failure]
+  // given Schema[ResponsePayload]                        = Schema.derived[ResponsePayload]
+  // given Schema[ResponsePayload.Subscription.Created]   = Schema.derived[ResponsePayload.Subscription.Created]
+  // given Schema[ResponsePayload.Subscription.Confirmed] = Schema.derived[ResponsePayload.Subscription.Confirmed]
+  // given Schema[ResponsePayload.Subscription.Removed]   = Schema.derived[ResponsePayload.Subscription.Removed]
+  // given Schema[ResponsePayload.Success]                = Schema.derived[ResponsePayload.Success]
+  // given Schema[ResponsePayload.Failure]                = Schema.derived[ResponsePayload.Failure]
 
   private def bytesUtf8( s : String ) : Array[Byte] = s.getBytes(scala.io.Codec.UTF8.charSet)
 
@@ -108,15 +113,25 @@ object V0 extends SelfLogging:
     lazy val toMap : Map[String,String] = (0 until productArity).map( i => (productElementName(i), productElement(i).toString) ).toMap
     lazy val toGetParams : String = wwwFormEncodeUTF8( toMap.toSeq* )
 
+  object SubscriptionStatusChanged:
+    case class Info( subscriptionName : String, destination : Destination ) // does NOT extend SubscriptionStatusChanged
+    case class Created( info : Info )         extends SubscriptionStatusChanged
+    case class Confirmed( info : Info )       extends SubscriptionStatusChanged
+    case class Removed( info : Option[Info] ) extends SubscriptionStatusChanged
+  sealed trait SubscriptionStatusChanged
+
+  extension ( sinfo : SubscriptionInfo )
+    def thin : SubscriptionStatusChanged.Info = SubscriptionStatusChanged.Info( sinfo.name.toString, sinfo.destination )
+
   object ResponsePayload:
     object Subscription:
-      case class Created( message : String, id : Long , confirmationRequired : Boolean, `type` : String = "Subscription.Created", success : Boolean = true ) extends ResponsePayload.Success( SubscriptionStatusChanged.Created )
-      case class Confirmed( message : String, id : Long , `type` : String = "Subscription.Confirmed", success : Boolean = true ) extends ResponsePayload.Success( SubscriptionStatusChanged.Confirmed )
-      case class Removed( message : String, id : Long , `type` : String = "Subscription.Removed", success : Boolean = true ) extends ResponsePayload.Success( SubscriptionStatusChanged.Removed )
-    sealed trait Success( val statusChanged : SubscriptionStatusChanged ) extends ResponsePayload 
-    case class Failure( message : String, throwableClassName : Option[String], fullStackTrace : Option[String], `type` : String = "Failure", success : Boolean = false ) extends ResponsePayload
+      case class Created( message : String, id : Long, confirmationRequired : Boolean, statusChanged : SubscriptionStatusChanged.Created, success : Boolean = true ) extends ResponsePayload.Success
+      case class Confirmed( message : String, id : Long, statusChanged : SubscriptionStatusChanged.Confirmed, success : Boolean = true ) extends ResponsePayload.Success
+      case class Removed( message : String, id : Long, statusChanged : SubscriptionStatusChanged.Removed, success : Boolean = true ) extends ResponsePayload.Success
+    sealed trait Success extends ResponsePayload:
+      def statusChanged : SubscriptionStatusChanged
+    case class Failure( message : String, throwableClassName : Option[String], fullStackTrace : Option[String], success : Boolean = false ) extends ResponsePayload
   sealed trait ResponsePayload:
-    def `type`  : String
     def success : Boolean
     def message : String
 
@@ -145,19 +160,34 @@ object V0 extends SelfLogging:
 
     object BasicEndpoint:
       import sttp.tapir.ztapir.*
-      import sttp.tapir.json.jsoniter.*
+      import sttp.tapir.json.upickle.*
       import sttp.tapir.PublicEndpoint
 
       def addElements[IN,ERROUT,OUT,R]( baseEndpoint : PublicEndpoint[IN,ERROUT,OUT,R], elems : List[String] ) =
         elems.foldLeft( baseEndpoint )( (accum,next) => accum.in(next) )
 
       object Post:
+        import com.mchange.feedletter.api.V0.given
+      /*
+        Too much trouble deriving Tapir Schemas... we'll handle the JSON in our own logic
+
         val Base = endpoint
                      .post
                      .errorOut( jsonBody[ResponsePayload.Failure] )
         val Create  = addElements(Base,createPathElements).in( jsonBody[RequestPayload.Subscription.Create] ).out( jsonBody[ResponsePayload.Subscription.Created] )
         val Confirm = addElements(Base,confirmPathElements).in( jsonBody[RequestPayload.Subscription.Confirm] ).out( jsonBody[ResponsePayload.Subscription.Confirmed] )
         val Remove  = addElements(Base,removePathElements).in( jsonBody[RequestPayload.Subscription.Remove] ).out( jsonBody[ResponsePayload.Subscription.Removed] )
+      */
+
+        val Base = endpoint
+                     .post
+                     .in( stringJsonBody )
+                     .out( stringJsonBody )
+                     .errorOut( stringJsonBody )
+        val Create  = addElements(Base,createPathElements)
+        val Confirm = addElements(Base,confirmPathElements)
+        val Remove  = addElements(Base,removePathElements)
+
       object Get:
         val Base = endpoint
                      .get
@@ -182,8 +212,10 @@ object V0 extends SelfLogging:
         )
 
       type ZSharedOut[T <: ResponsePayload.Success] = ZIO[Any,ResponsePayload.Failure,(Option[SubscriptionInfo],T)]
-      type ZPostOut[T <: ResponsePayload.Success]   = ZIO[Any,ResponsePayload.Failure,T]
+      type ZPostOut                                 = ZIO[Any,String,String]
       type ZGetOut                                  = ZIO[Any,String,String]
+
+      // type ZPostOut[T <: ResponsePayload.Success]   = ZIO[Any,ResponsePayload.Failure,T]
 
       def mapError[T]( task : Task[T] ) : ZIO[Any,ResponsePayload.Failure,T] =
         task.mapError: t =>
@@ -194,7 +226,7 @@ object V0 extends SelfLogging:
             fullStackTrace = Some( t.fullStackTrace )
           )
 
-      def sharedToGet[T <: ResponsePayload.Success]( zso : ZSharedOut[T] ) : ZGetOut =
+      def sharedToGet[T <: ResponsePayload.Success]( zpo : ZSharedOut[T] ) : ZGetOut =
         def failureToPlainText( f : ResponsePayload.Failure ) =
           val base = 
             s"""|The following failure has occurred:
@@ -208,13 +240,13 @@ object V0 extends SelfLogging:
                 |$fst
                 |""".stripMargin
           f.fullStackTrace.fold(base)(fst => base + throwablePart(fst))
-        def successToHtmlText( sharedSuccess : (Option[SubscriptionInfo],ResponsePayload.Success) ) : String =
-          val (mbSinfo, rp) = sharedSuccess
+        def successToHtmlText( tup : (Option[SubscriptionInfo],ResponsePayload.Success) ) : String =
+          val (mbSinfo, rp) = tup
           mbSinfo match
             case Some( sinfo ) =>
               val sman = sinfo.manager
-              sman.htmlForStatusChanged( StatusChangedInfo( rp.statusChanged, Some(sinfo) ) )
-            case None if rp.isInstanceOf[ResponsePayload.Subscription.Removed] =>
+              sman.htmlForStatusChanged( rp.statusChanged )
+            case None =>
               """|<html>
                  |  <head><title>Subscription Re-removed</title></head>
                  |  <body>
@@ -222,22 +254,31 @@ object V0 extends SelfLogging:
                  |    <p>The subscription you are trying to remove has already been unsubscribed. Have a nice day!</p>
                  |  </body>
                  |</html>""".stripMargin
-            case None =>
-              throw new AssertionError("SubscriptionInfo should always have been available for all API actions but (re)removes.")
-        zso.mapError( failureToPlainText ).map( successToHtmlText )
+        zpo.mapError( failureToPlainText ).map( successToHtmlText )
 
-      def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup )( screate : RequestPayload.Subscription.Create ) : ZPostOut[ResponsePayload.Subscription.Created] =
-        WARNING.log( s"subscriptionCreateLogicPost( $screate )" )
+      def subscriptionCreateLogicShared( ds : DataSource, as : AppSetup )( screate : RequestPayload.Subscription.Create ) : ZSharedOut[ResponsePayload.Subscription.Created] =
+        WARNING.log( s"subscriptionCreateLogicShared( $screate )" )
         val mainTask =
           withConnectionTransactional( ds ): conn =>
             val sname = SubscribableName(screate.subscribableName)
-            val (sman, sid) = PgDatabase.addSubscription( conn, sname, screate.destination, false, Instant.now ) // validates the destination!
+            val destination = screate.destination
+            val (sman, sid) = PgDatabase.addSubscription( conn, sname, destination, false, Instant.now ) // validates the destination!
             val cgl = confirmGetLink( sid )
-            val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(screate.destination), sname, cgl )
+            val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(destination), sname, cgl )
             val confirmedMessage =
               if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
-            ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming)
+            val sinfo = SubscriptionInfo( sname, sman, destination )
+            ( Some(sinfo), ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming, SubscriptionStatusChanged.Created(sinfo.thin)) )
         mapError( mainTask )
+
+/*
+      def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup )( screate : RequestPayload.Subscription.Create ) : ZPostOut[ResponsePayload.Subscription.Created] =
+        subscriptionCreateLogicShared( ds, as )( screate ).map( _(1) )
+*/
+
+      def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup )( screateJson : String ) : ZPostOut =
+        val screate = read[RequestPayload.Subscription.Create]( screateJson )
+        subscriptionCreateLogicShared( ds, as )( screate ).map( tup => write(tup(1)) ).mapError( failure => write(failure) )
 
       def subscriptionConfirmLogicShared( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZSharedOut[ResponsePayload.Subscription.Confirmed] =
         val mainTask =
@@ -248,11 +289,17 @@ object V0 extends SelfLogging:
             val mbSinfo = PgDatabase.subscriptionInfoForSubscriptionId( conn, sid )
             val sinfo = mbSinfo.getOrElse:
               throw new AssertionError( s"If a subscription successfully confirmed, it ought to be available to select from the database!")
-            ( mbSinfo, ResponsePayload.Subscription.Confirmed(s"Subscription ${sid} of '${sinfo.destination.unique}' successfully confirmed.", sid.toLong) )
+            ( Some(sinfo), ResponsePayload.Subscription.Confirmed(s"Subscription ${sid} of '${sinfo.destination.unique}' successfully confirmed.", sid.toLong, SubscriptionStatusChanged.Confirmed(sinfo.thin) ) )
         mapError( mainTask )
 
+/*
       def subscriptionConfirmLogicPost( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZPostOut[ResponsePayload.Subscription.Confirmed] =
         subscriptionConfirmLogicShared( ds, as )( sconfirm ).map( _(1) )
+*/
+
+      def subscriptionConfirmLogicPost( ds : DataSource, as : AppSetup )( sconfirmJson : String ) : ZPostOut =
+        val sconfirm = read[RequestPayload.Subscription.Confirm]( sconfirmJson )
+        subscriptionConfirmLogicShared( ds, as )( sconfirm ).map( tup => write(tup(1)) ).mapError( failure => write(failure) )
 
       def subscriptionConfirmLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
         try
@@ -272,11 +319,17 @@ object V0 extends SelfLogging:
             val message =
               mbSinfo.fold("Subscription with ID ${sid} has already removed."): sinfo =>
                 s"Unsubscribed. Subscription ${sid} of '${sinfo.destination.unique}' successfully removed."
-            ( mbSinfo, ResponsePayload.Subscription.Removed(message, sid.toLong) )
+            ( mbSinfo, ResponsePayload.Subscription.Removed(message, sid.toLong,SubscriptionStatusChanged.Removed(mbSinfo.map(_.thin))) )
         mapError( mainTask )
 
+      def subscriptionRemoveLogicPost( ds : DataSource, as : AppSetup )( sremoveJson : String ) : ZPostOut =
+        val sremove = read[RequestPayload.Subscription.Remove]( sremoveJson )
+        subscriptionRemoveLogicShared( ds, as )( sremove ).map( tup => write(tup(1)) ).mapError( failure => write(failure) )
+
+/*
       def subscriptionRemoveLogicPost( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZPostOut[ResponsePayload.Subscription.Removed] =
         subscriptionRemoveLogicShared( ds, as )( sremove ).map( _(1) )
+*/
 
       def subscriptionRemoveLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
         try
