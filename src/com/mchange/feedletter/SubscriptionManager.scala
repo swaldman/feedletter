@@ -21,7 +21,6 @@ import com.mchange.mailutil.*
 import scala.util.control.NonFatal
 
 import MLevel.*
-import com.mchange.feedletter.api.V0.SubscriptionStatusChanged
 
 import upickle.default.*
 
@@ -197,9 +196,9 @@ object SubscriptionManager extends SelfLogging:
         case _ =>
           throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
 
-    override def htmlForStatusChanged( subscriptionStatusChanged : SubscriptionStatusChanged ) : String =
-      val untemplate = AllUntemplates.findStatusChangedUntemplate(statusChangedUntemplateName)
-      untemplate( subscriptionStatusChanged ).text
+    override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String =
+      val untemplate = AllUntemplates.findStatusChangeUntemplate(statusChangedUntemplateName)
+      untemplate( statusChangeInfo ).text
 
     override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
     override def displayFull( destination : D ) : String = destination.toAddress.rendered
@@ -284,7 +283,7 @@ sealed trait SubscriptionManager extends Jsonable:
   def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )
   def jsonPretty : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this, indent=4) )
 
-  def htmlForStatusChanged( subscriptionStatusChanged : SubscriptionStatusChanged ) : String
+  def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String
 
   def materializeDestination( destinationJson : Destination.Json ) : D = Destination.materialize( destinationJson ).asInstanceOf[D]
 

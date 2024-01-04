@@ -3,6 +3,14 @@ package com.mchange.feedletter
 import zio.*
 import com.mchange.feedletter.api.ApiLinkGenerator
 
+object DummyApiLinkGenerator extends ApiLinkGenerator:
+  def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String =
+    "http://localhost:8024/v0/subscription/confirm?subscribableName=coolstuff&destinationType=Email&addressPart=user%40example.com"
+  def confirmGetLink( sid : SubscriptionId ) : String
+    = "http://localhost:8024/v0/subscription/confirm?subscriptionId=0&invitation=fake"
+  def removeGetLink( sid : SubscriptionId ) : String
+    = "http://localhost:8024/v0/subscription/remove?subscriptionId=0&invitation=fake"
+
 def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   import zio.http.Server
   import sttp.tapir.ztapir.*
@@ -13,6 +21,15 @@ def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   val logic : Unit => UIO[String] = _ => ZIO.succeed( html )
   val httpApp = ZioHttpInterpreter().toHttp( List(rootEndpoint.zServerLogic(logic), indexEndpoint.zServerLogic(logic) ) )
   Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.binding("0.0.0.0",port)), Server.live)
+
+/*
+def styleStatusChangedUntemplate(
+  untemplateName      : String,
+                      : api.V0.
+  feedUrl             : FeedUrl,
+  port                : Int
+) : Task[Unit] =
+*/
 
 def styleComposeSingleUntemplate(
   untemplateName      : String,
@@ -34,7 +51,7 @@ def styleComposeSingleUntemplate(
       case templating : SubscriptionManager.TemplatingCompose =>
         val d : templating.D = destination.asInstanceOf[templating.D] // how can I let th compiler know templating == subscriptionManager?
         val sid = SubscriptionId(0)
-        val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, sid, ApiLinkGenerator.Dummy.removeGetLink(sid) )
+        val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, sid, DummyApiLinkGenerator.removeGetLink(sid) )
         templateParams.fill( untemplateOutput )
    // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
    //   untemplateOutput 
@@ -49,7 +66,7 @@ def styleConfirmUntemplate(
   port                : Int
 ) : Task[Unit] =
   val sid = SubscriptionId(0)
-  val confirmInfo = ConfirmInfo( destination, subscriptionName, subscriptionManager, ApiLinkGenerator.Dummy.confirmGetLink(sid) )
+  val confirmInfo = ConfirmInfo( destination, subscriptionName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid) )
   val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
   val filled = untemplate( confirmInfo ).text
   serveOneHtmlPage( filled, port )

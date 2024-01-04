@@ -40,6 +40,9 @@ object SecretsKey:
   val FeedletterJdbcPassword = "feedletter.jdbc.password"
   val FeedletterSecretSalt   = "feedletter.secret.salt"
 
+enum SubscriptionStatusChange:
+  case Created, Confirmed, Removed
+
 type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
 

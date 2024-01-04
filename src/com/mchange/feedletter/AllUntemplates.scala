@@ -4,8 +4,6 @@ import untemplate.Untemplate
 
 import scala.collection.mutable
 
-import api.V0.SubscriptionStatusChanged
-
 // We define this mutable(!) registry, rather than using IndexedUntemplates directly,
 // because we may in future wish to define "binary" distributions that nevertheless
 // permit the definition of new untemplates.
@@ -25,7 +23,7 @@ object AllUntemplates:
     lazy val ComposeUntemplatesSingle   = ComposeUntemplates.filter( (k,v) => isComposeSingle(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Single,Nothing]])    )
     lazy val ComposeUntemplatesMultiple = ComposeUntemplates.filter( (k,v) => isComposeMultiple(v) ) map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Multiple,Nothing]])  )
     lazy val ConfirmUntemplates         = AllUntemplates.all.filter( (k,v) => isConfirm(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ConfirmInfo,Nothing]]) )
-    lazy val StatusChangedUntemplates   = AllUntemplates.all.filter( (k,v) => isStatusChanged(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[SubscriptionStatusChanged,Nothing]]) )
+    lazy val StatusChangeUntemplates    = AllUntemplates.all.filter( (k,v) => isStatusChange(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[StatusChangeInfo,Nothing]]) )
 
   def cache : LazyCache = this.synchronized( _cache )
 
@@ -33,7 +31,7 @@ object AllUntemplates:
   def composeSingle   = cache.ComposeUntemplatesSingle
   def composeMultiple = cache.ComposeUntemplatesMultiple
   def confirm         = cache.ConfirmUntemplates
-  def statusChanged   = cache.StatusChangedUntemplates
+  def statusChange    = cache.StatusChangeUntemplates
 
   def add( more : IterableOnce[(String,Untemplate.AnyUntemplate)] ) : Unit = this.synchronized:
     _untemplates.addAll(more)
@@ -55,8 +53,8 @@ object AllUntemplates:
         this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Confirm untemplate '$fqn' does not appear to be defined." ) ): ut =>
           throw new UnsuitableUntemplate( s"'$fqn' appears not to be a confirm untemplate. (input type: ${untemplateInputType(ut)})" )
 
-  def findStatusChangedUntemplate( fqn : String ) : untemplate.Untemplate[SubscriptionStatusChanged,Nothing] =
-    this.statusChanged
+  def findStatusChangeUntemplate( fqn : String ) : untemplate.Untemplate[StatusChangeInfo,Nothing] =
+    this.statusChange
       .get( fqn )
       .getOrElse:
         this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Status-changed untemplate '$fqn' does not appear to be defined." ) ): ut =>
@@ -111,12 +109,12 @@ object AllUntemplates:
         val prefixes = "ConfirmInfo" :: "com.mchange.feedletter.ConfirmInfo" :: "feedletter.ConfirmInfo" :: Nil
         prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
 
-  private def isStatusChanged( candidate : Untemplate.AnyUntemplate ) : Boolean =
+  private def isStatusChange( candidate : Untemplate.AnyUntemplate ) : Boolean =
     candidate.UntemplateInputTypeCanonical match
-      case Some( ctype ) => ctype == "com.mchange.feedletter.api.V0.SubscriptionStatusChanged"
+      case Some( ctype ) => ctype == "com.mchange.feedletter.StatusChangeInfo"
       case None =>
         val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "SubscriptionStatusChanged" :: "com.mchange.feedletter.api.V0.SubscriptionStatusChanged" :: "feedletter.api.V0.SubscriptionStatusChanged" :: Nil
+        val prefixes = "StatusChangeInfo" :: "com.mchange.feedletter.StatusChangeInfo" :: "feedletter.StatusChangeInfo" :: Nil
         prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
 
 

@@ -1,9 +1,9 @@
  :root {
-   font-size: 16pt;
+   font-size: 15pt;
  }
  body {
-   margin-left: 1em;
-   margin-right: 1em;
+   padding-left: 1rem;
+   padding-right: 1rem;
    color: black;
    background-color: #eeeeee;
    font-family: Garamond, serif;
@@ -16,7 +16,7 @@
    font-weight: bold;
  }
  code {
-   font-size: 12pt;
+   font-size: 70%;
  }
  .item {
    background-color: white;
@@ -55,11 +55,10 @@
  .item-date {
    margin-top: 0.4rem;
    border-top: 1px solid black;
-   padding-top: 0.2rem;
    text-align: right;
    font-family: Verdana, sans-serif;
    font-style: italic;
-   font-size: 80%;
+   font-size: 60%;
  }
  .item-contents {
  }

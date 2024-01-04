@@ -288,8 +288,10 @@ object PgDatabase extends Migratory, SelfLogging:
     LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tosWithParams, subject, 0 )
 
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
-    withConnectionTransactional( ds ): conn =>
-      LatestSchema.Table.Feed.selectAll( conn ).foreach( updateAssignItems( conn, _ ) )
+    for
+      feedInfos <- withConnectionTransactional( ds )( conn => LatestSchema.Table.Feed.selectAll( conn ) )
+      _         <- ZIO.collectAllParDiscard( feedInfos.map( fi => withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ) ) )
+    yield ()  
 
   def completeAssignables( ds : DataSource, apiLinkGenerator : ApiLinkGenerator ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>

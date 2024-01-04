@@ -29,11 +29,8 @@ import com.mchange.feedletter.SubscriptionManager
 import upickle.default.*
 import sttp.tapir.json.upickle.*
 
-object ApiLinkGenerator:
-  val Dummy = new ApiLinkGenerator:
-    def confirmGetLink( sid : SubscriptionId ) : String = "http://localhost:8024/v0/subscription/confirm?subscriptionId=0&invitation=fake"
-    def removeGetLink( sid : SubscriptionId ) : String  = "http://localhost:8024/v0/subscription/remove?subscriptionId=0&invitation=fake"
 trait ApiLinkGenerator:
+  def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String
   def confirmGetLink( sid : SubscriptionId ) : String
   def removeGetLink( sid : SubscriptionId ) : String
 
@@ -73,7 +70,14 @@ object V0 extends SelfLogging:
         queryParams.get(key).getOrElse:
           throw new InvalidRequest( s"Expected query param '$key' required, not found." )
     object Subscription:
-      case class Create( subscribableName : String, destination : Destination ) extends RequestPayload
+      object Create:
+        def fromQueryParams( queryParams : QueryParams ) : Create =
+          val subscribableName : String = queryParams.assertParam( "subscribableName" )
+          val destination : Destination = Destination.fromFields( queryParams.toSeq ).getOrElse:
+            throw new InvalidRequest( "Could not decode a Destination for subscription create request. Fields: " + queryParams.toSeq.mkString(", ") )
+          Create( subscribableName, destination )
+      case class Create( subscribableName : String, destination : Destination ) extends RequestPayload:
+        override lazy val toMap : Map[String,String] = Map( "subscribableName" -> subscribableName ) ++ destination.toFields
       object Confirm extends Bouncer[Confirm]("ConfirmSuffix"):
         def fromQueryParams( queryParams : QueryParams ) : Confirm =
           val subscriptionId : Long   = queryParams.assertParam( "subscriptionId" ).toLong
@@ -115,10 +119,10 @@ object V0 extends SelfLogging:
 
   object SubscriptionStatusChanged:
     case class Info( subscriptionName : String, destination : Destination ) // does NOT extend SubscriptionStatusChanged
-    case class Created( info : Info )         extends SubscriptionStatusChanged
-    case class Confirmed( info : Info )       extends SubscriptionStatusChanged
-    case class Removed( info : Option[Info] ) extends SubscriptionStatusChanged
-  sealed trait SubscriptionStatusChanged
+    case class Created( info : Info )         extends SubscriptionStatusChanged( SubscriptionStatusChange.Created )
+    case class Confirmed( info : Info )       extends SubscriptionStatusChanged( SubscriptionStatusChange.Confirmed )
+    case class Removed( info : Option[Info] ) extends SubscriptionStatusChanged( SubscriptionStatusChange.Removed )
+  sealed trait SubscriptionStatusChanged( val statusChange : SubscriptionStatusChange )
 
   extension ( sinfo : SubscriptionInfo )
     def thin : SubscriptionStatusChanged.Info = SubscriptionStatusChanged.Info( sinfo.name.toString, sinfo.destination )
@@ -147,8 +151,13 @@ object V0 extends SelfLogging:
     val confirmFullPath = confirmPathElements.mkString("/","/","")
     val removeFullPath  = removePathElements.mkString("/","/","")
 
+    val createEndpointUrl = pathJoin( serverUrl, createFullPath )
     val confirmEndpointUrl = pathJoin( serverUrl, confirmFullPath )
     val removeEndpointUrl = pathJoin( serverUrl, removeFullPath )
+
+    def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String =
+      val createRequest = RequestPayload.Subscription.Create( subscribableName.toString, destination )
+      createEndpointUrl + "?" + createRequest.toGetParams
 
     def confirmGetLink( sid : SubscriptionId ) : String =
       val confirmRequest = RequestPayload.Subscription.Confirm.invite(sid.toLong, secretSalt)
@@ -194,6 +203,7 @@ object V0 extends SelfLogging:
                      .errorOut( stringBody )
                      .in( queryParams )
                      .out( htmlBodyUtf8 )
+        val Create  = addElements(Base,createPathElements)
         val Confirm = addElements(Base,confirmPathElements)
         val Remove  = addElements(Base,removePathElements)
     end BasicEndpoint
@@ -207,6 +217,7 @@ object V0 extends SelfLogging:
           Post.Create.zServerLogic( subscriptionCreateLogicPost( ds, as ) ),
           Post.Confirm.zServerLogic( subscriptionConfirmLogicPost( ds, as ) ),
           Post.Remove.zServerLogic( subscriptionRemoveLogicPost( ds, as ) ),
+          Get.Create.zServerLogic( subscriptionCreateLogicGet( ds, as ) ),
           Get.Confirm.zServerLogic( subscriptionConfirmLogicGet( ds, as ) ),
           Get.Remove.zServerLogic( subscriptionRemoveLogicGet( ds, as ) ),
         )
@@ -245,7 +256,7 @@ object V0 extends SelfLogging:
           mbSinfo match
             case Some( sinfo ) =>
               val sman = sinfo.manager
-              sman.htmlForStatusChanged( rp.statusChanged )
+              sman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name, sinfo.destination, createGetLink(sinfo.name, sinfo.destination) ) )
             case None =>
               """|<html>
                  |  <head><title>Subscription Re-removed</title></head>
@@ -279,6 +290,15 @@ object V0 extends SelfLogging:
       def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup )( screateJson : String ) : ZPostOut =
         val screate = read[RequestPayload.Subscription.Create]( screateJson )
         subscriptionCreateLogicShared( ds, as )( screate ).map( tup => write(tup(1)) ).mapError( failure => write(failure) )
+
+      def subscriptionCreateLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
+        try
+          val screate = RequestPayload.Subscription.Create.fromQueryParams(qps)
+          val sharedOut = subscriptionCreateLogicShared( ds, as )( screate )
+          sharedToGet( sharedOut )
+        catch
+          case t : Throwable =>
+            ZIO.fail( t.fullStackTrace )
 
       def subscriptionConfirmLogicShared( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZSharedOut[ResponsePayload.Subscription.Confirmed] =
         val mainTask =
