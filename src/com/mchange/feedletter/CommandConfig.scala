@@ -64,6 +64,16 @@ object CommandConfig extends SelfLogging:
                 statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
+            case SubscriptionManager.Email.Daily =>
+              val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
+              SubscriptionManager.Email.Daily (
+                from = Destination.Email(from),
+                replyTo = replyTo.map( Destination.Email.apply ),
+                composeUntemplateName = composeUntemplateName,
+                confirmUntemplateName = confirmUntemplateName,
+                statusChangeUntemplateName = statusChangeUntemplateName,
+                extraParams = extraParams
+              )
 
         for
           ds   <- ZIO.service[DataSource]

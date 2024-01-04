@@ -74,8 +74,9 @@ object Main extends AbstractMain, SelfLogging:
          // modified from decline's docs
         val kind =
           val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionManager.Email.Each )
+          val daily = Opts.flag("daily",help="E-mail a compilation, once a day.").map( _ => SubscriptionManager.Email.Daily )
           val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionManager.Email.Weekly )
-          (each orElse weekly).withDefault[SubscriptionManager.Email.Companion]( SubscriptionManager.Email.Each )
+          (each orElse daily orElse weekly).withDefault[SubscriptionManager.Email.Companion]( SubscriptionManager.Email.Each )
         val extraParams =
           def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
             strings.map{ s =>

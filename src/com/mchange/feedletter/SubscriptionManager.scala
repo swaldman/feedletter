@@ -37,7 +37,8 @@ object SubscriptionManager extends SelfLogging:
     def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : this.D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams
 
   object Email:
-    type Companion = Each.type | Weekly.type
+    type Companion = Each.type | Daily.type | Weekly.type
+    type Instance  = Each      | Daily      | Weekly
 
     case class Each(
       from                       : Destination.Email,
@@ -121,15 +122,76 @@ object SubscriptionManager extends SelfLogging:
           val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
           PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
-      private def weekStartWeekEnd( withinTypeId : String ) : (String,String) =
+      def weekStartWeekEndLocalDate( withinTypeId : String ) : (LocalDate,LocalDate) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
         val weekStart = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 1 )
         val weekEnd = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 7 )
+        (weekStart, weekEnd)
+
+      def weekStartWeekEndFormattedIsoLocal( withinTypeId : String ) : (String,String) =
+        val (weekStart, weekEnd) = weekStartWeekEndLocalDate(withinTypeId)
         (ISO_LOCAL_DATE.format(weekStart),ISO_LOCAL_DATE.format(weekEnd))
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
-        val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
+        val (weekStart, weekEnd) = weekStartWeekEndFormattedIsoLocal(withinTypeId)
         s"[${subscribableName}] All posts, ${weekStart} to ${weekEnd}"
+
+    final case class Daily(
+      from                       : Destination.Email,
+      replyTo                    : Option[Destination.Email],
+      composeUntemplateName      : String,
+      confirmUntemplateName      : String,
+      statusChangeUntemplateName : String,
+      extraParams                : Map[String,String]
+    ) extends Email:
+      private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'ww")
+
+      override val sampleWithinTypeId = "2024-day4"
+
+      // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
+      override def withinTypeId(
+        conn           : Connection,
+        feedId         : FeedId,
+        guid           : Guid,
+        content        : ItemContent,
+        status         : ItemStatus,
+        lastCompleted  : Option[AssignableWithinTypeStatus],
+        mostRecentOpen : Option[AssignableWithinTypeStatus]
+      ) : Option[String] =
+        Some( WtiFormatter.format( status.lastChecked ) )
+
+      // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
+      private def extractYearAndDay( withinTypeId : String ) : (Int, Int) =
+        val ( yearStr, restStr ) = withinTypeId.span( Character.isDigit )
+        val dayStr = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
+        ( yearStr.toInt, dayStr.toInt )
+
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
+        val ( year, day ) = extractYearAndDay( withinTypeId )
+        val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
+        val laZoned = lastAssigned.atZone(tz)
+        val laYear = laZoned.get( ChronoField.YEAR )
+        laYear > year || (laYear == year && laZoned.get( ChronoField.DAY_OF_YEAR ) > day)
+
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        if contents.nonEmpty then
+          val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
+          val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+          val fullTemplate =
+            val info = ComposeInfo.Multiple( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents )
+            val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
+            compose( info ).text
+          val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
+          PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
+
+      def dayLocalDate( withinTypeId : String ) : LocalDate =
+        val ( year, day ) = extractYearAndDay( withinTypeId )
+        LocalDate.ofYearDay( year, day )
+
+      def dayFormattedIsoLocal( withinTypeId : String ) : String = ISO_LOCAL_DATE.format( dayLocalDate( withinTypeId ) )
+
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+        s"[${subscribableName}] All posts, ${dayFormattedIsoLocal(withinTypeId)}"
 
   sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, TemplatingCompose:
     def from                       : Destination.Email
@@ -210,10 +272,11 @@ object SubscriptionManager extends SelfLogging:
     def forJsonVal( jsonVal : String ) : Option[Tag] = Tag.values.find( _.jsonVal == jsonVal )
   enum Tag(val jsonVal : String):
     case Email_Each   extends Tag("Email.Each")
+    case Email_Daily  extends Tag("Email.Daily")
     case Email_Weekly extends Tag("Email.Weekly")
 
   private def toUJsonV1( subscriptionManager : SubscriptionManager ) : ujson.Value =
-    def esf( emailsub : Email.Each | Email.Weekly ) : ujson.Obj =
+    def esf( emailsub : Email.Instance ) : ujson.Obj =
       val values = Seq(
         "from" -> writeJs[Destination]( emailsub.from ),
         "composeUntemplateName" -> ujson.Str( emailsub.composeUntemplateName ),
@@ -223,10 +286,12 @@ object SubscriptionManager extends SelfLogging:
       ) ++ emailsub.replyTo.map( rt => ("replyTo" -> writeJs[Destination](rt) ) )
       ujson.Obj.from( values )
     def eef( each : Email.Each ) : ujson.Obj = esf( each )
+    def edf( each : Email.Daily ) : ujson.Obj = esf( each )
     def ewf( weekly : Email.Weekly ) : ujson.Obj = esf( weekly )
     val (fields, tpe) =
       subscriptionManager match
         case each   : Email.Each   => (eef(each), Tag.Email_Each)
+        case daily  : Email.Daily  => (edf(daily), Tag.Email_Daily)
         case weekly : Email.Weekly => (ewf(weekly),  Tag.Email_Weekly)
     val headerFields =
        ujson.Obj(
@@ -246,6 +311,14 @@ object SubscriptionManager extends SelfLogging:
         throw new InvalidSubscriptionManager(s"While unpickling a subscription manager, found unknown tag '$tpe': " + jsonValue)
       tag match
         case Tag.Email_Each => Email.Each(
+          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
+          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
+          composeUntemplateName      = obj("composeUntemplateName").str,
+          confirmUntemplateName      = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
+          extraParams                = read[Map[String,String]](obj("extraParams"))
+        )
+        case Tag.Email_Daily => Email.Daily(
           from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
           replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
           composeUntemplateName      = obj("composeUntemplateName").str,
