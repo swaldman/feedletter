@@ -152,7 +152,7 @@ object SubscriptionManager extends SelfLogging:
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
       val args = ( subscribableName, withinTypeId, feedUrl, contents )
-      config.SubjectCustomizers.get( subscribableName ).fold( defaultSubject.tupled(args) ): customizer =>
+      extend.SubjectCustomizers.get( subscribableName ).fold( defaultSubject.tupled(args) ): customizer =>
         customizer.tupled( args )
 
     def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String
@@ -160,7 +160,7 @@ object SubscriptionManager extends SelfLogging:
     def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams =
       val localArgs = ( subscribableName, withinTypeId, feedUrl, destination, subscriptionId, removeLink )
       val customizerArgs = ( subscribableName, withinTypeId, feedUrl, destination : Destination, subscriptionId, removeLink )
-      TemplateParams( defaultComposeTemplateParams.tupled( localArgs ) ++ config.ComposeTemplateParamCustomizers.get( subscribableName ).fold(Nil)( _.tupled.apply(customizerArgs) ) )
+      TemplateParams( defaultComposeTemplateParams.tupled( localArgs ) ++ extend.ComposeTemplateParamCustomizers.get( subscribableName ).fold(Nil)( _.tupled.apply(customizerArgs) ) )
 
     def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
       val toAddress = destination.toAddress

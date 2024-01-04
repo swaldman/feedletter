@@ -1,4 +1,4 @@
-package com.mchange.feedletter.config
+package com.mchange.feedletter.extend
 
 import com.mchange.feedletter.{SubjectCustomizer,SubscribableName,TemplateParamCustomizer}
 
