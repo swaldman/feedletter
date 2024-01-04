@@ -256,7 +256,7 @@ object V0 extends SelfLogging:
           mbSinfo match
             case Some( sinfo ) =>
               val sman = sinfo.manager
-              sman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name.toString, sman, sinfo.destination, createGetLink(sinfo.name, sinfo.destination) ) )
+              sman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name.toString, sman, sinfo.destination, !sinfo.confirmed, removeGetLink(sinfo.id), createGetLink(sinfo.name, sinfo.destination) ) )
             case None =>
               """|<html>
                  |  <head><title>Subscription Re-removed</title></head>
@@ -275,10 +275,10 @@ object V0 extends SelfLogging:
             val destination = screate.destination
             val (sman, sid) = PgDatabase.addSubscription( conn, sname, destination, false, Instant.now ) // validates the destination!
             val cgl = confirmGetLink( sid )
-            val confirming = sman.maybeConfirmSubscription( conn, sman.narrowDestinationOrThrow(destination), sname, cgl )
+            val confirming = sman.maybePromptConfirmation( conn, sid, sname, sman.narrowDestinationOrThrow(destination), cgl )
             val confirmedMessage =
               if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
-            val sinfo = SubscriptionInfo( sname, sman, destination )
+            val sinfo = SubscriptionInfo( sid, sname, sman, destination, !confirming )
             ( Some(sinfo), ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming, SubscriptionStatusChanged.Created(sinfo.thin)) )
         mapError( mainTask )
 

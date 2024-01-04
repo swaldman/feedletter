@@ -711,7 +711,7 @@ object PgSchema:
         end ItemAssignableAssignment
         object SubscribableSubscription:
           private val SelectSubscriptionInfoForSubscriptionId =
-            """|SELECT subscribable.subscribable_name, subscription_manager_json, destination_json
+            """|SELECT subscription.subscription_id, subscribable.subscribable_name, subscription_manager_json, destination_json, subscription.confirmed
                |FROM subscribable
                |INNER JOIN subscription
                |ON subscribable.subscribable_name = subscription.subscribable_name
@@ -721,10 +721,12 @@ object PgSchema:
               ps.setLong(1, subscriptionId.toLong)
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("select-sub-manager-for-sub-id", rs): rs =>
-                  val sname = SubscribableName( rs.getString(1) )
-                  val sman = SubscriptionManager.materialize( SubscriptionManager.Json( rs.getString(2) ) )
-                  val dest = Destination.materialize( Destination.Json( rs.getString(3) ) )
-                  SubscriptionInfo( sname, sman, dest )
+                  val sid = SubscriptionId( rs.getLong(1) )
+                  val sname = SubscribableName( rs.getString(2) )
+                  val sman = SubscriptionManager.materialize( SubscriptionManager.Json( rs.getString(3) ) )
+                  val dest = Destination.materialize( Destination.Json( rs.getString(4) ) )
+                  val confirmed = rs.getBoolean(5)
+                  SubscriptionInfo( sid, sname, sman, dest, confirmed )
         end SubscribableSubscription
       end Join
 

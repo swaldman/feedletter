@@ -34,13 +34,13 @@ object CommandConfig extends SelfLogging:
       replyTo                       : Option[String],
       mbComposeUntemplateName       : Option[String],
       mbConfirmUntemplateName       : Option[String],
-      mbStatusChangedUntemplateName : Option[String],
+      mbStatusChangeUntemplateName  : Option[String],
       emailCompanion                : SubscriptionManager.Email.Companion,
       extraParams                   : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
         val confirmUntemplateName     = mbConfirmUntemplateName.getOrElse( Default.Email.ConfirmUntemplate )
-        val statusChangedUntemplateName = mbStatusChangedUntemplateName.getOrElse( Default.Email.StatusChangedUntemplate )
+        val statusChangeUntemplateName = mbStatusChangeUntemplateName.getOrElse( Default.Email.StatusChangeUntemplate )
 
         val subscriptionManager =
           emailCompanion match
@@ -51,7 +51,7 @@ object CommandConfig extends SelfLogging:
                 replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
-                statusChangeUntemplateName = statusChangedUntemplateName,
+                statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
             case SubscriptionManager.Email.Weekly =>
@@ -61,7 +61,7 @@ object CommandConfig extends SelfLogging:
                 replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
-                statusChangeUntemplateName = statusChangedUntemplateName,
+                statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
 
@@ -319,7 +319,7 @@ object CommandConfig extends SelfLogging:
           _       <- ZIO.unit.forever
         yield ()
       end zcommand
-    case class StatusChange( statusChange : SubscriptionStatusChange, subscribableName : SubscribableName, destination : Option[Destination], port : Int ) extends CommandConfig:
+    case class StatusChange( statusChange : SubscriptionStatusChange, subscribableName : SubscribableName, destination : Option[Destination], requiresConfirmation : Boolean, port : Int ) extends CommandConfig:
       def untemplateName( sman : SubscriptionManager ) : String =
         sman match
           case stu : SubscriptionManager.UntemplatedStatusChange => stu.statusChangeUntemplateName
@@ -339,6 +339,7 @@ object CommandConfig extends SelfLogging:
                         subscribableName,
                         sman,
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
+                        requiresConfirmation,
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )

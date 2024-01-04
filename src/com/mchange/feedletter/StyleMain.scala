@@ -54,9 +54,10 @@ object StyleMain extends AbstractMain:
         (created orElse confirmed orElse removed)
       val subscriptionName = CommonStyleOpts.SubscriptionName
       val destination = CommonStyleOpts.DestinationOrDefault
+      val preconfirmed = Opts.flag("preconfirmed",help="Set to mark the styled subscription already confirmed, or not in need of a confirmation step.").orFalse
       val port = CommonStyleOpts.Port
-      ( kind, subscriptionName, destination, port ) mapN: ( k, sn, d, p ) =>
-        CommandConfig.Style.StatusChange( k, sn, d, p )
+      ( kind, subscriptionName, destination, preconfirmed, port ) mapN: ( k, sn, d, prec, p ) =>
+        CommandConfig.Style.StatusChange( k, sn, d, !prec, p ) // requiresConfirmation == !preconfirmed
     Command("status-change",header=header)( opts )
 
   val feedletterStyle =

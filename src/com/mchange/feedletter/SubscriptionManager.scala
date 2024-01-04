@@ -180,7 +180,7 @@ object SubscriptionManager extends SelfLogging:
 
     // the destination should already be validated before we get to this point.
     // we won't revalidate
-    override def maybeConfirmSubscription( conn : Connection, destination : D, subscribableName : SubscribableName, confirmGetLink : String ) : Boolean =
+    override def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String ) : Boolean =
       val subject = s"[${subscribableName}] Please confirm your new subscription" // XXX: Hardcoded subject, revisit someday
       val mailText =
         val confirmUntemplate = AllUntemplates.findConfirmUntemplate( confirmUntemplateName )
@@ -272,7 +272,25 @@ sealed trait SubscriptionManager extends Jsonable:
   def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit
-  def maybeConfirmSubscription( conn : Connection, destination : D, subscribableName : SubscribableName, confirmGetLink : String ) : Boolean // return false iff confirmation is unnecessary for this subscription
+
+  /**
+    * This method must either:
+    *
+    * * Send a notification that will lead to a future confirmation by the user, and return `true`
+    *
+    * OR
+    *
+    * * Update the the confirmed field of the subscription to already `true`, and then return false
+    *
+    * @param conn
+    * @param destination
+    * @param subscribableName
+    * @param confirmGetLink
+    *
+    * @return whether a subscriber has been prompted for a future confirmation
+    */
+  def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String ) : Boolean
+
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
 
   def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )

@@ -49,7 +49,8 @@ type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinType
 val LineSep = System.lineSeparator()
 
 case class IdentifiedDestination[T <: Destination]( subscriptionId : SubscriptionId, destination : T )
-case class SubscriptionInfo( name : SubscribableName, manager : SubscriptionManager, destination : Destination )
+
+case class SubscriptionInfo( id : SubscriptionId, name : SubscribableName, manager : SubscriptionManager, destination : Destination, confirmed : Boolean )
 
 object FeedInfo:
   def forNewFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ): FeedInfo =

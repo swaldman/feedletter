@@ -6,11 +6,11 @@ import com.mchange.feedletter.Main.Admin.subscribe
 
 object DummyApiLinkGenerator extends ApiLinkGenerator:
   def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String =
-    "http://localhost:8024/v0/subscription/confirm?subscribableName=coolstuff&destinationType=Email&addressPart=user%40example.com"
-  def confirmGetLink( sid : SubscriptionId ) : String
-    = "http://localhost:8024/v0/subscription/confirm?subscriptionId=0&invitation=fake"
-  def removeGetLink( sid : SubscriptionId ) : String
-    = "http://localhost:8024/v0/subscription/remove?subscriptionId=0&invitation=fake"
+    s"http://localhost:8024/v0/subscription/create?subscribableName=${subscribableName}&destinationType=Email&addressPart=fakeuser%40example.com"
+  def confirmGetLink( sid : SubscriptionId ) : String =
+    s"http://localhost:8024/v0/subscription/confirm?subscriptionId=${sid}&invitation=fake"
+  def removeGetLink( sid : SubscriptionId ) : String =
+    s"http://localhost:8024/v0/subscription/remove?subscriptionId=${sid}&invitation=fake"
 
 def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   import zio.http.Server
@@ -24,15 +24,17 @@ def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.binding("0.0.0.0",port)), Server.live)
 
 def styleStatusChangeUntemplate(
-  untemplateName      : String,
-  statusChange        : SubscriptionStatusChange,
-  subscriptionName    : SubscribableName,
-  subscriptionManager : SubscriptionManager,
-  destination         : subscriptionManager.D,
-  port                : Int
+  untemplateName       : String,
+  statusChange         : SubscriptionStatusChange,
+  subscriptionName     : SubscribableName,
+  subscriptionManager  : SubscriptionManager,
+  destination          : subscriptionManager.D,
+  requiresConfirmation : Boolean,
+  port                 : Int
 ) : Task[Unit] =
+  val unsubscribeLink = DummyApiLinkGenerator.removeGetLink(SubscriptionId(0))
   val resubscribeLink = DummyApiLinkGenerator.createGetLink(subscriptionName,destination)
-  val sci = StatusChangeInfo( statusChange, subscriptionName.toString(), subscriptionManager, destination, resubscribeLink )
+  val sci = StatusChangeInfo( statusChange, subscriptionName.toString(), subscriptionManager, destination, requiresConfirmation, unsubscribeLink, resubscribeLink )
   val untemplate = AllUntemplates.findStatusChangeUntemplate( untemplateName )
   val filled = untemplate( sci ).text
   serveOneHtmlPage( filled, port )
