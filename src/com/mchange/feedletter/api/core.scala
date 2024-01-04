@@ -256,7 +256,7 @@ object V0 extends SelfLogging:
           mbSinfo match
             case Some( sinfo ) =>
               val sman = sinfo.manager
-              sman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name, sinfo.destination, createGetLink(sinfo.name, sinfo.destination) ) )
+              sman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name.toString, sman, sinfo.destination, createGetLink(sinfo.name, sinfo.destination) ) )
             case None =>
               """|<html>
                  |  <head><title>Subscription Re-removed</title></head>

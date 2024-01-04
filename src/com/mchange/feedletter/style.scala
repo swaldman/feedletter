@@ -2,6 +2,7 @@ package com.mchange.feedletter
 
 import zio.*
 import com.mchange.feedletter.api.ApiLinkGenerator
+import com.mchange.feedletter.Main.Admin.subscribe
 
 object DummyApiLinkGenerator extends ApiLinkGenerator:
   def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String =
@@ -22,14 +23,20 @@ def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   val httpApp = ZioHttpInterpreter().toHttp( List(rootEndpoint.zServerLogic(logic), indexEndpoint.zServerLogic(logic) ) )
   Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.binding("0.0.0.0",port)), Server.live)
 
-/*
-def styleStatusChangedUntemplate(
+def styleStatusChangeUntemplate(
   untemplateName      : String,
-                      : api.V0.
-  feedUrl             : FeedUrl,
+  statusChange        : SubscriptionStatusChange,
+  subscriptionName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
   port                : Int
 ) : Task[Unit] =
-*/
+  val resubscribeLink = DummyApiLinkGenerator.createGetLink(subscriptionName,destination)
+  val sci = StatusChangeInfo( statusChange, subscriptionName.toString(), subscriptionManager, destination, resubscribeLink )
+  val untemplate = AllUntemplates.findStatusChangeUntemplate( untemplateName )
+  val filled = untemplate( sci ).text
+  serveOneHtmlPage( filled, port )
+
 
 def styleComposeSingleUntemplate(
   untemplateName      : String,
@@ -49,7 +56,7 @@ def styleComposeSingleUntemplate(
     val untemplateOutput = untemplate( composeInfo ).text
     subscriptionManager match
       case templating : SubscriptionManager.TemplatingCompose =>
-        val d : templating.D = destination.asInstanceOf[templating.D] // how can I let th compiler know templating == subscriptionManager?
+        val d : templating.D = destination.asInstanceOf[templating.D] // how can I let the compiler know templating == subscriptionManager?
         val sid = SubscriptionId(0)
         val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, sid, DummyApiLinkGenerator.removeGetLink(sid) )
         templateParams.fill( untemplateOutput )

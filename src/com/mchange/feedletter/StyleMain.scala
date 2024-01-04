@@ -35,7 +35,7 @@ object StyleMain extends AbstractMain:
     Command("compose-single",header=header)( opts )
 
   val confirm =
-    val header = "Style a template that asks users to composes a subscription."
+    val header = "Style a template that asks users to confirm a subscription."
     val opts =
       val subscriptionName = CommonStyleOpts.SubscriptionName
       val destination = CommonStyleOpts.DestinationOrDefault
@@ -44,11 +44,26 @@ object StyleMain extends AbstractMain:
         CommandConfig.Style.Confirm( sn, d, p )
     Command("confirm",header=header)( opts )
 
+  val statusChange =
+    val header = "Style a template that informs users of a subscription status change."
+    val opts =
+      val kind =
+        val created   = Opts.flag("created",help="Inform user that a subscription has been created.").map( _ => SubscriptionStatusChange.Created )
+        val confirmed = Opts.flag("confirmed",help="Inform user that a subscription has been confirmed.").map( _ => SubscriptionStatusChange.Confirmed )
+        val removed   = Opts.flag("removed",help="Inform user that a subscription has been removed.").map( _ => SubscriptionStatusChange.Removed )
+        (created orElse confirmed orElse removed)
+      val subscriptionName = CommonStyleOpts.SubscriptionName
+      val destination = CommonStyleOpts.DestinationOrDefault
+      val port = CommonStyleOpts.Port
+      ( kind, subscriptionName, destination, port ) mapN: ( k, sn, d, p ) =>
+        CommandConfig.Style.StatusChange( k, sn, d, p )
+    Command("status-change",header=header)( opts )
+
   val feedletterStyle =
     val header = "Iteratively edit and review the untemplates through which your posts will be notified."
     val opts : Opts[(Option[JPath], CommandConfig)] =
       val secrets = CommonOpts.Secrets
-      val subcommands = Opts.subcommands( composeSingle, confirm )
+      val subcommands = Opts.subcommands( composeSingle, confirm, statusChange )
       ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )
     Command("feedletter-style", header=header)( opts )
 

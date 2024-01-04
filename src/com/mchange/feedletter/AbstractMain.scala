@@ -13,7 +13,9 @@ import org.postgresql.replication.fluent.CommonOptions
 
 import com.mchange.mailutil.*
 
-trait AbstractMain:
+import MLevel.*
+
+trait AbstractMain extends SelfLogging:
   object CommonOpts:
     val Secrets = 
       val help = "Path to properties file containing SMTP, postgres, c3p0, and other configuration details."
@@ -74,6 +76,9 @@ trait AbstractMain:
         println(help)
         System.exit(1)
       case Right( ( mbSecrets : Option[JPath], cc : CommandConfig ) ) =>
-        val task = cc.zcommand.provide( AppSetup.live(mbSecrets), LayerDataSource )
+        val task =
+          cc.zcommand.provide( AppSetup.live(mbSecrets), LayerDataSource )
+            .tapError( t => SEVERE.zlog( "Application failed with an Exception.", t ) )
+            .tapDefect( cause => SEVERE.zlog( "Application failed with cause: " + cause ) )
         Unsafe.unsafely:
           Runtime.default.unsafe.run(task).getOrThrow()

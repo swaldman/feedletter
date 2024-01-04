@@ -527,3 +527,7 @@ object PgDatabase extends Migratory, SelfLogging:
   def webDaemonBinding( ds : DataSource ) : Task[(String,Int)] =
     withConnectionTransactional( ds ): conn =>
       ( Config.webDaemonInterface( conn ), Config.webDaemonPort( conn ) )
+
+  def uninterpretedManagerJsonForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[String] =
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.Subscribable.selectUninterpretedManagerJson( conn, subscribableName )

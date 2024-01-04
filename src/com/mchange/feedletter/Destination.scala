@@ -3,6 +3,7 @@ package com.mchange.feedletter
 import upickle.default._
 
 import com.mchange.mailutil.Smtp
+import scala.collection.StringOps
 
 object Destination:
   val  Json = DestinationJson
@@ -21,24 +22,32 @@ object Destination:
 
   object Email:
     def apply( address : Smtp.Address ) : Email = Email( address.email, address.displayName )
+    def apply( address : String )       : Email = this.apply( Smtp.Address.parseSingle( address ) )
   case class Email( addressPart : String, displayNamePart : Option[String] ) extends Destination:
     lazy val toAddress : Smtp.Address = Smtp.Address( addressPart, displayNamePart )
     lazy val rendered = toAddress.rendered
     override def unique = s"e-mail:${addressPart}"
     override def toFields = Seq( destinationType.s -> Tag.Email.toString, Key.addressPart.s -> this.addressPart) ++ this.displayNamePart.map( dnp => Key.displayNamePart.s -> dnp )
+    override def shortDesc : String = this.addressPart 
+    override def fullDesc : String = this.rendered
 
   case class Mastodon( name : String, instanceUrl : String ) extends Destination:
     override def unique = s"mastodon:${instanceUrl}"
     override def toFields = Seq( destinationType.s -> Tag.Mastodon.toString, Key.name.s -> this.name, Key.instanceUrl.s -> this.instanceUrl )
+    override def shortDesc : String = this.instanceUrl
+    override def fullDesc : String = s"Mastodon nicknamed '${name}' instance at ${instanceUrl}"
 
   case class Sms( number : String ) extends Destination:
     override def unique = s"sms:${number}"
     override def toFields = Seq( destinationType.s -> Tag.Sms.toString, Key.number.s -> this.number )
+    override def shortDesc : String = this.number
+    override def fullDesc : String = s"SMS destination '${number}'"
 
   def materialize( json : Destination.Json ) : Destination = read[Destination]( json.toString )
 
   object fromFields:
-    private class CarefulMap( val fields : Seq[(String,String)] ):
+    private class CarefulMap( val rawFields : Seq[(String,String)] ):
+      val fields = rawFields.filter( (k,v) => k.trim.nonEmpty && v.trim.nonEmpty ) // neither blank keys or values are acceptabl
       val dupKeys = fields.toSet.groupBy( _(0) ).filter( _(1).size > 1 ).keySet
       val asMap = fields.toMap
       def get( k : String ) : Option[String] =
@@ -82,11 +91,11 @@ object Destination:
       tpe match
         case Some( t ) => byType(t,fmap)
         case None =>
-          val destinations = Set( email(fmap), mastodon(fmap), sms(fmap) )
+          val destinations = Set( email(fmap), mastodon(fmap), sms(fmap) ).collect { case Some(dest) => dest }
           destinations.size match
             case 0 => None
-            case 1 => destinations.head
-            case n => throw new AmbiguousDestination( s"""Fields '${fmap.fields.mkString(", ")}' can be interpreted as multiple Destinations: ${destinations.mkString(", ")}""" )
+            case 1 => Some(destinations.head)
+            case n => throw new AmbiguousDestination( s"""Fields '${fmap.fields.mkString(", ")}' can be interpreted as multiple ($n) Destinations: ${destinations.mkString(", ")}""" )
 
   private def toUJsonV1( destination : Destination ) : ujson.Value =
     def emf( email : Destination.Email )   : ujson.Obj = ujson.Obj.from(Seq(addressPart.s->ujson.Str(email.addressPart)) ++ email.displayNamePart.map(dnp=>(displayNamePart.s->ujson.Str(dnp))))
@@ -132,4 +141,6 @@ sealed trait Destination extends Jsonable:
   def json       : Destination.Json = Destination.Json( write[Destination]( this ) )
   def jsonPretty : Destination.Json = Destination.Json( write[Destination]( this, indent = 4 ) )
   def toFields   : Seq[(String,String)]
+  def shortDesc  : String
+  def fullDesc   : String
 

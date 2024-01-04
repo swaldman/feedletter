@@ -1,18 +1,58 @@
+val d = scala.xml.Utility.escape( sci.destination.fullDesc )
+
 ( sci : StatusChangeInfo )[]~()>
 
 <html>
   <head>
     <style>
-<( style )>
+<( style() )>
     </style>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Confirm</title>
   </head>
   <body>
-    <h1>Status Changed</h1>
+    <div class="item">
+<()
+    sci.change match {
+      case SubscriptionStatusChange.Created => {
+()>
+        <h1>Subscription created!</h1>
 
-    <p><( sci )></p>
+        <hr style="border-bottom: 1px solid black">
+
+        <p><( d )> has been subscribed to <b><( sci.subscriptionName )></b>.</p>
+
+        <p>The subscription may need to be confirmed.</p>
+
+        <p>If you made this subscription in error, well, for now there's nothing you can do. Don't confirm it, maybe.</p>
+<()
+      }
+      case SubscriptionStatusChange.Confirmed => {
+()>
+        <h1>Subscription confirmed!</h1>
+
+        <hr style="border-bottom: 1px solid black">
+        
+        <p>The subscription of <( d )> to <b><( sci.subscriptionName )></b> has been confirmed.</p>
+
+        <p>If you confirmed this subscription in error, well, for now there's nothing you can do.</p>
+<()
+      }
+      case SubscriptionStatusChange.Removed => {
+()>
+        <h1>Subscription removed!</h1>
+
+        <hr style="border-bottom: 1px solid black">
+
+        <p><( d )> has been unsubscribed from <b><( sci.subscriptionName )></b>.</p>
+
+        <p>If you unsubscribed in error, you can resubscribe by <a href="<( sci.resubscribeLink )>">clicking here</a>.</p>
+<()
+      }
+    }
+()>
+    </div>
   </body>
 </html>
 

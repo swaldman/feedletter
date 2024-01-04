@@ -58,9 +58,10 @@ end ifLink
 ()>
     </div>
     <div class="unsubscribe">
-      <p>You are subscribed as <code>%ToEmail%</code> to the mailing list <( info.subscriptionName )>.</p>
-
-      <p>We'd miss you, but click <a href="%RemoveLink%">here</a> to unsubscribe.</p>
+      <p>
+        You are subscribed as <code>%ToEmail%</code> to the mailing list <( info.subscriptionName )>.
+        We'd miss you, but you can click <a href="%RemoveLink%">here</a> to unsubscribe.
+      </p>
     </div>
   </body>
 </html>

@@ -47,21 +47,21 @@ object CommandConfig extends SelfLogging:
             case SubscriptionManager.Email.Each =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateSingle )
               SubscriptionManager.Email.Each (
-                from = Smtp.Address.parseSingle(from),
-                replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ),
+                from = Destination.Email(from),
+                replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
-                statusChangedUntemplateName = statusChangedUntemplateName,
+                statusChangeUntemplateName = statusChangedUntemplateName,
                 extraParams = extraParams
               )
             case SubscriptionManager.Email.Weekly =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
               SubscriptionManager.Email.Weekly (
-                from = Smtp.Address.parseSingle(from),
-                replyTo = replyTo.map( Smtp.Address.parseSingle(_,true) ),
+                from = Destination.Email(from),
+                replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
-                statusChangedUntemplateName = statusChangedUntemplateName,
+                statusChangeUntemplateName = statusChangedUntemplateName,
                 extraParams = extraParams
               )
 
@@ -75,21 +75,24 @@ object CommandConfig extends SelfLogging:
         yield ()
       end zcommand
     case class EditSubscriptionDefinition( name : SubscribableName ) extends CommandConfig:
+      def prettifyJson( jsonStr : String ) : String =
+        import upickle.default.*
+        write( read[ujson.Value]( jsonStr ), indent = 4 )
       override def zcommand : ZCommand =
         def withTemp[T]( op : os.Path => Task[T] ) : Task[T] =
           ZIO.acquireReleaseWith( ZIO.attemptBlocking( os.temp() ) )( p => ZIO.succeedBlocking( try os.remove(p) catch NonFatals.PrintStackTrace ))(op)
         for
           ds         <- ZIO.service[DataSource]
           _          <- PgDatabase.ensureDb( ds )
-          sman       <- PgDatabase.subscriptionManagerForSubscribableName( ds, name )
+          smanJson   <- PgDatabase.uninterpretedManagerJsonForSubscribableName( ds, name )
           updated    <- withTemp { temp =>
                           for
-                            _        <- ZIO.attemptBlocking( os.write.over(temp, sman.jsonPretty.toString()) )
+                            _        <- ZIO.attemptBlocking( os.write.over(temp, prettifyJson(smanJson)) )
                             editor   =  sys.env.get("EDITOR").getOrElse:
                                           throw new EditorNotDefined("Please define environment variable EDITOR if you wish to edit a subscription.")
                             ec       <- ZIO.attemptBlocking( os.proc(List(editor,temp.toString)).call(stdin=os.Inherit,stdout=os.Inherit,stderr=os.Inherit).exitCode )
                             contents <- ZIO.attemptBlocking( SubscriptionManager.Json( os.read( temp ) ) )
-                            updated  =  SubscriptionManager.materialize( contents )
+                            updated  <- ZIO.attempt( SubscriptionManager.materialize( contents ) )
                           yield updated
                       }
           _           <- PgDatabase.updateSubscriptionManagerJson( ds, name, updated )
@@ -263,7 +266,7 @@ object CommandConfig extends SelfLogging:
         sman match
           case stu : SubscriptionManager.UntemplatedCompose => stu.composeUntemplateName
           //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $sman")
+          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
@@ -295,7 +298,7 @@ object CommandConfig extends SelfLogging:
         sman match
           case stu : SubscriptionManager.UntemplatedConfirm => stu.confirmUntemplateName
           //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot compose: $sman")
+          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
@@ -310,6 +313,32 @@ object CommandConfig extends SelfLogging:
                         sman,
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         fu,
+                        port
+                      ).fork
+          _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _       <- ZIO.unit.forever
+        yield ()
+      end zcommand
+    case class StatusChange( statusChange : SubscriptionStatusChange, subscribableName : SubscribableName, destination : Option[Destination], port : Int ) extends CommandConfig:
+      def untemplateName( sman : SubscriptionManager ) : String =
+        sman match
+          case stu : SubscriptionManager.UntemplatedStatusChange => stu.statusChangeUntemplateName
+          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
+      override def zcommand : ZCommand =
+        for
+          ds       <- ZIO.service[DataSource]
+          _        <- PgDatabase.ensureDb( ds )
+          pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
+          fu       =  pair(0)
+          sman     =  pair(1)
+          un       = untemplateName(sman)
+          _        <- styleStatusChangeUntemplate(
+                        un,
+                        statusChange,
+                        subscribableName,
+                        sman,
+                        destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )

@@ -17,7 +17,6 @@ import scala.collection.immutable
 import com.mchange.conveniences.string.*
 import com.mchange.conveniences.collection.*
 import com.mchange.feedletter.db.PgDatabase
-import com.mchange.mailutil.*
 import scala.util.control.NonFatal
 
 import MLevel.*
@@ -32,8 +31,8 @@ object SubscriptionManager extends SelfLogging:
     def composeUntemplateName : String
   sealed trait UntemplatedConfirm:
     def confirmUntemplateName : String
-  sealed trait UntemplatedStatusChanged:
-    def statusChangedUntemplateName : String
+  sealed trait UntemplatedStatusChange:
+    def statusChangeUntemplateName : String
   sealed trait TemplatingCompose extends SubscriptionManager:
     def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : this.D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams
 
@@ -41,12 +40,12 @@ object SubscriptionManager extends SelfLogging:
     type Companion = Each.type | Weekly.type
 
     case class Each(
-      from                        : Smtp.Address,
-      replyTo                     : Option[Smtp.Address],
-      composeUntemplateName       : String,
-      confirmUntemplateName       : String,
-      statusChangedUntemplateName : String,
-      extraParams                 : Map[String,String]
+      from                       : Destination.Email,
+      replyTo                    : Option[Destination.Email],
+      composeUntemplateName      : String,
+      confirmUntemplateName      : String,
+      statusChangeUntemplateName : String,
+      extraParams                : Map[String,String]
     ) extends Email:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
@@ -73,12 +72,12 @@ object SubscriptionManager extends SelfLogging:
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
     final case class Weekly(
-      from                        : Smtp.Address,
-      replyTo                     : Option[Smtp.Address],
-      composeUntemplateName       : String,
-      confirmUntemplateName       : String,
-      statusChangedUntemplateName : String,
-      extraParams                 : Map[String,String]
+      from                       : Destination.Email,
+      replyTo                    : Option[Destination.Email],
+      composeUntemplateName      : String,
+      confirmUntemplateName      : String,
+      statusChangeUntemplateName : String,
+      extraParams                : Map[String,String]
     ) extends Email:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
@@ -132,13 +131,13 @@ object SubscriptionManager extends SelfLogging:
         val (weekStart, weekEnd) = weekStartWeekEnd(withinTypeId)
         s"[${subscribableName}] All posts, ${weekStart} to ${weekEnd}"
 
-  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChanged, TemplatingCompose:
-    def from                        : Smtp.Address
-    def replyTo                     : Option[Smtp.Address]
-    def composeUntemplateName       : String
-    def confirmUntemplateName       : String
-    def statusChangedUntemplateName : String
-    def extraParams                 : Map[String,String]
+  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, TemplatingCompose:
+    def from                       : Destination.Email
+    def replyTo                    : Option[Destination.Email]
+    def composeUntemplateName      : String
+    def confirmUntemplateName      : String
+    def statusChangeUntemplateName : String
+    def extraParams                : Map[String,String]
 
     type D = Destination.Email
 
@@ -197,7 +196,7 @@ object SubscriptionManager extends SelfLogging:
           throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
 
     override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String =
-      val untemplate = AllUntemplates.findStatusChangeUntemplate(statusChangedUntemplateName)
+      val untemplate = AllUntemplates.findStatusChangeUntemplate(statusChangeUntemplateName)
       untemplate( statusChangeInfo ).text
 
     override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
@@ -213,19 +212,15 @@ object SubscriptionManager extends SelfLogging:
     case Email_Each   extends Tag("Email.Each")
     case Email_Weekly extends Tag("Email.Weekly")
 
-  private given ReadWriter[Smtp.Address] = readwriter[ujson.Value].bimap[Smtp.Address](
-    address => ujson.Obj.from( Seq( "email" -> ujson.Str(address.email) ) ++ address.displayName.map( dn => ("displayName" -> ujson.Str(dn)) ) ),
-    value => Smtp.Address( email = value.obj("email").str, displayName = value.obj.get("displayName").map( _.str ) )
-  )
   private def toUJsonV1( subscriptionManager : SubscriptionManager ) : ujson.Value =
     def esf( emailsub : Email.Each | Email.Weekly ) : ujson.Obj =
       val values = Seq(
-        "from" -> writeJs[Smtp.Address]( emailsub.from ),
+        "from" -> writeJs[Destination]( emailsub.from ),
         "composeUntemplateName" -> ujson.Str( emailsub.composeUntemplateName ),
         "confirmUntemplateName" -> ujson.Str( emailsub.confirmUntemplateName ),
-        "statusChangedUntemplateName" -> ujson.Str( emailsub.statusChangedUntemplateName ),
+        "statusChangeUntemplateName" -> ujson.Str( emailsub.statusChangeUntemplateName ),
         "extraParams" -> writeJs( emailsub.extraParams ) 
-      ) ++ emailsub.replyTo.map( rt => ("replyTo" -> writeJs[Smtp.Address](rt) ) )
+      ) ++ emailsub.replyTo.map( rt => ("replyTo" -> writeJs[Destination](rt) ) )
       ujson.Obj.from( values )
     def eef( each : Email.Each ) : ujson.Obj = esf( each )
     def ewf( weekly : Email.Weekly ) : ujson.Obj = esf( weekly )
@@ -251,20 +246,20 @@ object SubscriptionManager extends SelfLogging:
         throw new InvalidSubscriptionManager(s"While unpickling a subscription manager, found unknown tag '$tpe': " + jsonValue)
       tag match
         case Tag.Email_Each => Email.Each(
-          from = read[Smtp.Address](obj("from")),
-          replyTo = obj.get("replyTo").map( rtv => read[Smtp.Address](rtv) ),
-          composeUntemplateName       = obj("composeUntemplateName").str,
-          confirmUntemplateName       = obj("confirmUntemplateName").str,
-          statusChangedUntemplateName = obj("statusChangedUntemplateName").str,
-          extraParams                 = read[Map[String,String]](obj("extraParams"))
+          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
+          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
+          composeUntemplateName      = obj("composeUntemplateName").str,
+          confirmUntemplateName      = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
+          extraParams                = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Email_Weekly => Email.Weekly(
-          from = read[Smtp.Address](obj("from")),
-          replyTo = obj.get("replyTo").map( rtv => read[Smtp.Address](rtv) ),
-          composeUntemplateName       = obj("composeUntemplateName").str,
-          confirmUntemplateName       = obj("confirmUntemplateName").str,
-          statusChangedUntemplateName = obj("statusChangedUntemplateName").str,
-          extraParams                 = read[Map[String,String]](obj("extraParams"))
+          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
+          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
+          composeUntemplateName      = obj("composeUntemplateName").str,
+          confirmUntemplateName      = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
+          extraParams                = read[Map[String,String]](obj("extraParams"))
         )
 
   given ReadWriter[SubscriptionManager] = readwriter[ujson.Value].bimap[SubscriptionManager]( toUJsonV1, fromUJsonV1 )

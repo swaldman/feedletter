@@ -1,0 +1,48 @@
+<html>
+  <head>
+    <title>Subscribe</title>
+    <script>
+      // see https://simonplend.com/how-to-use-fetch-to-post-form-data-as-json-to-your-api/
+      
+      async function handleFormSubmit( evt ) {
+          evt.preventDefault();
+          console.log( evt );
+          const form = event.currentTarget;
+          const url = form.action;
+          const formData = new FormData(form);
+          const plainFormData = Object.fromEntries(formData.entries());
+          const destination = {
+              type: "Email",
+              addressPart: plainFormData["e-mail"]
+          }
+          const request = {
+              $type: "com.mchange.feedletter.api.V0.RequestPayload.Subscription.Create",
+              subscribableName: "testable",
+              destination:      destination,
+          }
+         const fetchOptions = {
+             method: "POST",
+             headers: {
+                     "Content-Type": "application/json",
+                     "Accept": "application/json"
+             },
+             body: JSON.stringify( request ),
+             mode: "no-cors"
+          };
+	  //const formDataJsonString = JSON.stringify(plainFormData);
+          const response = await fetch(url, fetchOptions);
+          console.log(response)
+      }
+      function setup() {
+          const exampleForm = document.getElementById("submit-form");
+          exampleForm.addEventListener("submit", handleFormSubmit);
+          console.log("Setup complete.");
+      }
+    </script>
+  </head>
+  <body onLoad="setup()">
+    <form id="submit-form" action="http://localhost:8024/v0/subscription/create" method="POST">
+      E-mail: <input type="text" name="e-mail"> <input name="main-submit" value="Subscribe!" type="submit">
+    </form>
+  </body>
+</html>

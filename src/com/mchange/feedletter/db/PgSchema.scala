@@ -319,11 +319,14 @@ object PgSchema:
             Using.resource( conn.prepareStatement( Select ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => ( SubscribableName( rs.getString(1) ), FeedId( rs.getInt(2) ), SubscriptionManager.materialize(SubscriptionManager.Json(rs.getString(3)) ) ) )
-          def selectManager( conn : Connection, subscribableName : SubscribableName ) : SubscriptionManager =
+          def selectUninterpretedManagerJson( conn : Connection, subscribableName : SubscribableName ) : String =
             Using.resource( conn.prepareStatement( SelectManager ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
-                uniqueResult("select-subscription-manager", rs)( rs => SubscriptionManager.materialize(SubscriptionManager.Json(rs.getString(1)) ) )
+                uniqueResult("select-uninterpreted-manager-json", rs)( rs => rs.getString(1) )
+          def selectManager( conn : Connection, subscribableName : SubscribableName ) : SubscriptionManager =
+            val json = SubscriptionManager.Json( selectUninterpretedManagerJson( conn, subscribableName ) )
+            SubscriptionManager.materialize( json )
           def selectFeedIdAndManager( conn : Connection, subscribableName : SubscribableName ) : (FeedId, SubscriptionManager) =
             Using.resource( conn.prepareStatement( SelectFeedIdAndManager ) ): ps =>
               ps.setString(1, subscribableName.toString())
