@@ -303,6 +303,58 @@ object CommandConfig extends SelfLogging:
         yield ()
       end zcommand
     end ComposeUntemplateSingle
+    case class ComposeUntemplateMultiple(
+      subscribableName : SubscribableName,
+      selection        : ComposeSelection.Multiple,
+      destination      : Option[Destination],
+      withinTypeId     : Option[String],
+      port             : Int ) extends CommandConfig:
+      def digest( feedUrl : FeedUrl ) : FeedDigest =
+        val digest = FeedDigest( feedUrl )
+        if digest.isEmpty then
+          throw new NoExampleItems(s"We can't compose against feed '$feedUrl', because it has no example items to render.")
+        digest
+      def guids( digest : FeedDigest ) : Set[Guid] = 
+        selection match
+          case ComposeSelection.Multiple.First(n)  =>
+            digest.orderedGuids.take(n).toSet
+          case ComposeSelection.Multiple.Random(n) =>
+            scala.util.Random.shuffle( digest.orderedGuids ).take(n).toSet
+          case ComposeSelection.Multiple.Guids( values ) =>
+            values
+      def untemplateName( sman : SubscriptionManager ) : String =
+        sman match
+          case stu : SubscriptionManager.UntemplatedCompose => stu.composeUntemplateName
+          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
+      override def zcommand : ZCommand =
+        for
+          ds       <- ZIO.service[DataSource]
+          _        <- PgDatabase.ensureDb( ds )
+          pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
+          fu       =  pair(0)
+          sman     =  pair(1)
+          dig      =  digest( fu )
+          _        <- if dig.orderedGuids.isEmpty then ZIO.fail( new NoExampleItems( s"Feed currently contains no example items to render: ${fu}" ) ) else ZIO.unit
+          gs       =  guids( dig )
+          _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.orderedGuids.size}" ) ) else ZIO.unit
+          un       = untemplateName(sman)
+          _        <- styleComposeMultipleUntemplate(
+                        un,
+                        subscribableName,
+                        sman,
+                        withinTypeId.getOrElse( sman.sampleWithinTypeId ),
+                        destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
+                        fu,
+                        dig,
+                        gs,
+                        port
+                      ).fork
+          _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _       <- ZIO.unit.forever
+        yield ()
+      end zcommand
+    end ComposeUntemplateMultiple
     case class Confirm( subscribableName : SubscribableName, destination : Option[Destination], port : Int ) extends CommandConfig:
       def untemplateName( sman : SubscriptionManager ) : String =
         sman match

@@ -39,6 +39,31 @@ def styleStatusChangeUntemplate(
   val filled = untemplate( sci ).text
   serveOneHtmlPage( filled, port )
 
+def styleComposeMultipleUntemplate(
+  untemplateName      : String,
+  subscriptionName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : subscriptionManager.D,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guids               : Set[Guid],
+  port                : Int
+) : Task[Unit] =
+  val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
+  val composeInfo = ComposeInfo.Multiple( feedUrl.toString(), subscriptionName.toString(), subscriptionManager, withinTypeId, contents )
+  val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
+  val composed =
+    val untemplateOutput = untemplate( composeInfo ).text
+    subscriptionManager match
+      case templating : SubscriptionManager.TemplatingCompose =>
+        val d : templating.D = destination.asInstanceOf[templating.D] // how can I let the compiler know templating == subscriptionManager?
+        val sid = SubscriptionId(0)
+        val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, sid, DummyApiLinkGenerator.removeGetLink(sid) )
+        templateParams.fill( untemplateOutput )
+   // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
+   //   untemplateOutput 
+  serveOneHtmlPage( composed, port )
 
 def styleComposeSingleUntemplate(
   untemplateName      : String,

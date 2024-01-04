@@ -72,11 +72,11 @@ object Main extends AbstractMain, SelfLogging:
           val help = "Fully qualified name of untemplate that will render results of GET request to the API."
           Opts.option[String]("status-change-untemplate",help=help,metavar="fully-qualified-name").orNone
          // modified from decline's docs
-        val kind =
-          val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionManager.Email.Each )
-          val daily = Opts.flag("daily",help="E-mail a compilation, once a day.").map( _ => SubscriptionManager.Email.Daily )
-          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionManager.Email.Weekly )
-          (each orElse daily orElse weekly).withDefault[SubscriptionManager.Email.Companion]( SubscriptionManager.Email.Each )
+        val kind = // we sometimes see type inference errors without the explicit type attributions, i'm not sure why
+          val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionManager.Email.Each : SubscriptionManager.Email.Companion) 
+          val daily = Opts.flag("daily",help="E-mail a compilation, once a day.").map( _ => SubscriptionManager.Email.Daily : SubscriptionManager.Email.Companion)
+          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionManager.Email.Weekly : SubscriptionManager.Email.Companion)
+          (each orElse daily orElse weekly).withDefault[SubscriptionManager.Email.Companion]( SubscriptionManager.Email.Each : SubscriptionManager.Email.Companion)
         val extraParams =
           def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
             strings.map{ s =>

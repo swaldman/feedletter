@@ -1,0 +1,45 @@
+import java.time.ZoneId
+import java.time.format.{DateTimeFormatter,FormatStyle}
+
+val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatStyle.LONG)
+
+def ifLink( link : Option[String], text : String ) : String =
+  link.fold(text)(l => s"""<a href="$l">$text</a>""")
+end ifLink
+
+val (info, contents) = tup
+
+( tup : (ComposeInfo.Universal, ItemContent) )[]~()>
+
+    <div class="item">
+<()
+  contents.title.foreach { title =>
+()>
+      <div class="item-title">
+        <( ifLink( contents.link, title ) )>
+      </div>
+<()
+  }
+  contents.author.foreach { author =>
+()>
+      <div class="item-author">
+        by <( author )>
+      </div>
+<()
+  }
+  contents.article.foreach { article =>
+()>
+      <div class="item-contents">
+        <( article )>
+      </div>
+<()
+  }
+  contents.pubDate.foreach { pubDate =>
+()>
+      <div class="item-date">
+        Published <( formatter.format( pubDate.atZone(ZoneId.systemDefault()) ) )>
+      </div>
+<()
+  }
+()>
+    </div>

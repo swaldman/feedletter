@@ -1,0 +1,63 @@
+import java.time.ZoneId
+import java.time.format.{DateTimeFormatter,FormatStyle}
+
+val htmlTitle =
+  info match
+    case single : ComposeInfo.Single =>
+      s"""[${single.subscriptionName}] ${single.contents.title.getOrElse("(untitled post)")}"""
+    case multiple : ComposeInfo.Multiple if multiple.contents.size == 1 =>
+      s"""[${multiple.subscriptionName}] New Post: ${multiple.contents.head.title.getOrElse("(untitled)")}"""
+    case multiple : ComposeInfo.Multiple =>
+      s"""[${multiple.subscriptionName}] ${multiple.contents.size} new posts"""
+
+val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatStyle.LONG)
+
+def ifLink( link : Option[String], text : String ) : String =
+  link.fold(text)(l => s"""<a href="$l">$text</a>""")
+end ifLink
+
+( info : ComposeInfo.Universal )[]~()>
+
+<html>
+  <head>
+    <style>
+<( style() )>
+    </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><( htmlTitle )></title>
+  </head>
+  <body>
+    <p>Dear %ToNicknameOrEmail%,</p>
+<()
+  info match
+    case single : ComposeInfo.Single => {
+()>
+    <p>A <( ifLink(single.contents.link, "new post") )> has been published to <b><( single.subscriptionName )></b>:</p>
+<()
+    }
+    case multiple : ComposeInfo.Multiple if multiple.contents.size == 1 => {
+()>
+    <p>A <( ifLink(multiple.contents.head.link, "new post") )> has been published to <b><( multiple.subscriptionName )></b>:</p>
+<()
+    }
+    case multiple : ComposeInfo.Multiple => {
+()>    
+    <p>The following <( multiple.contents.size )> posts have been published to <b><( info.subscriptionName )></b>:</p>
+    <ul>
+      <( /* multiple.contents.map( ic => ic.title.getOrElse( "Untitled Post" ) ).map( t => s"<li>$t</li>" ).mkString("\n") */ "" )>
+    </ul>
+<()    
+    }
+    
+    info.contentsSet.foreach( ic => writer.write( item( info, ic ).text ) )
+()>
+
+    <div class="unsubscribe">
+      <p>
+        You are subscribed as <code>%ToEmail%</code> to the mailing list <( info.subscriptionName )>.
+        We'd miss you, but you can click <a href="%RemoveLink%">here</a> to unsubscribe.
+      </p>
+    </div>
+  </body>
+</html>

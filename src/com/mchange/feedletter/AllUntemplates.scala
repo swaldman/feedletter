@@ -20,8 +20,8 @@ object AllUntemplates:
 
   class LazyCache:
     lazy val ComposeUntemplates         = AllUntemplates.all.filter( (k,v) => isCompose(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Universal,Nothing]]) )
-    lazy val ComposeUntemplatesSingle   = ComposeUntemplates.filter( (k,v) => isComposeSingle(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Single,Nothing]])    )
-    lazy val ComposeUntemplatesMultiple = ComposeUntemplates.filter( (k,v) => isComposeMultiple(v) ) map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Multiple,Nothing]])  )
+    lazy val ComposeUntemplatesSingle   = ComposeUntemplates.filter( (k,v) => canComposeSingle(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Single,Nothing]])    )
+    lazy val ComposeUntemplatesMultiple = ComposeUntemplates.filter( (k,v) => canComposeMultiple(v) ) map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Multiple,Nothing]])  )
     lazy val ConfirmUntemplates         = AllUntemplates.all.filter( (k,v) => isConfirm(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ConfirmInfo,Nothing]]) )
     lazy val StatusChangeUntemplates    = AllUntemplates.all.filter( (k,v) => isStatusChange(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[StatusChangeInfo,Nothing]]) )
 
@@ -83,6 +83,8 @@ object AllUntemplates:
         val prefixes = "ComposeInfo" :: "com.mchange.feedletter.ComposeInfo" :: "feedletter.ComposeInfo" :: Nil
         prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
 
+  private def canComposeSingle( candidate : Untemplate.AnyUntemplate ) : Boolean = isComposeSingle( candidate ) || isComposeUniversal( candidate )
+  
   private def isComposeSingle( candidate : Untemplate.AnyUntemplate ) : Boolean =
     candidate.UntemplateInputTypeCanonical match
       case Some( "com.mchange.feedletter.ComposeInfo.Single" ) => true
@@ -91,6 +93,8 @@ object AllUntemplates:
         val checkMe  = candidate.UntemplateInputTypeDeclared
         val prefixes = "ComposeInfo.Single" :: "com.mchange.feedletter.ComposeInfo.Single" :: "feedletter.ComposeInfo.Single" :: Nil
         prefixes.find( checkMe == _ ).nonEmpty
+
+  private def canComposeMultiple( candidate : Untemplate.AnyUntemplate ) : Boolean = isComposeMultiple( candidate ) || isComposeUniversal( candidate )
 
   private def isComposeMultiple( candidate : Untemplate.AnyUntemplate ) : Boolean =
     candidate.UntemplateInputTypeCanonical match
@@ -101,6 +105,15 @@ object AllUntemplates:
         val prefixes = "ComposeInfo.Multiple" :: "com.mchange.feedletter.ComposeInfo.Multiple" :: "feedletter.ComposeInfo.Multiple" :: Nil
         prefixes.find( checkMe == _ ).nonEmpty
 
+  private def isComposeUniversal( candidate : Untemplate.AnyUntemplate ) : Boolean =
+    candidate.UntemplateInputTypeCanonical match
+      case Some( "com.mchange.feedletter.ComposeInfo.Universal" ) => true
+      case Some( _ ) => false
+      case None =>
+        val checkMe  = candidate.UntemplateInputTypeDeclared
+        val prefixes = "ComposeInfo.Universal" :: "com.mchange.feedletter.ComposeInfo.Universal" :: "feedletter.ComposeInfo.Universal" :: Nil
+        prefixes.find( checkMe == _ ).nonEmpty
+        
   private def isConfirm( candidate : Untemplate.AnyUntemplate ) : Boolean =
     candidate.UntemplateInputTypeCanonical match
       case Some( ctype ) => ctype == "com.mchange.feedletter.ConfirmInfo"

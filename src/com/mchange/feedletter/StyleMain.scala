@@ -17,7 +17,7 @@ object StyleMain extends AbstractMain:
       Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.Style.StylePort )
 
   val composeSingle =
-    val header = "Style a template that composes a single post."
+    val header = "Style a template that composes a single item."
     val opts =
       val subscriptionName = CommonStyleOpts.SubscriptionName
       val selection =
@@ -33,6 +33,24 @@ object StyleMain extends AbstractMain:
       ( subscriptionName, selection, destination, withinTypeId, port ) mapN: ( sn, s, d, wti, p ) =>
         CommandConfig.Style.ComposeUntemplateSingle( sn, s, d, wti, p )
     Command("compose-single",header=header)( opts )
+
+  val composeMultiple =
+    val header = "Style a template that composes a multiple items."
+    val opts =
+      val subscriptionName = CommonStyleOpts.SubscriptionName
+      val selection =
+        val first  = Opts.option[Int]("first",help="Display first n items in feed.",metavar="n").map( n => ComposeSelection.Multiple.First(n) )
+        val random = Opts.option[Int]("random",help="Choose n random items from feed to display", metavar="n").map( n => ComposeSelection.Multiple.Random(n) )
+        val guids   = Opts.options[String]("guid",help="Explicitly choose guids of items to display.").map( _.toList.toSet.map(Guid.apply) ).map( v => ComposeSelection.Multiple.Guids(v) )
+        ( first orElse random orElse guids ).withDefault( ComposeSelection.Multiple.First(Int.MaxValue) ) // just render everything
+      val destination = CommonStyleOpts.DestinationOrDefault
+      val withinTypeId =
+        val help = "A subscription-type specific sample within-type-id for the notification."
+        Opts.option[String]("within-type-id",help=help,metavar="string").orNone
+      val port = CommonStyleOpts.Port
+      ( subscriptionName, selection, destination, withinTypeId, port ) mapN: ( sn, s, d, wti, p ) =>
+        CommandConfig.Style.ComposeUntemplateMultiple( sn, s, d, wti, p )
+    Command("compose-multiple",header=header)( opts )
 
   val confirm =
     val header = "Style a template that asks users to confirm a subscription."
@@ -64,7 +82,7 @@ object StyleMain extends AbstractMain:
     val header = "Iteratively edit and review the untemplates through which your posts will be notified."
     val opts : Opts[(Option[JPath], CommandConfig)] =
       val secrets = CommonOpts.Secrets
-      val subcommands = Opts.subcommands( composeSingle, confirm, statusChange )
+      val subcommands = Opts.subcommands( composeMultiple, composeSingle, confirm, statusChange )
       ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )
     Command("feedletter-style", header=header)( opts )
 
