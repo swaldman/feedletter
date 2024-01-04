@@ -105,7 +105,6 @@ notified of items or collections of items.
 CREATE TABLE subscribable(
   subscribable_name         VARCHAR(64),
   feed_id                   INTEGER NOT NULL,
-  subscription_manager_tag  VARCHAR(128) NOT NULL,
   subscription_manager_json JSONB NOT NULL,
   PRIMARY KEY (subscribable_name),
   FOREIGN KEY (feed_id) REFERENCES feed(id)
@@ -174,18 +173,29 @@ CREATE TABLE assignment(
 ##### subscription
 
 Next there is `subscription`, which just maps a destination to a `subscribable`.
-the destination is just a `String`, can be anything. It's meaning is interpreted
-by the `SubscriptionManager`.
+the destination is JSON blob that can refer to a variety of things: e-mail addresses, SMS numbers, mastodon instances, etc.
+Each `SubscriptionManager` works with a destination subtype. 
 
 ```sql
 CREATE TABLE subscription(
-  subscription_id   BIGINT,
-  destination_json  JSONB       NOT NULL,
-  subscribable_name VARCHAR(64) NOT NULL,
-  confirmed         BOOLEAN     NOT NULL,
+  subscription_id    BIGINT,
+  destination_json   JSONB         NOT NULL,
+  destination_unique VARCHAR(1024) NOT NULL,
+  subscribable_name  VARCHAR(64)   NOT NULL,
+  confirmed          BOOLEAN       NOT NULL,
+  added              TIMESTAMP     NOT NULL,
   PRIMARY KEY( subscription_id ),
   FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
 )
+```
+
+Since destinations can have ornamentation (an e-mail address,
+for example, might have a personal part (e.g. Buffy in "Buffy <b@slayers.org>"), it's not sufficient to prevent multiple
+subscriptions to insist that the JSON entities be unique. So destinations declare a unique core, whose uniqueness within
+a subscription the database enforces:
+
+```sql
+CREATE UNIQUE INDEX destination_unique_subscribable_name ON subscription(destination_unique, subscribable_name)
 ```
 
 That's it for the base schema! There are also tables that convert destinations specific to subscription
