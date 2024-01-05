@@ -12,10 +12,6 @@ val htmlTitle =
 
 val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatStyle.LONG)
 
-def ifLink( link : Option[String], text : String ) : String =
-  link.fold(text)(l => s"""<a href="$l">$text</a>""")
-end ifLink
-
 ( info : ComposeInfo.Universal )[]~()>
 
 <html>
