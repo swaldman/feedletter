@@ -268,7 +268,7 @@ object V0 extends SelfLogging:
         zpo.mapError( failureToPlainText ).map( successToHtmlText )
 
       def subscriptionCreateLogicShared( ds : DataSource, as : AppSetup )( screate : RequestPayload.Subscription.Create ) : ZSharedOut[ResponsePayload.Subscription.Created] =
-        WARNING.log( s"subscriptionCreateLogicShared( $screate )" )
+        TRACE.log( s"subscriptionCreateLogicShared( $screate )" )
         val mainTask =
           withConnectionTransactional( ds ): conn =>
             val sname = SubscribableName(screate.subscribableName)
@@ -331,7 +331,7 @@ object V0 extends SelfLogging:
             ZIO.fail( t.fullStackTrace )
 
       def subscriptionRemoveLogicShared( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZSharedOut[ResponsePayload.Subscription.Removed] =
-        WARNING.log( s"subscriptionRemoveLogicShared( $sremove )" )
+        TRACE.log( s"subscriptionRemoveLogicShared( $sremove )" )
         val mainTask =
           withConnectionTransactional( ds ): conn =>
             val sid   = SubscriptionId(sremove.subscriptionId)

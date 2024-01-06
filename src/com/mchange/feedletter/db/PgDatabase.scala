@@ -200,12 +200,14 @@ object PgDatabase extends Migratory, SelfLogging:
     subscriptionManager.withinTypeId( conn, feedId, guid, content, status, lastCompleted, mostRecentOpen ).foreach: wti =>
       ensureOpenAssignable( conn, feedId, subscribableName, wti, Some(guid) )
       LatestSchema.Table.Assignment.insert( conn, subscribableName, wti, guid )
+      DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned in subscribable '${subscribableName}'." )
 
   private def assign( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Unit =
     TRACE.log( s"assign( $conn, $feedId, $guid, $content, $status )" )
     val subscribableNames = LatestSchema.Table.Subscribable.selectSubscribableNamesByFeedId( conn, feedId )
     subscribableNames.foreach( subscribableName => assignForSubscribable( conn, subscribableName, feedId, guid, content, status ) )
     LatestSchema.Table.Item.updateLastCheckedAssignability( conn, feedId, guid, status.lastChecked, ItemAssignability.Assigned )
+    DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned in all subscribables to that feed." )
 
   private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : Guid, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     TRACE.log( s"updateAssignItem( $conn, $fi, $guid, $dbStatus, $freshContent, $now )" )
@@ -255,7 +257,7 @@ object PgDatabase extends Migratory, SelfLogging:
         val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
         updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
       val deleted = LatestSchema.Table.Item.deleteDisappearedUnassigned( conn, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
-      FINER.log( s"Deleted ${deleted} disappeared unassigned items." )
+      DEBUG.log( s"Deleted ${deleted} disappeared unassigned items." )
       LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
 
   // it's probably fine to use cached values, because we recache them continually, even after assignment
@@ -294,8 +296,8 @@ object PgDatabase extends Migratory, SelfLogging:
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
     for
       feedInfos <- withConnectionTransactional( ds )( conn => LatestSchema.Table.Feed.selectAll( conn ) )
-      _         <- ZIO.collectAllParDiscard( feedInfos.map( fi => withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ) ) )
-    yield ()  
+      _         <- ZIO.collectAllParDiscard( feedInfos.map( fi => withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ).zlogErrorDefect( WARNING ) ) )
+    yield ()
 
   def completeAssignables( ds : DataSource, apiLinkGenerator : ApiLinkGenerator ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
@@ -309,6 +311,7 @@ object PgDatabase extends Migratory, SelfLogging:
           route( conn, ak, subscriptionManager, apiLinkGenerator )
           cleanUpPreviouslyCompleted( conn, subscribableName ) // we have to do this BEFORE updateCompleted, or we'll clean away the latest last completed.
           LatestSchema.Table.Assignable.updateCompleted( conn, subscribableName, withinTypeId, Some(Instant.now) )
+          INFO.log( s"Completed assignable '${withinTypeId}' with subscribable '${subscribableName}'." )
 
   def cleanUpPreviouslyCompleted( conn : Connection, subscribableName : SubscribableName ) : Unit =
     val mbLastWithinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, subscribableName )
@@ -316,6 +319,8 @@ object PgDatabase extends Migratory, SelfLogging:
       LatestSchema.Table.Assignment.cleanAwayAssignable( conn, subscribableName, wti)
       LatestSchema.Table.Assignable.delete( conn, subscribableName, wti )
       LatestSchema.Join.ItemAssignableAssignment.clearOldCache( conn )
+      DEBUG.log( s"Assignable (item collection) defined by subscribable name '${subscribableName}', within-type-id '${wti}' has been deleted." )
+      DEBUG.log( "Cached values of items fully distributed have been cleared." )
 
   def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
@@ -325,6 +330,7 @@ object PgDatabase extends Migratory, SelfLogging:
         val fd = FeedDigest( fi.feedUrl )
         fd.guidToItemContent.foreach: (guid, itemContent) =>
           LatestSchema.Table.Item.insertNew( conn, newFeedId, guid, None, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
+          DEBUG.log( s"Pre-existing item with GUID '${guid}' from new feed with ID ${newFeedId} has been excluded from distribution." )
       catch
         case NonFatal(t) =>
           WARNING.log(s"Failed to exclude existing content from assignment when adding feed '${fi.feedUrl}'. Existing content may be distributed.", t)
@@ -341,6 +347,7 @@ object PgDatabase extends Migratory, SelfLogging:
   def addSubscribable( ds : DataSource, subscribableName : SubscribableName, feedId : FeedId, subscriptionManager : SubscriptionManager ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscribable.insert( conn, subscribableName, feedId, subscriptionManager )
+      INFO.log( s"New subscribable '${subscribableName}' defined on feed with ID ${feedId}." )
 
   def addSubscription( ds : DataSource, subscribableName : SubscribableName, destinationJson : Destination.Json, confirmed : Boolean, now : Instant ) : Task[(SubscriptionManager,SubscriptionId)] =
     withConnectionTransactional( ds )( conn => addSubscription( conn, subscribableName, destinationJson, confirmed, now ) )
@@ -363,6 +370,9 @@ object PgDatabase extends Migratory, SelfLogging:
     subscriptionManager.validateDestinationOrThrow( conn, destination, subscribableName )
     val newId = LatestSchema.Table.Subscription.Sequence.SubscriptionSeq.selectNext( conn )
     LatestSchema.Table.Subscription.insert( conn, newId, destination, subscribableName, confirmed, now )
+    INFO.log:
+      val status = if confirmed then "confirmed" else "unconfirmed"
+      s"New ${status} subscription to '${subscribableName}' created for destination '${destination.shortDesc}'."
     newId
 
   def listSubscribables( ds : DataSource ) : Task[Set[(SubscribableName,FeedId,SubscriptionManager)]] =
@@ -422,6 +432,7 @@ object PgDatabase extends Migratory, SelfLogging:
       val contents = mswt.templateParams.fill( mswt.template )
       given Smtp.Context = smtpContext
       Smtp.sendSimpleHtmlOnly( contents, subject = mswt.subject, from = mswt.from.toString(), to = mswt.to.toString(), replyTo = mswt.replyTo.map(_.toString()).toSeq )
+      INFO.log(s"Mail sent from '${mswt.from}' to '${mswt.to}' with subject '${mswt.subject}'")
     catch
       case NonFatal(t) =>
         val lastRetryMessage = if mswt.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
@@ -516,6 +527,9 @@ object PgDatabase extends Migratory, SelfLogging:
 
   def updateConfirmed( conn : Connection, subscriptionId : SubscriptionId, confirmed : Boolean ) : Unit =
     LatestSchema.Table.Subscription.updateConfirmed( conn, subscriptionId, confirmed )
+    INFO.log:
+      val status = if confirmed then "confirmed" else "unconfirmed"
+      s"Subscription with ID ${subscriptionId} has been marked ${status}."
 
   def updateConfirmed( ds : DataSource, subscriptionId : SubscriptionId, confirmed : Boolean ) : Task[Unit] =
     withConnectionTransactional( ds )( conn => updateConfirmed(conn, subscriptionId, confirmed) )
@@ -525,7 +539,9 @@ object PgDatabase extends Migratory, SelfLogging:
 
   def unsubscribe( conn : Connection, id : SubscriptionId ) : Option[SubscriptionInfo] =
     val out = subscriptionInfoForSubscriptionId( conn, id )
-    out.foreach( _ => LatestSchema.Table.Subscription.delete( conn, id ) )
+    out.foreach: _ =>
+      LatestSchema.Table.Subscription.delete( conn, id )
+      INFO.log( s"Subscription with ID ${id} removed." )
     out
 
   def webDaemonBinding( ds : DataSource ) : Task[(String,Int)] =
