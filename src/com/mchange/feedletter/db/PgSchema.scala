@@ -103,6 +103,27 @@ object PgSchema:
               ps.setTimestamp(3, tvalue )
               ps.executeUpdate()
 
+        object Flags extends Creatable:
+          protected val Create = "CREATE TABLE flags( flag VARCHAR(64) PRIMARY KEY )"
+          private val Select = "SELECT flag FROM flags WHERE flag = ?"
+          private val Upsert =
+            """|INSERT INTO flags(flag)
+               |VALUES ( ? )
+               |ON CONFLICT(flag) DO NOTHING""".stripMargin
+          private val Delete = "DELETE FROM flags WHERE flag = ?"
+          def isSet( conn : Connection, flag : Flag ) : Boolean =
+            Using.resource( conn.prepareStatement( this.Select ) ): ps =>
+              ps.setString(1, flag.toString())
+              Using.resource( ps.executeQuery() )( _.next() )
+          def set( conn : Connection, flag : Flag ) =
+            Using.resource( conn.prepareStatement( this.Upsert ) ): ps =>
+              ps.setString(1, flag.toString())
+              ps.executeUpdate()
+          def unset( conn : Connection, flag : Flag ) =
+            Using.resource( conn.prepareStatement( this.Delete ) ): ps =>
+              ps.setString(1, flag.toString())
+              ps.executeUpdate()
+
         object Feed extends Creatable:
           protected val Create =
             """|CREATE TABLE feed(

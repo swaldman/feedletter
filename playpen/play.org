@@ -164,3 +164,73 @@ val json: String = {"email":"swaldman@mchange.com"}
 : // defined object Sum
 : // defined trait Sum
 : val json: String = {"type":"A","i":9}
+
+#+begin_src scala :scala-version 3.3.1 :dep '("dev.zio::zio:2.0.18" "dev.zio::zio-http:3.0.0-RC4")
+
+  import zio._
+  import zio.http._
+
+  object HelloWorld extends ZIOAppDefault {
+
+    val app: HttpApp[Any] = 
+      Routes(
+        Method.GET / "text" -> handler(Response.text("Hello World!"))
+      ).toHttpApp
+
+    val runServer =
+      for
+        _ <- Console.printLine( "Running server on port 8080" )
+        fiber <- Server.serve(app).provide(Server.default).onInterrupt( ZIO.succeed( println("Server shut down.") ) ).fork
+      yield
+        fiber
+
+    override val run =
+      val serve =
+        for
+          fiber <- runServer
+          _     <- ZIO.sleep(5.seconds)
+          _     <- fiber.interrupt
+        yield ()
+      serve.schedule( Schedule.forever )
+  }
+
+  HelloWorld.main(Array.empty)
+
+#+end_src
+
+#+RESULTS:
+#+begin_example
+-- [E007] Type Mismatch Error: -------------------------------------------------
+23 |     _     <- ZIO.interrupt( fiber )
+   |                             ^^^^^
+   |    Found:    (fiber : zio.Fiber.Runtime[Throwable, Nothing])
+   |    Required: zio.Trace
+   |
+   |    The following import might make progress towards fixing the problem:
+   |
+   |      import izumi.reflect.dottyreflection.ReflectionUtil.
+   |      reflectiveUncheckedNonOverloadedSelectable
+   |
+   |
+   | longer explanation available when compiling with `-explain`
+1 error found
+#+end_example
+
+#+begin_src scala
+      def interruptRecycleDaemon( ds : DataSource, pauseDuration : Duration, fibers : Set[Fiber[Throwable,Nothing]] ) =
+        val checkInterrupt =
+          withConnectionTransactional( ds ): conn =>
+            val mustReload = PgDatabase.checkMustReloadWebDaemon(conn)
+            if mustReload then
+              PgDatabase.clearMustReloadWebDaemon(conn)
+              webDaemonFiber.interrupt
+              true
+            else
+              false
+        def doCheck : Task[Unit] =
+          for
+            check <- checkInterrupt
+            _     <- if check then ZIO.unit else (ZIO.sleep( pauseDuration ) *> doCheck)
+          yield ()
+        doCheck
+#+end_src

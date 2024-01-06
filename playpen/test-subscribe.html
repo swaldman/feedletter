@@ -3,9 +3,18 @@
     <title>Subscribe</title>
   </head>
   <body>
-    <form id="submit-form" action="http://localhost:8024/v0/subscription/create" method="GET">
-      <input type="hidden" name="subscribableName" value="testable">
-      E-mail: <input type="text" name="address"> <input name="main-submit" value="Subscribe!" type="submit">
+    <!--
+    <form id="submit-form" action="http://feedletter.interfluidity.com/v0/subscription/create" method="GET">
+      SubscriptionName: <input type="text" name="subscribableName" value="testable"><br>
+      E-mail: <input type="text" name="address"><br>
+      <input name="main-submit" value="Subscribe!" type="submit">
+    </form>
+    -->
+    <form id="submit-form" action="http://feedletter.interfluidity.com/v0/subscription/create" method="GET">
+      SubscriptionName: <input type="text" name="subscribableName" value="testable"><br>
+      E-mail: <input type="text" name="addressPart"><br>
+      Display Name: <input type="text" name="displayNamePart"> (Optional)<br>
+      <input name="main-submit" value="Subscribe!" type="submit">
     </form>
   </body>
 </html>
