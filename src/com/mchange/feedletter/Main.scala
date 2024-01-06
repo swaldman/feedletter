@@ -20,6 +20,22 @@ import com.mchange.feedletter.db.DbVersionStatus
 
 object Main extends AbstractMain, SelfLogging:
 
+  object SupportedProtocol:
+    import cats.Applicative
+    import cats.data.ValidatedNel
+    import cats.syntax.validated._
+
+    given Argument[SupportedProtocol] with
+      def read(s: String): ValidatedNel[String, SupportedProtocol] =
+        try
+          Validated.valid( SupportedProtocol.valueOf(s) )
+        catch
+          case t : IllegalArgumentException => s"Unsupported Web API protocol: $s".invalidNel[SupportedProtocol]
+      def defaultMetavar: String = SupportedProtocol.http.toString
+
+  enum SupportedProtocol:
+    case http, https
+
   object Admin:
     val addFeed =
       val header = "Add a new feed from which mail or notifications may be generated."
@@ -123,6 +139,10 @@ object Main extends AbstractMain, SelfLogging:
       Command("list-subscription-definitions",header=header)( opts )
     val setConfig =
       val header = "Set configuration parameters."
+      def simpleConfigOpt[T]( key : ConfigKey )( name : String, help : String, metavar : String )(using Argument[T]) : Opts[Option[(ConfigKey,String)]] =
+        Opts.option[T](name, help=help, metavar=metavar)
+          .map( v => (key, v.toString()) )
+          .orNone
       val opts =
         val dumpDbDir =
           val help = "Directory in which to create dump files prior to db migrations."
@@ -131,28 +151,58 @@ object Main extends AbstractMain, SelfLogging:
             .map( _.toAbsolutePath )
             .map( p => (ConfigKey.DumpDbDir, p.toString()) )
             .orNone
-        val mailBatchSize =
-          val help = "Number of e-mails to send in each 'batch' (to avoid overwhelming the SMTP server)."
-          Opts.option[Int]("mail-batch-size", help=help, metavar="size")
-            .map( i => (ConfigKey.MailBatchSize, i.toString()) )
-            .orNone
-        val mailBatchDelaySecs =
-          val help = "Time between batches of e-mails are to be sent."
-          Opts.option[Int]("mail-batch-delay-seconds", help=help, metavar="seconds")
-            .map( i => (ConfigKey.MailBatchDelaySeconds, i.toString()) )
-            .orNone
-        val mailMaxRetries =
-          val help = "Number of times e-mail sends (defined as successful submission to an SMTP service) will be attempted before giving up."
-          Opts.option[Int]("mail-max-retries", help=help, metavar="times")
-            .map( i => (ConfigKey.MailMaxRetries, i.toString()) )
-            .orNone
-        val timeZone =
-          val help = "ID of the time zone which subscriptions based on time periods should use."
-          Opts.option[String]("time-zone", help=help, metavar="zone").map( ZoneId.of )
-            .map( i => (ConfigKey.TimeZone, i.toString()) )
-            .orNone
-        ( dumpDbDir, mailBatchSize, mailBatchDelaySecs, mailMaxRetries, timeZone ) mapN: (ddr, mbs, mbds, mmr, tz) =>
-          val settings = (Vector.empty ++ ddr ++ mbs ++ mbds ++ mmr ++ tz).toMap
+        val mailBatchSize = simpleConfigOpt[Int]( ConfigKey.MailBatchSize )(
+          name    = "mail-batch-size",
+          help    = "Number of e-mails to send in each 'batch' (to avoid overwhelming the SMTP server).",
+          metavar = "size"
+        )
+        val mailBatchDelaySecs = simpleConfigOpt[Int]( ConfigKey.MailBatchDelaySeconds )(
+          name    = "mail-batch-delay-seconds",
+          help    = "Time between batches of e-mails are to be sent.",
+          metavar = "seconds"
+        )
+        val mailMaxRetries = simpleConfigOpt[Int]( ConfigKey.MailMaxRetries )(
+          name    = "mail-max-retries",
+          help    = "Number of times e-mail sends (defined as successful submission to an SMTP service) will be attempted before giving up.",
+          metavar = "times"
+        )
+        val timeZone = simpleConfigOpt[String]( ConfigKey.TimeZone )(
+          name    = "time-zone",
+          help    = "ID of the time zone which subscriptions based on time periods should use.",
+          metavar = "zone"
+        )
+        val webDaemonInterface = simpleConfigOpt[String]( ConfigKey.WebDaemonInterface )(
+          name    = "web-daemon-interface",
+          help    = "The local interface to which the web-api daemon should bind.",
+          metavar = "interface"
+        )
+        val webDaemonPort = simpleConfigOpt[Int]( ConfigKey.WebDaemonPort )(
+          name    = "web-daemon-port",
+          help    = "The local port to which the web-api daemon should bind.",
+          metavar = "port"
+        )
+        val webApiProtocol = simpleConfigOpt[SupportedProtocol]( ConfigKey.WebApiProtocol )(
+          name    = "web-api-protocol",
+          help    = "The protocol (http or https) by which the web api is served.",
+          metavar = "http|https"
+        )
+        val webApiHostName = simpleConfigOpt[String]( ConfigKey.WebApiHostName )(
+          name    = "web-api-host-name",
+          help    = "The host from which the web api is served.",
+          metavar = "hostname"
+        )
+        val webApiBasePath = simpleConfigOpt[String]( ConfigKey.WebApiBasePath )(
+          name    = "web-api-base-path",
+          help    = "The URL base location upon which the web api is served (usually just '/').",
+          metavar = "path"
+        )
+        val webApiPort = simpleConfigOpt[Int]( ConfigKey.WebApiPort )(
+          name    = "web-api-port",
+          help    = "The port from which the web api is served (usually blank, protocol determined).",
+          metavar = "port"
+        )
+        ( dumpDbDir, mailBatchSize, mailBatchDelaySecs, mailMaxRetries, timeZone, webDaemonInterface, webDaemonPort, webApiProtocol, webApiHostName, webApiBasePath, webApiPort ) mapN: (ddr, mbs, mbds, mmr, tz, wdi, wdp, wapro, wahn, wabp, wapo) =>
+          val settings : Map[ConfigKey,String] = (Vector.empty ++ ddr ++ mbs ++ mbds ++ mmr ++ tz ++ wdi ++ wdp ++ wapro ++ wahn ++ wabp ++ wapo).toMap
           CommandConfig.Admin.SetConfig( settings )
       Command("set-config", header=header)( opts )
     val sendTestEmail =
