@@ -12,7 +12,7 @@ object Default:
 
   object Config:
     val MailBatchSize         : Int         = 100
-    val MailBatchDelaySeconds : Int         = 15 * 60 // 15 mins
+    val MailBatchDelaySeconds : Int         = 10 * 60 // 10 mins
     val MailMaxRetries        : Int         = 5
     val WebDaemonPort         : Int         = 8024
     val WebDaemonInterface    : String      = "127.0.0.1" // use IPv4 or IPv6, anything InetAddress.getByName(...) can interpret
