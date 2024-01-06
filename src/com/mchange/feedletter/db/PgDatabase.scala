@@ -111,6 +111,7 @@ object PgDatabase extends Migratory, SelfLogging:
         Using.resource( conn.createStatement() ): stmt =>
           PgSchema.V1.Table.Config.create( stmt )
           PgSchema.V1.Table.Times.create( stmt )
+          PgSchema.V1.Table.Flags.create( stmt )
           PgSchema.V1.Table.Feed.create( stmt )
           PgSchema.V1.Table.Feed.Sequence.FeedSeq.create( stmt )
           PgSchema.V1.Table.Item.Type.ItemAssignability.create( stmt )
@@ -149,12 +150,15 @@ object PgDatabase extends Migratory, SelfLogging:
 
   private def insertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.insert(conn, cfgkey, value) )
+    setMustReloadTapirApi(conn)
 
   private def updateConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.update(conn, cfgkey, value) )
+    setMustReloadTapirApi(conn)
 
   private def upsertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.upsert(conn, cfgkey, value) )
+    setMustReloadTapirApi(conn)
 
   private def sort( tups : Set[Tuple2[ConfigKey,String]] ) : immutable.SortedSet[Tuple2[ConfigKey,String]] =
     immutable.SortedSet.from( tups )( using Ordering.by( tup => (tup(0).toString().toUpperCase, tup(1) ) ) )
@@ -251,7 +255,7 @@ object PgDatabase extends Migratory, SelfLogging:
         val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
         updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
       val deleted = LatestSchema.Table.Item.deleteDisappearedUnassigned( conn, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
-      DEBUG.log( s"Deleted ${deleted} disappeared unassigned items." )
+      FINER.log( s"Deleted ${deleted} disappeared unassigned items." )
       LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
 
   // it's probably fine to use cached values, because we recache them continually, even after assignment
@@ -531,3 +535,10 @@ object PgDatabase extends Migratory, SelfLogging:
   def uninterpretedManagerJsonForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[String] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscribable.selectUninterpretedManagerJson( conn, subscribableName )
+
+  def checkMustReloadTapirApi( conn : Connection ) : Boolean = LatestSchema.Table.Flags.isSet( conn, Flag.MustReloadTapirApi )
+  def clearMustReloadTapirApi( conn : Connection ) : Unit    = LatestSchema.Table.Flags.unset( conn, Flag.MustReloadTapirApi )
+  def setMustReloadTapirApi  ( conn : Connection ) : Unit    = LatestSchema.Table.Flags.set  ( conn, Flag.MustReloadTapirApi )
+
+  def checkMustReloadTapirApi( ds : DataSource ) : Task[Boolean] = withConnectionTransactional(ds)( checkMustReloadTapirApi )
+  def clearMustReloadTapirApi( ds : DataSource ) : Task[Unit]    = withConnectionTransactional(ds)( clearMustReloadTapirApi )

@@ -43,6 +43,9 @@ object SecretsKey:
 enum SubscriptionStatusChange:
   case Created, Confirmed, Removed
 
+enum Flag:
+  case MustReloadTapirApi
+
 type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
 
