@@ -248,7 +248,7 @@ object CommandConfig extends SelfLogging:
           _  <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds, tapirApi ).fork
           _  <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds, as.smtpContext ).fork
           _  <- com.mchange.feedletter.Daemon.webDaemon(ds, as, tapirApi)
-          _  <- ZIO.unit.forever
+          _  <- ZIO.never
         yield ()
       end zcommand
   object Style:
@@ -299,7 +299,7 @@ object CommandConfig extends SelfLogging:
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
-          _       <- ZIO.unit.forever
+          _       <- ZIO.never
         yield ()
       end zcommand
     end ComposeUntemplateSingle
@@ -351,7 +351,7 @@ object CommandConfig extends SelfLogging:
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
-          _       <- ZIO.unit.forever
+          _       <- ZIO.never
         yield ()
       end zcommand
     end ComposeUntemplateMultiple
@@ -378,7 +378,7 @@ object CommandConfig extends SelfLogging:
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
-          _       <- ZIO.unit.forever
+          _       <- ZIO.never
         yield ()
       end zcommand
     case class StatusChange( statusChange : SubscriptionStatusChange, subscribableName : SubscribableName, destination : Option[Destination], requiresConfirmation : Boolean, port : Int ) extends CommandConfig:
@@ -405,7 +405,7 @@ object CommandConfig extends SelfLogging:
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
-          _       <- ZIO.unit.forever
+          _       <- ZIO.never
         yield ()
       end zcommand
 sealed trait CommandConfig:
