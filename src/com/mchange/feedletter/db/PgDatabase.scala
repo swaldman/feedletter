@@ -222,32 +222,32 @@ object PgDatabase extends Migratory, SelfLogging:
         /* don't update empty over actual content, treat empty content (rare, since guid would still have been found) as just stability */
         if newContentHash == contentHash then
           val newLastChecked = now
-          LatestSchema.Table.Item.updateStable( conn, fi.assertFeedId, guid, newLastChecked )
+          LatestSchema.Table.Item.updateStable( conn, fi.feedId, guid, newLastChecked )
           DEBUG.log( s"Updated last checked time on stable item, feed ID ${fi.feedId}, guid '${guid}'." )
           if (afterMinDelay && sufficientlyStable) || pastMaxDelay then
-            assign( conn, fi.assertFeedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
+            assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
         else
           val newStableSince = now
           val newLastChecked = now
-          LatestSchema.Table.Item.updateChanged( conn, fi.assertFeedId, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
+          LatestSchema.Table.Item.updateChanged( conn, fi.feedId, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
           DEBUG.log( s"Updated stable since and last checked times, and content cache, on modified item, feed ID ${fi.feedId}, guid '${guid}'." )
           if pastMaxDelay then
-            assign( conn, fi.assertFeedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
+            assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Assigned ) ) => /* update cache only */
         val newContentHash = freshContent.contentHash
         if newContentHash != contentHash then
-          LatestSchema.Table.Item.updateChanged( conn, fi.assertFeedId, guid, freshContent, prev )
+          LatestSchema.Table.Item.updateChanged( conn, fi.feedId, guid, freshContent, prev )
           DEBUG.log( s"Updated content cache only on already-assigned modified item, feed ID ${fi.feedId}, guid '${guid}'." )
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Cleared ) )  => /* ignore, we're done with this one */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
         def doInsert() =
-          LatestSchema.Table.Item.insertNew(conn, fi.assertFeedId, guid, Some(freshContent), ItemAssignability.Unassigned)
+          LatestSchema.Table.Item.insertNew(conn, fi.feedId, guid, Some(freshContent), ItemAssignability.Unassigned)
           DEBUG.log( s"Added new item, feed ID ${fi.feedId}, guid '${guid}'." )
-          val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid ).getOrElse:
+          val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedId, guid ).getOrElse:
             throw new AssertionError("Just inserted row is not found???")
           if fi.minDelayMinutes <= 0 && fi.awaitStabilizationMinutes <= 0 then // if eligible for immediate assignment...
-            assign( conn, fi.assertFeedId, guid, freshContent, dbStatus )
+            assign( conn, fi.feedId, guid, freshContent, dbStatus )
         freshContent.pubDate match
           case Some( pd ) =>
             if pd > fi.added then
@@ -263,14 +263,14 @@ object PgDatabase extends Migratory, SelfLogging:
     if now > nextAssign then
       val FeedDigest( _, guidToItemContent, timestamp ) = FeedDigest( fi.feedUrl, now )
       guidToItemContent.foreach: ( guid, freshContent ) =>
-        val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
+        val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedId, guid )
         updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
       DEBUG.log( s"Deleting any as-yet-unassigned items that have been deleted from feed with ID ${fi.feedId}" )
-      val deleted = LatestSchema.Table.Item.deleteDisappearedUnassignedForFeed( conn, fi.assertFeedId, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
+      val deleted = LatestSchema.Table.Item.deleteDisappearedUnassignedForFeed( conn, fi.feedId, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
       if deleted > 0 then
         INFO.log( s"Deleted ${deleted} disappeared unassigned items from feed with ID ${fi.feedId}." )
         DEBUG.log( s"GUIDs in feed with ID ${fi.feedId} that should have been retained: " + guidToItemContent.keySet.mkString(", ") )
-      LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
+      LatestSchema.Table.Feed.updateLastAssigned(conn, fi.feedId, timestamp)
       INFO.log( s"Updated/assigned all items from feed with ID ${fi.feedId}, feed URL '${fi.feedUrl}'" )
 
   // it's probably fine to use cached values, because we recache them continually, even after assignment
@@ -335,18 +335,18 @@ object PgDatabase extends Migratory, SelfLogging:
       DEBUG.log( s"Assignable (item collection) defined by subscribable name '${subscribableName}', within-type-id '${wti}' has been deleted." )
       DEBUG.log( "Cached values of items fully distributed have been cleared." )
 
-  def addFeed( ds : DataSource, fi : FeedInfo ) : Task[Set[FeedInfo]] =
+  def addFeed( ds : DataSource, nf : NascentFeed ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>
       val newFeedId = LatestSchema.Table.Feed.Sequence.FeedSeq.selectNext(conn)
-      LatestSchema.Table.Feed.insert(conn, newFeedId, fi)
+      LatestSchema.Table.Feed.insert(conn, newFeedId, nf)
       try
-        val fd = FeedDigest( fi.feedUrl )
+        val fd = FeedDigest( nf.feedUrl )
         fd.guidToItemContent.foreach: (guid, itemContent) =>
           LatestSchema.Table.Item.insertNew( conn, newFeedId, guid, None, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
           DEBUG.log( s"Pre-existing item with GUID '${guid}' from new feed with ID ${newFeedId} has been excluded from distribution." )
       catch
         case NonFatal(t) =>
-          WARNING.log(s"Failed to exclude existing content from assignment when adding feed '${fi.feedUrl}'. Existing content may be distributed.", t)
+          WARNING.log(s"Failed to exclude existing content from assignment when adding feed '${nf.feedUrl}'. Existing content may be distributed.", t)
       LatestSchema.Table.Feed.selectAll(conn)
 
   def listFeeds( ds : DataSource ) : Task[Set[FeedInfo]] =

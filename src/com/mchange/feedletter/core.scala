@@ -55,13 +55,13 @@ case class IdentifiedDestination[T <: Destination]( subscriptionId : Subscriptio
 
 case class SubscriptionInfo( id : SubscriptionId, name : SubscribableName, manager : SubscriptionManager, destination : Destination, confirmed : Boolean )
 
-object FeedInfo:
-  def forNewFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ): FeedInfo =
-    val startTime = Instant.now()
-    FeedInfo( None, feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes, startTime, startTime )
-final case class FeedInfo( feedId : Option[FeedId], feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant ):
-  def assertFeedId : FeedId = feedId.getOrElse:
-    throw new FeedletterException( s"FeedInfo which should be for an extant feed, with id defined, has no feedId set: ${this}" )
+final case class FeedInfo( feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant )
+
+object NascentFeed:
+  def apply( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) : NascentFeed =
+    val now = Instant.now
+    NascentFeed( feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes, now, now )
+final case class NascentFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant )
 
 final case class ExcludedItem( feedId : FeedId, guid : Guid, link : Option[String] )
 
