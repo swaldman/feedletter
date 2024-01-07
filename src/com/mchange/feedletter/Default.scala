@@ -22,8 +22,8 @@ object Default:
     val WebApiPort            : Option[Int] = None
 
   object Email:
-    val ComposeUntemplateSingle   = "com.mchange.feedletter.default.email.composeSingle"
-    val ComposeUntemplateMultiple = "com.mchange.feedletter.default.email.composeMultiple"
+    val ComposeUntemplateSingle   = "com.mchange.feedletter.default.email.composeUniversal"
+    val ComposeUntemplateMultiple = "com.mchange.feedletter.default.email.composeUniversal"
     val ConfirmUntemplate         = "com.mchange.feedletter.default.email.confirm"
     val StatusChangeUntemplate    = "com.mchange.feedletter.default.email.statusChange"
 
