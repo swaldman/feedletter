@@ -10,8 +10,6 @@ WorkingDirectory=/home/feedletter/development/gitproj/feedletter
 
 ExecStart=/bin/bash -c "JAVA_HOME=/usr/local/pkg/jdk17 PATH=${PATH}:${JAVA_HOME}/bin ./feedletter daemon"
 
-KillMode=mixed
-KillSignal=SIGTERM
 TimeoutStopSec=90
 Restart=on-failure
 RestartSec=10s
