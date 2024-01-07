@@ -320,7 +320,7 @@ object CommandConfig extends SelfLogging:
                         interface,
                         port
                       ).fork
-          _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
           _       <- ZIO.never
         yield ()
       end zcommand
@@ -374,7 +374,7 @@ object CommandConfig extends SelfLogging:
                         interface,
                         port
                       ).fork
-          _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
           _       <- ZIO.never
         yield ()
       end zcommand
@@ -404,7 +404,7 @@ object CommandConfig extends SelfLogging:
                         interface,
                         port
                       ).fork
-          _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
           _       <- ZIO.never
         yield ()
       end zcommand
@@ -432,7 +432,7 @@ object CommandConfig extends SelfLogging:
                         interface,
                         port
                       ).fork
-          _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
+          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
           _       <- ZIO.never
         yield ()
       end zcommand
