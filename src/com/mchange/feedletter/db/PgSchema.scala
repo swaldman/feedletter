@@ -243,22 +243,23 @@ object PgSchema:
           // See
           //   https://stackoverflow.com/questions/178479/preparedstatement-in-clause-alternatives
           //   https://stackoverflow.com/questions/34627026/in-vs-any-operator-in-postgresql
-          private val DeleteDisappearedUnassigned =
+          private val DeleteDisappearedUnassignedForFeed =
             """|DELETE FROM item
-               |WHERE assignability = 'Unassigned' AND NOT (guid = ANY( ? ))""".stripMargin
-          private val SelectDisappearedUnassigned =
+               |WHERE assignability = 'Unassigned' AND feed_id = ? AND NOT (guid = ANY( ? ))""".stripMargin
+          private val SelectDisappearedUnassignedForFeed =
             """|SELECT guid FROM item
-               |WHERE assignability = 'Unassigned' AND NOT (guid = ANY( ? ))""".stripMargin
-          def deleteDisappearedUnassigned( conn : Connection, current : Set[Guid] ) : Int =
-            Using.resource( conn.prepareStatement( DeleteDisappearedUnassigned ) ): ps =>
+               |WHERE assignability = 'Unassigned' AND feed_id = ? AND NOT (guid = ANY( ? ))""".stripMargin
+          def deleteDisappearedUnassignedForFeed( conn : Connection, feedId : FeedId, current : Set[Guid] ) : Int =
+            Using.resource( conn.prepareStatement( DeleteDisappearedUnassignedForFeed ) ): ps =>
               val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
-              ps.setArray(1, sqlArray)
+              ps.setString(1, feedId.toString())
+              ps.setArray (2, sqlArray)
               ps.executeUpdate()
-          def selectDisappearedUnassigned( conn : Connection, current : Set[Guid] ) : Set[String] =
-            Using.resource( conn.prepareStatement( SelectDisappearedUnassigned ) ): ps =>
+          def selectDisappearedUnassignedForFeed( conn : Connection, feedId : FeedId, current : Set[Guid] ) : Set[String] =
+            Using.resource( conn.prepareStatement( SelectDisappearedUnassignedForFeed ) ): ps =>
               val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
-              println( sqlArray )
-              ps.setArray(1, sqlArray)
+              ps.setString(1, feedId.toString())
+              ps.setArray (2, sqlArray)
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( _.getString(1) )
           def checkStatus( conn : Connection, feedId : FeedId, guid : Guid ) : Option[ItemStatus] =
