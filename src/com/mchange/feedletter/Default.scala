@@ -8,7 +8,8 @@ object Default:
     val RecheckEveryMinutes       = 10
 
   object Style:
-    val StylePort = 8080
+    val StyleInterface = "0.0.0.0"
+    val StylePort      = 8080
 
   object Config:
     val ConfirmHours          : Int         = 48

@@ -277,6 +277,7 @@ object CommandConfig extends SelfLogging:
       selection        : ComposeSelection.Single,
       destination      : Option[Destination],
       withinTypeId     : Option[String],
+      interface        : String,
       port             : Int ) extends CommandConfig:
       def digest( feedUrl : FeedUrl ) : FeedDigest =
         val digest = FeedDigest( feedUrl )
@@ -316,6 +317,7 @@ object CommandConfig extends SelfLogging:
                         fu,
                         dig,
                         g,
+                        interface,
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
@@ -328,6 +330,7 @@ object CommandConfig extends SelfLogging:
       selection        : ComposeSelection.Multiple,
       destination      : Option[Destination],
       withinTypeId     : Option[String],
+      interface        : String,
       port             : Int ) extends CommandConfig:
       def digest( feedUrl : FeedUrl ) : FeedDigest =
         val digest = FeedDigest( feedUrl )
@@ -368,6 +371,7 @@ object CommandConfig extends SelfLogging:
                         fu,
                         dig,
                         gs,
+                        interface,
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
@@ -375,7 +379,7 @@ object CommandConfig extends SelfLogging:
         yield ()
       end zcommand
     end ComposeUntemplateMultiple
-    case class Confirm( subscribableName : SubscribableName, destination : Option[Destination], port : Int ) extends CommandConfig:
+    case class Confirm( subscribableName : SubscribableName, destination : Option[Destination], interface : String, port : Int ) extends CommandConfig:
       def untemplateName( sman : SubscriptionManager ) : String =
         sman match
           case stu : SubscriptionManager.UntemplatedConfirm => stu.confirmUntemplateName
@@ -397,13 +401,14 @@ object CommandConfig extends SelfLogging:
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         fu,
                         ch,
+                        interface,
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )
           _       <- ZIO.never
         yield ()
       end zcommand
-    case class StatusChange( statusChange : SubscriptionStatusChange, subscribableName : SubscribableName, destination : Option[Destination], requiresConfirmation : Boolean, port : Int ) extends CommandConfig:
+    case class StatusChange( statusChange : SubscriptionStatusChange, subscribableName : SubscribableName, destination : Option[Destination], requiresConfirmation : Boolean, interface : String, port : Int ) extends CommandConfig:
       def untemplateName( sman : SubscriptionManager ) : String =
         sman match
           case stu : SubscriptionManager.UntemplatedStatusChange => stu.statusChangeUntemplateName
@@ -424,6 +429,7 @@ object CommandConfig extends SelfLogging:
                         sman,
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         requiresConfirmation,
+                        interface,
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )

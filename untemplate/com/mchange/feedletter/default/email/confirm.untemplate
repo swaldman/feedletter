@@ -8,8 +8,9 @@ val confirmHoursWarning : String =
   val days  = info.confirmHours / 24
   if days > 30 then ""
   else if days > 0 then s"${prefix} in $days days."
-  else if info.confirmHours > 0 then s"${prefix} in $confirmHours hours."
+  else if info.confirmHours > 0 then s"${prefix} in ${info.confirmHours} hours."
   else s"${prefix} imminently."
+end confirmHoursWarning  
 
 ( info : ConfirmInfo )[]~()>
 

@@ -12,8 +12,11 @@ object StyleMain extends AbstractMain:
       val help = "The name of an already defined subscription that will use this template."
       Opts.option[String]("subscription-name",help=help,metavar="name").map( SubscribableName.apply )
     val DestinationOrDefault = CommonOpts.AnyDestination.orNone
+    val Interface =
+      val help = "The interface on which to bind an HTTP server, which will serve the rendered untemplate."
+      Opts.option[String]("interface",help=help,metavar="interface").withDefault( Default.Style.StyleInterface )
     val Port =
-      val help = "The port on which to run a local HTTP server, which will serve the rendered untemplate."
+      val help = "The port on which to run a HTTP server, which will serve the rendered untemplate."
       Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.Style.StylePort )
 
   val composeSingle =
@@ -29,9 +32,10 @@ object StyleMain extends AbstractMain:
       val withinTypeId =
         val help = "A subscription-type specific sample within-type-id for the notification."
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
+      val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, selection, destination, withinTypeId, port ) mapN: ( sn, s, d, wti, p ) =>
-        CommandConfig.Style.ComposeUntemplateSingle( sn, s, d, wti, p )
+      ( subscriptionName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, s, d, wti, i, p ) =>
+        CommandConfig.Style.ComposeUntemplateSingle( sn, s, d, wti, i, p )
     Command("compose-single",header=header)( opts )
 
   val composeMultiple =
@@ -47,9 +51,10 @@ object StyleMain extends AbstractMain:
       val withinTypeId =
         val help = "A subscription-type specific sample within-type-id for the notification."
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
+      val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, selection, destination, withinTypeId, port ) mapN: ( sn, s, d, wti, p ) =>
-        CommandConfig.Style.ComposeUntemplateMultiple( sn, s, d, wti, p )
+      ( subscriptionName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, s, d, wti, i, p ) =>
+        CommandConfig.Style.ComposeUntemplateMultiple( sn, s, d, wti, i, p )
     Command("compose-multiple",header=header)( opts )
 
   val confirm =
@@ -57,9 +62,10 @@ object StyleMain extends AbstractMain:
     val opts =
       val subscriptionName = CommonStyleOpts.SubscriptionName
       val destination = CommonStyleOpts.DestinationOrDefault
+      val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, destination, port ) mapN: ( sn, d, p ) =>
-        CommandConfig.Style.Confirm( sn, d, p )
+      ( subscriptionName, destination, interface, port ) mapN: ( sn, d, i, p ) =>
+        CommandConfig.Style.Confirm( sn, d, i, p )
     Command("confirm",header=header)( opts )
 
   val statusChange =
@@ -73,9 +79,10 @@ object StyleMain extends AbstractMain:
       val subscriptionName = CommonStyleOpts.SubscriptionName
       val destination = CommonStyleOpts.DestinationOrDefault
       val preconfirmed = Opts.flag("preconfirmed",help="Set to mark the styled subscription already confirmed, or not in need of a confirmation step.").orFalse
+      val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( kind, subscriptionName, destination, preconfirmed, port ) mapN: ( k, sn, d, prec, p ) =>
-        CommandConfig.Style.StatusChange( k, sn, d, !prec, p ) // requiresConfirmation == !preconfirmed
+      ( kind, subscriptionName, destination, preconfirmed, interface, port ) mapN: ( k, sn, d, prec, i, p ) =>
+        CommandConfig.Style.StatusChange( k, sn, d, !prec, i, p ) // requiresConfirmation == !preconfirmed
     Command("status-change",header=header)( opts )
 
   val feedletterStyle =

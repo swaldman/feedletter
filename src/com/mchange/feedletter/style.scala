@@ -12,7 +12,7 @@ object DummyApiLinkGenerator extends ApiLinkGenerator:
   def removeGetLink( sid : SubscriptionId ) : String =
     s"http://localhost:8024/v0/subscription/remove?subscriptionId=${sid}&invitation=fake"
 
-def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
+def serveOneHtmlPage( html : String, interface : String, port : Int ) : Task[Unit] =
   import zio.http.Server
   import sttp.tapir.ztapir.*
   import sttp.tapir.server.ziohttp.ZioHttpInterpreter
@@ -21,7 +21,7 @@ def serveOneHtmlPage( html : String, port : Int ) : Task[Unit] =
   val indexEndpoint = endpoint.in("index.html").get.out( htmlBodyUtf8 )
   val logic : Unit => UIO[String] = _ => ZIO.succeed( html )
   val httpApp = ZioHttpInterpreter().toHttp( List(rootEndpoint.zServerLogic(logic), indexEndpoint.zServerLogic(logic) ) )
-  Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.binding("0.0.0.0",port)), Server.live)
+  Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.binding(interface,port)), Server.live)
 
 def styleStatusChangeUntemplate(
   untemplateName       : String,
@@ -30,6 +30,7 @@ def styleStatusChangeUntemplate(
   subscriptionManager  : SubscriptionManager,
   destination          : subscriptionManager.D,
   requiresConfirmation : Boolean,
+  interface            : String,
   port                 : Int
 ) : Task[Unit] =
   val unsubscribeLink = DummyApiLinkGenerator.removeGetLink(SubscriptionId(0))
@@ -37,7 +38,7 @@ def styleStatusChangeUntemplate(
   val sci = StatusChangeInfo( statusChange, subscriptionName.toString(), subscriptionManager, destination, requiresConfirmation, unsubscribeLink, resubscribeLink )
   val untemplate = AllUntemplates.findStatusChangeUntemplate( untemplateName )
   val filled = untemplate( sci ).text
-  serveOneHtmlPage( filled, port )
+  serveOneHtmlPage( filled, interface, port )
 
 def styleComposeMultipleUntemplate(
   untemplateName      : String,
@@ -48,6 +49,7 @@ def styleComposeMultipleUntemplate(
   feedUrl             : FeedUrl,
   digest              : FeedDigest,
   guids               : Set[Guid],
+  interface           : String,
   port                : Int
 ) : Task[Unit] =
   val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
@@ -63,7 +65,7 @@ def styleComposeMultipleUntemplate(
         templateParams.fill( untemplateOutput )
    // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
    //   untemplateOutput 
-  serveOneHtmlPage( composed, port )
+  serveOneHtmlPage( composed, interface, port )
 
 def styleComposeSingleUntemplate(
   untemplateName      : String,
@@ -74,6 +76,7 @@ def styleComposeSingleUntemplate(
   feedUrl             : FeedUrl,
   digest              : FeedDigest,
   guid                : Guid,
+  interface           : String,
   port                : Int
 ) : Task[Unit] =
   val contents = digest.guidToItemContent( guid )
@@ -89,7 +92,7 @@ def styleComposeSingleUntemplate(
         templateParams.fill( untemplateOutput )
    // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
    //   untemplateOutput 
-  serveOneHtmlPage( composed, port )
+  serveOneHtmlPage( composed, interface, port )
 
 def styleConfirmUntemplate(
   untemplateName      : String,
@@ -98,11 +101,12 @@ def styleConfirmUntemplate(
   destination         : subscriptionManager.D,
   feedUrl             : FeedUrl,
   confirmHours        : Int,
+  interface           : String,
   port                : Int
 ) : Task[Unit] =
   val sid = SubscriptionId(0)
   val confirmInfo = ConfirmInfo( destination, subscriptionName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), confirmHours )
   val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
   val filled = untemplate( confirmInfo ).text
-  serveOneHtmlPage( filled, port )
+  serveOneHtmlPage( filled, interface, port )
 
