@@ -18,12 +18,12 @@ import MLevel.*
 object CommandConfig extends SelfLogging:
 
   object Admin:
-    case class AddFeed( fi : FeedInfo ) extends CommandConfig:
+    case class AddFeed( nf : NascentFeed ) extends CommandConfig:
       override def zcommand : ZCommand =
         for
           ds  <- ZIO.service[DataSource]
           _   <- PgDatabase.ensureDb( ds )
-          fis <- PgDatabase.addFeed( ds, fi )
+          fis <- PgDatabase.addFeed( ds, nf )
           _   <- printFeedInfoTable(fis)
         yield ()
       end zcommand

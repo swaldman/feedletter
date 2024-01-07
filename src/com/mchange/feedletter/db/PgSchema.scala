@@ -154,9 +154,8 @@ object PgSchema:
             """|UPDATE feed
                |SET last_assigned = ?
                |WHERE id = ?""".stripMargin
-          def insert( conn : Connection, newFeedId : FeedId, fi : FeedInfo ) : Int =
-            assert( fi.feedId == None, "Cannot insert a FeedInfo with an already assigned id: " + fi )
-            insert(conn, newFeedId, fi.feedUrl, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.assignEveryMinutes, fi.added, fi.lastAssigned)
+          def insert( conn : Connection, newFeedId : FeedId, nf : NascentFeed ) : Int =
+            insert(conn, newFeedId, nf.feedUrl, nf.minDelayMinutes, nf.awaitStabilizationMinutes, nf.maxDelayMinutes, nf.assignEveryMinutes, nf.added, nf.lastAssigned)
           def insert( conn : Connection, feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
               ps.setInt       (1, feedId.toInt)
@@ -171,7 +170,7 @@ object PgSchema:
           def selectAll( conn : Connection ) : Set[FeedInfo] =
             Using.resource( conn.prepareStatement( this.SelectAll ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => FeedInfo(Some(FeedId(rs.getInt(1))), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6), rs.getTimestamp(7).toInstant, rs.getTimestamp(8).toInstant) )
+                toSet(rs)( rs => FeedInfo(FeedId(rs.getInt(1)), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6), rs.getTimestamp(7).toInstant, rs.getTimestamp(8).toInstant) )
           def selectUrl( conn : Connection, feedId : FeedId ) : Option[FeedUrl] =
             Using.resource(conn.prepareStatement(this.SelectUrl)): ps =>
               ps.setInt(1, feedId.toInt)

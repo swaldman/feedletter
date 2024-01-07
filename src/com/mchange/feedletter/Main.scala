@@ -60,8 +60,8 @@ object Main extends AbstractMain, SelfLogging:
         val timings = ping orElse setTimings
         val feedUrl = Opts.argument[String](metavar="feed-url")
         (timings, feedUrl) mapN: (t, fu) =>
-          val fi = FeedInfo.forNewFeed(FeedUrl(fu), t(0), t(1), t(2), t(3) )
-          CommandConfig.Admin.AddFeed( fi )
+          val nf = NascentFeed(FeedUrl(fu), t(0), t(1), t(2), t(3) )
+          CommandConfig.Admin.AddFeed( nf )
       Command("add-feed",header=header)( opts )
     val defineEmailSubscription =
       val header = "Define a kind of e-mail subscription."
