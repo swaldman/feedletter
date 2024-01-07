@@ -37,7 +37,7 @@ end confirmHoursWarning
         <li>
           <p>
             If you did intend to subscribe, please <a href="<( info.confirmGetLink )>">click here to confirm your subscription</a>.
-            ${confirmHoursWarning}
+            <( confirmHoursWarning )>
           </p>
         </li>
         <li><p>If you did not intend to subscribe, please do nothing but accept our apologies. You will receive no further mailings.</p></li>
