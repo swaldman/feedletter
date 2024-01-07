@@ -145,7 +145,7 @@ object SubscriptionManager extends SelfLogging:
       statusChangeUntemplateName : String,
       extraParams                : Map[String,String]
     ) extends Email:
-      private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'ww")
+      private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
 
       override val sampleWithinTypeId = "2024-day4"
 
