@@ -265,6 +265,7 @@ object PgDatabase extends Migratory, SelfLogging:
       guidToItemContent.foreach: ( guid, freshContent ) =>
         val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
         updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
+      DEBUG.log( s"Deleting any as-yet-unassigned items that have been deleted from feed with ID ${fi.feedId}" )
       val deleted = LatestSchema.Table.Item.deleteDisappearedUnassigned( conn, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
       if deleted > 0 then
         INFO.log( s"Deleted ${deleted} disappeared unassigned items from feed with ID ${fi.feedId}." )

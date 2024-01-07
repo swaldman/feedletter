@@ -245,7 +245,9 @@ object PgSchema:
           //   https://stackoverflow.com/questions/34627026/in-vs-any-operator-in-postgresql
           private val DeleteDisappearedUnassigned =
             """|DELETE FROM item
-               |WHERE assignability = 'Unassigned' AND NOT (guid = ANY( ? ))""".stripMargin
+               |WHERE assignability = 'Unassigned' AND NOT (guid IN ?)""".stripMargin
+          //  """|DELETE FROM item
+          //     |WHERE assignability = 'Unassigned' AND NOT (guid = ANY( ? ))""".stripMargin
           def deleteDisappearedUnassigned( conn : Connection, current : Set[Guid] ) : Int =
             Using.resource( conn.prepareStatement( DeleteDisappearedUnassigned ) ): ps =>
               val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
