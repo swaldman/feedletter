@@ -246,22 +246,12 @@ object PgSchema:
           private val DeleteDisappearedUnassignedForFeed =
             """|DELETE FROM item
                |WHERE assignability = 'Unassigned' AND feed_id = ? AND NOT (guid = ANY( ? ))""".stripMargin
-          private val SelectDisappearedUnassignedForFeed =
-            """|SELECT guid FROM item
-               |WHERE assignability = 'Unassigned' AND feed_id = ? AND NOT (guid = ANY( ? ))""".stripMargin
           def deleteDisappearedUnassignedForFeed( conn : Connection, feedId : FeedId, current : Set[Guid] ) : Int =
             Using.resource( conn.prepareStatement( DeleteDisappearedUnassignedForFeed ) ): ps =>
               val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
               ps.setInt(1, feedId.toInt)
               ps.setArray (2, sqlArray)
               ps.executeUpdate()
-          def selectDisappearedUnassignedForFeed( conn : Connection, feedId : FeedId, current : Set[Guid] ) : Set[String] =
-            Using.resource( conn.prepareStatement( SelectDisappearedUnassignedForFeed ) ): ps =>
-              val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
-              ps.setInt(1, feedId.toInt )
-              ps.setArray (2, sqlArray)
-              Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( _.getString(1) )
           def checkStatus( conn : Connection, feedId : FeedId, guid : Guid ) : Option[ItemStatus] =
             Using.resource( conn.prepareStatement( SelectCheck ) ): ps =>
               ps.setInt   (1, feedId.toInt)
