@@ -223,14 +223,14 @@ object PgDatabase extends Migratory, SelfLogging:
         if newContentHash == contentHash then
           val newLastChecked = now
           LatestSchema.Table.Item.updateStable( conn, fi.feedId, guid, newLastChecked )
-          DEBUG.log( s"Updated last checked time on stable item, feed ID ${fi.feedId}, guid '${guid}'." )
+          DEBUG.log( s"Updated last checked time on stable unassigned item, feed ID ${fi.feedId}, guid '${guid}'." )
           if (afterMinDelay && sufficientlyStable) || pastMaxDelay then
             assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
         else
           val newStableSince = now
           val newLastChecked = now
           LatestSchema.Table.Item.updateChanged( conn, fi.feedId, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
-          DEBUG.log( s"Updated stable since and last checked times, and content cache, on modified item, feed ID ${fi.feedId}, guid '${guid}'." )
+          DEBUG.log( s"Updated stable since and last checked times, and content cache, on modified unassigned item, feed ID ${fi.feedId}, guid '${guid}'." )
           if pastMaxDelay then
             assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Assigned ) ) =>
@@ -239,6 +239,9 @@ object PgDatabase extends Migratory, SelfLogging:
           val newStatus = ItemStatus( newContentHash, firstSeen, now, now, ItemAssignability.Assigned )
           LatestSchema.Table.Item.updateChanged( conn, fi.feedId, guid, freshContent, newStatus )
           DEBUG.log( s"Updated an already-assigned, not yet cleared, item which has been modified, feed ID ${fi.feedId}, guid '${guid}'." )
+        else
+          LatestSchema.Table.Item.updateStable( conn, fi.feedId, guid, now )
+          DEBUG.log( s"Updated last-checked-time on a stable already-assigned, not yet cleared, item, feed ID ${fi.feedId}, guid '${guid}'." )
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Cleared ) )  => /* ignore, we're done with this one */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
