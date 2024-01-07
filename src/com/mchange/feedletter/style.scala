@@ -97,10 +97,11 @@ def styleConfirmUntemplate(
   subscriptionManager : SubscriptionManager,
   destination         : subscriptionManager.D,
   feedUrl             : FeedUrl,
+  confirmHours        : Int,
   port                : Int
 ) : Task[Unit] =
   val sid = SubscriptionId(0)
-  val confirmInfo = ConfirmInfo( destination, subscriptionName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid) )
+  val confirmInfo = ConfirmInfo( destination, subscriptionName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), confirmHours )
   val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
   val filled = untemplate( confirmInfo ).text
   serveOneHtmlPage( filled, port )

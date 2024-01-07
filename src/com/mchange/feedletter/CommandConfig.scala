@@ -258,11 +258,13 @@ object CommandConfig extends SelfLogging:
             _          <- INFO.zlog( s"Spawning daemon fibers." )
             fuac       <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds, tapirApi ).fork
             fmngid     <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds, as.smtpContext ).fork
+            fch        <- com.mchange.feedletter.Daemon.cyclingRetryingExpireUnconfirmedSubscriptions( ds ).fork
             fwd        <- com.mchange.feedletter.Daemon.webDaemon( ds, as, tapirApi ).fork
-            _          <- ZIO.unit.schedule( Schedule.recurUntilZIO( _ =>  mustReloadCheck(ds).orDie ) )
+            _          <- ZIO.unit.schedule( Schedule.recurUntilZIO( _ =>  mustReloadCheck(ds).orDie ) ) // NOTE: should an error or defect occur, the fibers created are automatically interrupted
             _          <- INFO.zlog( s"Flag ${Flag.MustReloadTapirApi} found. Shutting down daemon and restarting." )
             _          <- fuac.interrupt
             _          <- fmngid.interrupt
+            _          <- fch.interrupt
             _          <- fwd.interrupt
             _          <- DEBUG.zlog("All daemon fibers interrupted.")
           yield ()
@@ -387,12 +389,14 @@ object CommandConfig extends SelfLogging:
           fu       =  pair(0)
           sman     =  pair(1)
           un       = untemplateName(sman)
+          ch       <- PgDatabase.confirmHours( ds )
           _        <- styleConfirmUntemplate(
                         un,
                         subscribableName,
                         sman,
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         fu,
+                        ch,
                         port
                       ).fork
           _       <- INFO.zlog( s"HTTP Server started on port ${port}" )

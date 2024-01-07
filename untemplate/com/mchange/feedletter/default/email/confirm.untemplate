@@ -3,6 +3,14 @@ val displayName =
   info.subscriptionManager.displayShort( narrowed )
 end displayName
 
+val confirmHoursWarning : String =
+  val prefix = "This link will expire"
+  val days  = info.confirmHours / 24
+  if days > 30 then ""
+  else if days > 0 then s"${prefix} in $days days."
+  else if info.confirmHours > 0 then s"${prefix} in $confirmHours hours."
+  else s"${prefix} imminently."
+
 ( info : ConfirmInfo )[]~()>
 
 <html>
@@ -25,7 +33,12 @@ end displayName
       <p>Did you intend to subscribe, or is somebody just messing with you?</p>
 
       <ul>
-        <li><p>If you did intend to subscribe, please <a href="<( info.confirmGetLink )>">click here to confirm your subscription</a>.</p></li>
+        <li>
+          <p>
+            If you did intend to subscribe, please <a href="<( info.confirmGetLink )>">click here to confirm your subscription</a>.
+            ${confirmHoursWarning}
+          </p>
+        </li>
         <li><p>If you did not intend to subscribe, please do nothing but accept our apologies. You will receive no further mailings.</p></li>
       </ul>
 

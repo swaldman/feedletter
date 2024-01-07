@@ -16,11 +16,13 @@ object Daemon extends SelfLogging:
   private object RetrySchedule:
     val updateAssignComplete = Schedule.exponential( 10.seconds, 1.25f ) && Schedule.upTo( 5.minutes ) // XXX: hard-coded for now
     val mailNextGroupIfDue = updateAssignComplete // XXX: for now!
+    val expireUnconfirmedSubscriptions = updateAssignComplete
 
   private object CyclingSchedule:
     val updateAssignComplete = Schedule.fixed( 1.minute ).jittered(0.0, 0.5) // XXX: hard-coded for now
     val mailNextGroupIfDue = updateAssignComplete // XXX: for now!
     val checkReloadWebDaemon = Schedule.fixed( 30.seconds )
+    val expireUnconfirmedSubscriptions = Schedule.fixed( 1.hours )
 
   // updateAssign and complete are distinct transactions,
   // and everything is idempotent.
@@ -53,6 +55,18 @@ object Daemon extends SelfLogging:
       .schedule( CyclingSchedule.mailNextGroupIfDue )
       .map( _ => () )
       .onInterrupt( DEBUG.zlog( "cyclingRetryingMailNextGroupIfDue fiber interrupted." ) )
+
+  def retryingExpireUnconfirmedSubscriptions( ds : DataSource ) : Task[Unit] =
+    PgDatabase.expireUnconfirmed( ds )
+      .zlogErrorDefect( WARNING, what = "expireUnconfirmedSubscriptions" )
+      .retry( RetrySchedule.expireUnconfirmedSubscriptions )
+
+  def cyclingRetryingExpireUnconfirmedSubscriptions( ds : DataSource ) : Task[Unit] =
+    retryingExpireUnconfirmedSubscriptions( ds )
+      .catchAll( t => WARNING.zlog( "Retry cycle for expireUnconfirmedSubscriptions failed...", t ) )
+      .schedule( CyclingSchedule.expireUnconfirmedSubscriptions )
+      .map( _ => () )
+      .onInterrupt( DEBUG.zlog( "expireUnconfirmedSubscriptions fiber interrupted." ) )
 
   def tapirApi( ds : DataSource, as : AppSetup ) : Task[api.V0.TapirApi] =
     for

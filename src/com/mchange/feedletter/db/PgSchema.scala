@@ -518,6 +518,13 @@ object PgSchema:
           private val Delete =
             """|DELETE FROM subscription
                |WHERE subscription_id = ?""".stripMargin
+          private val ExpireUnconfirmedAddedBefore =
+            """|DELETE FROM subscription
+               |WHERE confirmed = FALSE AND added < ?""".stripMargin
+          def expireUnconfirmedAddedBefore( conn : Connection, before : Instant ) : Int =
+            Using.resource( conn.prepareStatement( ExpireUnconfirmedAddedBefore ) ): ps =>
+              ps.setTimestamp( 1, Timestamp.from(before) )
+              ps.executeUpdate()
           def delete( conn : Connection, subscriptionId : SubscriptionId ) =
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setLong(1, subscriptionId.toLong)
