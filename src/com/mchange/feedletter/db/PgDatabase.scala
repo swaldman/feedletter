@@ -194,10 +194,8 @@ object PgDatabase extends Migratory, SelfLogging:
 
   private def assignForSubscribable( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Unit =
     TRACE.log( s"assignForSubscriptionManager( $conn, $subscribableName, $feedId, $guid, $content, $status )" )
-    val lastCompleted = lastCompletedAssignableWithinTypeStatus( conn, feedId, subscribableName )
-    val mostRecentOpen = mostRecentOpenAssignableWithinTypeStatus( conn, feedId, subscribableName )
     val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, subscribableName )
-    subscriptionManager.withinTypeId( conn, feedId, guid, content, status, lastCompleted, mostRecentOpen ).foreach: wti =>
+    subscriptionManager.withinTypeId( conn, feedId, guid, content, status ).foreach: wti =>
       ensureOpenAssignable( conn, feedId, subscribableName, wti, Some(guid) )
       LatestSchema.Table.Assignment.insert( conn, subscribableName, wti, guid )
       DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned in subscribable '${subscribableName}'." )

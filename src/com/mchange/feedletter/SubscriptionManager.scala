@@ -51,7 +51,7 @@ object SubscriptionManager extends SelfLogging:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
 
-      override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String] =
+      override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
@@ -90,9 +90,7 @@ object SubscriptionManager extends SelfLogging:
         feedId         : FeedId,
         guid           : Guid,
         content        : ItemContent,
-        status         : ItemStatus,
-        lastCompleted  : Option[AssignableWithinTypeStatus],
-        mostRecentOpen : Option[AssignableWithinTypeStatus]
+        status         : ItemStatus
       ) : Option[String] =
         val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
@@ -155,9 +153,7 @@ object SubscriptionManager extends SelfLogging:
         feedId         : FeedId,
         guid           : Guid,
         content        : ItemContent,
-        status         : ItemStatus,
-        lastCompleted  : Option[AssignableWithinTypeStatus],
-        mostRecentOpen : Option[AssignableWithinTypeStatus]
+        status         : ItemStatus
       ) : Option[String] =
         val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
@@ -345,7 +341,7 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
-  def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus, lastCompleted : Option[AssignableWithinTypeStatus], mostRecentOpen : Option[AssignableWithinTypeStatus] ) : Option[String]
+  def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit
 
