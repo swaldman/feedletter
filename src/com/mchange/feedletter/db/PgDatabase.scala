@@ -233,11 +233,12 @@ object PgDatabase extends Migratory, SelfLogging:
           DEBUG.log( s"Updated stable since and last checked times, and content cache, on modified item, feed ID ${fi.feedId}, guid '${guid}'." )
           if pastMaxDelay then
             assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
-      case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Assigned ) ) => /* update cache only */
+      case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Assigned ) ) =>
         val newContentHash = freshContent.contentHash
         if newContentHash != contentHash then
-          LatestSchema.Table.Item.updateChanged( conn, fi.feedId, guid, freshContent, prev )
-          DEBUG.log( s"Updated content cache only on already-assigned modified item, feed ID ${fi.feedId}, guid '${guid}'." )
+          val newStatus = ItemStatus( newContentHash, firstSeen, now, now, ItemAssignability.Assigned )
+          LatestSchema.Table.Item.updateChanged( conn, fi.feedId, guid, freshContent, newStatus )
+          DEBUG.log( s"Updated an already-assigned, not yet cleared, item which has been modified, feed ID ${fi.feedId}, guid '${guid}'." )
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Cleared ) )  => /* ignore, we're done with this one */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
