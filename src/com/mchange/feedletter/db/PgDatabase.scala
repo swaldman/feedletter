@@ -269,7 +269,7 @@ object PgDatabase extends Migratory, SelfLogging:
       val deleted = LatestSchema.Table.Item.deleteDisappearedUnassignedForFeed( conn, fi.assertFeedId, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
       if deleted > 0 then
         INFO.log( s"Deleted ${deleted} disappeared unassigned items from feed with ID ${fi.feedId}." )
-        DEBUG.log( s"GUIDs in feed with ID ${fi.feedId}, that should have been retained: " + guidToItemContent.keySet.mkString(", ") )
+        DEBUG.log( s"GUIDs in feed with ID ${fi.feedId} that should have been retained: " + guidToItemContent.keySet.mkString(", ") )
       LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
       INFO.log( s"Updated/assigned all items from feed with ID ${fi.feedId}, feed URL '${fi.feedUrl}'" )
 
@@ -309,7 +309,7 @@ object PgDatabase extends Migratory, SelfLogging:
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
     for
       feedInfos <- withConnectionTransactional( ds )( conn => LatestSchema.Table.Feed.selectAll( conn ) )
-      _         <- ZIO.collectAllParDiscard( feedInfos.map( fi => withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ).zlogErrorDefect( WARNING ) ) )
+      _         <- ZIO.collectAllParDiscard( feedInfos.map( fi => withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ).zlogErrorDefect( WARNING, s"Update/assign for feed ${fi.feedId}" ) ) )
     yield ()
 
   def completeAssignables( ds : DataSource, apiLinkGenerator : ApiLinkGenerator ) : Task[Unit] =

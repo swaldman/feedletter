@@ -32,7 +32,7 @@ object Daemon extends SelfLogging:
 
   def retryingUpdateAssignComplete( ds : DataSource, apiLinkGenerator : ApiLinkGenerator ) : Task[Unit] =
     updateAssignComplete( ds, apiLinkGenerator )
-      .tapError( t => WARNING.zlog("updateAssignComplete failed. May retry.", t ) )
+      .zlogErrorDefect( WARNING, what = "updateAssignComplete" )
       .retry( RetrySchedule.updateAssignComplete )
 
   def cyclingRetryingUpdateAssignComplete( ds : DataSource, apiLinkGenerator : ApiLinkGenerator ) : Task[Unit] =
@@ -44,7 +44,7 @@ object Daemon extends SelfLogging:
 
   def retryingMailNextGroupIfDue( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
     PgDatabase.mailNextGroupIfDue( ds, smtpContext )
-      .tapError( t => WARNING.zlog("mailNextGroupIfDue failed. May retry.", t ) )
+      .zlogErrorDefect( WARNING, what = "mailNextGroupIfDue" )
       .retry( RetrySchedule.mailNextGroupIfDue )
 
   def cyclingRetryingMailNextGroupIfDue( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
