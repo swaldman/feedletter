@@ -86,7 +86,7 @@ object CommandConfig extends SelfLogging:
                 numItemsPerLetter = nipl,
                 extraParams = extraParams
               )
-            case tup @ ( SMEM.Each | SMEM.Weekly | SMEM.Weekly, Some( whatev ) ) =>
+            case tup @ ( SMEM.Each | SMEM.Weekly | SMEM.Daily, Some( whatev ) ) =>
               throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, which accepts no additional arguments." )
             case tup @ ( SMEM.Fixed, Some( whatev ) ) =>
               throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, not of expected type Int." )
