@@ -35,7 +35,7 @@ object CommandConfig extends SelfLogging:
       mbComposeUntemplateName       : Option[String],
       mbConfirmUntemplateName       : Option[String],
       mbStatusChangeUntemplateName  : Option[String],
-      emailCompanion                : SubscriptionManager.Email.Companion,
+      emailCompanionAndArg          : (SubscriptionManager.Email.Companion, Option[Any]),
       extraParams                   : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
@@ -43,10 +43,11 @@ object CommandConfig extends SelfLogging:
         val statusChangeUntemplateName = mbStatusChangeUntemplateName.getOrElse( Default.Email.StatusChangeUntemplate )
 
         val subscriptionManager =
-          emailCompanion match
-            case SubscriptionManager.Email.Each =>
+          import SubscriptionManager.{Email as SMEM}
+          emailCompanionAndArg match
+            case (SMEM.Each, None) =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateSingle )
-              SubscriptionManager.Email.Each (
+              SMEM.Each (
                 from = Destination.Email(from),
                 replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
@@ -54,9 +55,9 @@ object CommandConfig extends SelfLogging:
                 statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
-            case SubscriptionManager.Email.Weekly =>
+            case (SMEM.Weekly, None) =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
-              SubscriptionManager.Email.Weekly (
+              SMEM.Weekly (
                 from = Destination.Email(from),
                 replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
@@ -64,9 +65,9 @@ object CommandConfig extends SelfLogging:
                 statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
-            case SubscriptionManager.Email.Daily =>
+            case (SMEM.Daily, None) =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
-              SubscriptionManager.Email.Daily (
+              SMEM.Daily (
                 from = Destination.Email(from),
                 replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
@@ -74,6 +75,23 @@ object CommandConfig extends SelfLogging:
                 statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
+            case (SMEM.Fixed, Some(nipl : Int)) =>
+              val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
+              SMEM.Fixed (
+                from = Destination.Email(from),
+                replyTo = replyTo.map( Destination.Email.apply ),
+                composeUntemplateName = composeUntemplateName,
+                confirmUntemplateName = confirmUntemplateName,
+                statusChangeUntemplateName = statusChangeUntemplateName,
+                numItemsPerLetter = nipl,
+                extraParams = extraParams
+              )
+            case tup @ ( SMEM.Each | SMEM.Weekly | SMEM.Weekly, Some( whatev ) ) =>
+              throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, which accepts no additional arguments." )
+            case tup @ ( SMEM.Fixed, Some( whatev ) ) =>
+              throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, not of expected type Int." )
+            case tup @ ( SMEM.Fixed, None ) =>
+              throw new AssertionError( s"Missing additional argument (numItemsPerLetter : Int) expected for ${tup(0)}" )
 
         for
           ds   <- ZIO.service[DataSource]

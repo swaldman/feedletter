@@ -377,23 +377,25 @@ object PgSchema:
             """|SELECT subscribable_name, within_type_id
                |FROM assignable
                |WHERE completed IS NULL""".stripMargin
-          // should I make indexes for these next two? should I try some more clever/efficient form of query?
+          // should I make indexes for this? should I try some more clever/efficient form of query?
           // see
           //   https://stackoverflow.com/questions/3800551/select-first-row-in-each-group-by-group/7630564#7630564
           //   https://stackoverflow.com/questions/1684244/efficient-latest-record-query-with-postgresql
           //   https://www.timescale.com/blog/select-the-most-recent-record-of-many-items-with-postgresql/
-          private val SelectWithinTypeIdMostRecentOpen =
+          private val SelectWithinTypeIdMostRecentOpened =
             """|SELECT within_type_id
                |FROM assignable
                |WHERE subscribable_name = ?
                |ORDER BY opened DESC
                |LIMIT 1""".stripMargin
+          /*
           private val SelectWithinTypeIdLastCompleted =
             """|SELECT within_type_id
                |FROM assignable
                |WHERE completed IS NOT NULL AND subscribable_name = ?
                |ORDER BY completed DESC
                |LIMIT 1""".stripMargin // usually there will always be 1 !
+          */
           private val Insert =
             """|INSERT INTO assignable( subscribable_name, within_type_id, opened, completed )
                |VALUES ( ?, ?, ?, ? )""".stripMargin
@@ -414,16 +416,18 @@ object PgSchema:
               ps.setString(2, withinTypeId)
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-completed", rs)( _.getBoolean(1) )
-          def selectWithinTypeIdMostRecentOpen( conn : Connection, subscribableName : SubscribableName ) : Option[String] =
-            Using.resource( conn.prepareStatement( this.SelectWithinTypeIdMostRecentOpen ) ): ps =>
+          def selectWithinTypeIdMostRecentOpened( conn : Connection, subscribableName : SubscribableName ) : Option[String] =
+            Using.resource( conn.prepareStatement( this.SelectWithinTypeIdMostRecentOpened ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource(ps.executeQuery()): rs =>
-                zeroOrOneResult("assignable-select-most-recent-open-within-type-id", rs)( _.getString(1) )
+                zeroOrOneResult("assignable-select-most-recent-opened-within-type-id", rs)( _.getString(1) )
+          /*
           def selectWithinTypeIdLastCompleted( conn : Connection, subscribableName : SubscribableName ) : Option[String] =
             Using.resource( conn.prepareStatement( this.SelectWithinTypeIdLastCompleted ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-last-completed-within-type-id", rs)( _.getString(1) )
+          */
           def insert( conn : Connection, subscribableName : SubscribableName, withinTypeId : String, opened : Instant, completed : Option[Instant] ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString            (1, subscribableName.toString())

@@ -37,8 +37,8 @@ object SubscriptionManager extends SelfLogging:
     def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : this.D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams
 
   object Email:
-    type Companion = Each.type | Daily.type | Weekly.type
-    type Instance  = Each      | Daily      | Weekly
+    type Companion = Each.type | Daily.type | Weekly.type | Fixed.type
+    type Instance  = Each      | Daily      | Weekly      | Fixed
 
     case class Each(
       from                       : Destination.Email,
@@ -51,22 +51,13 @@ object SubscriptionManager extends SelfLogging:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
 
-      override def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+      override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        val uniqueContent = contents.uniqueOr: (c, nu) =>
-          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
-        val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
-        val fullTemplate =
-          val info = ComposeInfo.Single( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
-          val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
-          compose( info ).text
-        val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
-        PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
+        routeSingle( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -86,11 +77,12 @@ object SubscriptionManager extends SelfLogging:
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
-        conn           : Connection,
-        feedId         : FeedId,
-        guid           : Guid,
-        content        : ItemContent,
-        status         : ItemStatus
+        conn             : Connection,
+        subscribableName : SubscribableName,
+        feedId           : FeedId,
+        guid             : Guid,
+        content          : ItemContent,
+        status           : ItemStatus
       ) : Option[String] =
         val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
@@ -111,15 +103,7 @@ object SubscriptionManager extends SelfLogging:
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        if contents.nonEmpty then
-          val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-          val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
-          val fullTemplate =
-            val info = ComposeInfo.Multiple( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents )
-            val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
-            compose( info ).text
-          val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
-          PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
+        routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       def weekStartWeekEndLocalDate( withinTypeId : String ) : (LocalDate,LocalDate) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
@@ -149,11 +133,12 @@ object SubscriptionManager extends SelfLogging:
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
-        conn           : Connection,
-        feedId         : FeedId,
-        guid           : Guid,
-        content        : ItemContent,
-        status         : ItemStatus
+        conn             : Connection,
+        subscribableName : SubscribableName,
+        feedId           : FeedId,
+        guid             : Guid,
+        content          : ItemContent,
+        status           : ItemStatus
       ) : Option[String] =
         val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
@@ -172,15 +157,7 @@ object SubscriptionManager extends SelfLogging:
         laYear > year || (laYear == year && laZoned.get( ChronoField.DAY_OF_YEAR ) > day)
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        if contents.nonEmpty then
-          val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-          val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
-          val fullTemplate =
-            val info = ComposeInfo.Multiple( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents )
-            val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
-            compose( info ).text
-          val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
-          PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
+        routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       def dayLocalDate( withinTypeId : String ) : LocalDate =
         val ( year, day ) = extractYearAndDay( withinTypeId )
@@ -190,6 +167,44 @@ object SubscriptionManager extends SelfLogging:
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
         s"[${subscribableName}] All posts, ${dayFormattedIsoLocal(withinTypeId)}"
+
+    final case class Fixed(
+      from                       : Destination.Email,
+      replyTo                    : Option[Destination.Email],
+      composeUntemplateName      : String,
+      confirmUntemplateName      : String,
+      statusChangeUntemplateName : String,
+      extraParams                : Map[String,String],
+      numItemsPerLetter          : Int
+    ) extends Email:
+      private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
+
+      override val sampleWithinTypeId = "1"
+
+      // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
+      override def withinTypeId(
+        conn             : Connection,
+        subscribableName : SubscribableName,
+        feedId           : FeedId,
+        guid             : Guid,
+        content          : ItemContent,
+        status           : ItemStatus
+      ) : Option[String] =
+        PgDatabase.mostRecentlyOpenedAssignableWithinTypeStatus( conn, feedId, subscribableName ) match
+          case Some( AssignableWithinTypeStatus( withinTypeId, count ) ) =>
+            if count < numItemsPerLetter then Some( withinTypeId ) else Some( (withinTypeId.toLong + 1).toString )
+          case None => // first series!
+            Some("1")
+
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
+        currentCount == numItemsPerLetter
+
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+        s"[${subscribableName}] ${numItemsPerLetter} new items"
+
 
   sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, TemplatingCompose:
     def from                       : Destination.Email
@@ -209,6 +224,29 @@ object SubscriptionManager extends SelfLogging:
         val sid = idestination.subscriptionId
         val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, idestination.destination, sid, apiLinkGenerator.removeGetLink(sid) )
         ( AddressHeader[To](to), templateParams )
+
+    protected def routeSingle( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      val uniqueContent = contents.uniqueOr: (c, nu) =>
+        throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+      val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
+      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+      val fullTemplate =
+        val info = ComposeInfo.Single( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
+        val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
+        compose( info ).text
+      val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
+      PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
+
+    protected def routeMultiple( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      if contents.nonEmpty then
+        val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
+        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+        val fullTemplate =
+          val info = ComposeInfo.Multiple( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents )
+          val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
+          compose( info ).text
+        val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
+        PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
       val args = ( subscribableName, withinTypeId, feedUrl, contents )
@@ -273,6 +311,7 @@ object SubscriptionManager extends SelfLogging:
     case Email_Each   extends Tag("Email.Each")
     case Email_Daily  extends Tag("Email.Daily")
     case Email_Weekly extends Tag("Email.Weekly")
+    case Email_Fixed  extends Tag("Email.Fixed")
 
   private def toUJsonV1( subscriptionManager : SubscriptionManager ) : ujson.Value =
     def esf( emailsub : Email.Instance ) : ujson.Obj =
@@ -285,13 +324,15 @@ object SubscriptionManager extends SelfLogging:
       ) ++ emailsub.replyTo.map( rt => ("replyTo" -> writeJs[Destination](rt) ) )
       ujson.Obj.from( values )
     def eef( each : Email.Each ) : ujson.Obj = esf( each )
-    def edf( each : Email.Daily ) : ujson.Obj = esf( each )
+    def edf( daily : Email.Daily ) : ujson.Obj = esf( daily )
     def ewf( weekly : Email.Weekly ) : ujson.Obj = esf( weekly )
+    def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj + ("numItemsPerLetter" -> fixed.numItemsPerLetter) )
     val (fields, tpe) =
       subscriptionManager match
-        case each   : Email.Each   => (eef(each), Tag.Email_Each)
-        case daily  : Email.Daily  => (edf(daily), Tag.Email_Daily)
-        case weekly : Email.Weekly => (ewf(weekly),  Tag.Email_Weekly)
+        case each   : Email.Each   => (eef(each),   Tag.Email_Each)
+        case daily  : Email.Daily  => (edf(daily),  Tag.Email_Daily)
+        case weekly : Email.Weekly => (ewf(weekly), Tag.Email_Weekly)
+        case fixed  : Email.Fixed  => (eff(fixed),  Tag.Email_Weekly)
     val headerFields =
        ujson.Obj(
          "version" -> 1,
@@ -333,6 +374,15 @@ object SubscriptionManager extends SelfLogging:
           statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
           extraParams                = read[Map[String,String]](obj("extraParams"))
         )
+        case Tag.Email_Fixed => Email.Fixed(
+          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
+          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
+          composeUntemplateName      = obj("composeUntemplateName").str,
+          confirmUntemplateName      = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
+          numItemsPerLetter          = obj("numItemsPerLetter").num.toInt,
+          extraParams                = read[Map[String,String]](obj("extraParams"))
+        )
 
   given ReadWriter[SubscriptionManager] = readwriter[ujson.Value].bimap[SubscriptionManager]( toUJsonV1, fromUJsonV1 )
 
@@ -341,7 +391,7 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
-  def withinTypeId( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
+  def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit
 

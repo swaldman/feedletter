@@ -173,6 +173,7 @@ object PgDatabase extends Migratory, SelfLogging:
   def reportConfigKeys( ds : DataSource ): Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
     withConnectionTransactional( ds )( conn => sort( LatestSchema.Table.Config.selectTuples( conn ) ) )
 
+  /*
   private def lastCompletedAssignableWithinTypeStatus( conn : Connection, feedId : FeedId, subscribableName : SubscribableName ) : Option[AssignableWithinTypeStatus] =
     val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, subscribableName )
     withinTypeId.map: wti =>
@@ -184,6 +185,7 @@ object PgDatabase extends Migratory, SelfLogging:
     withinTypeId.map: wti =>
       val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, subscribableName, wti )
       AssignableWithinTypeStatus( wti, count )
+  */
 
   private def ensureOpenAssignable( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, forGuid : Option[Guid]) : Unit =
     LatestSchema.Table.Assignable.selectIsCompleted( conn, subscribableName, withinTypeId ) match
@@ -192,10 +194,17 @@ object PgDatabase extends Migratory, SelfLogging:
       case None =>
         LatestSchema.Table.Assignable.insert( conn, subscribableName, withinTypeId, Instant.now, None )
 
+  def mostRecentlyOpenedAssignableWithinTypeStatus( conn : Connection, feedId : FeedId, subscribableName : SubscribableName ) : Option[AssignableWithinTypeStatus] =
+    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdMostRecentOpened( conn, subscribableName )
+    withinTypeId.map: wti =>
+      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, subscribableName, wti )
+      AssignableWithinTypeStatus( wti, count )
+
+
   private def assignForSubscribable( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Unit =
     TRACE.log( s"assignForSubscriptionManager( $conn, $subscribableName, $feedId, $guid, $content, $status )" )
     val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, subscribableName )
-    subscriptionManager.withinTypeId( conn, feedId, guid, content, status ).foreach: wti =>
+    subscriptionManager.withinTypeId( conn, subscribableName, feedId, guid, content, status ).foreach: wti =>
       ensureOpenAssignable( conn, feedId, subscribableName, wti, Some(guid) )
       LatestSchema.Table.Assignment.insert( conn, subscribableName, wti, guid )
       DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned in subscribable '${subscribableName}'." )
@@ -324,18 +333,17 @@ object PgDatabase extends Migratory, SelfLogging:
           throw new AssertionError( s"DB constraints should have ensured a row for feed with ID '${feedId}' with a NOT NULL lastAssigned, but did not?" )
         if subscriptionManager.isComplete( conn, withinTypeId, count, lastAssigned ) then
           route( conn, ak, subscriptionManager, apiLinkGenerator )
-          cleanUpPreviouslyCompleted( conn, subscribableName ) // we have to do this BEFORE updateCompleted, or we'll clean away the latest last completed.
           LatestSchema.Table.Assignable.updateCompleted( conn, subscribableName, withinTypeId, Some(Instant.now) )
           INFO.log( s"Completed assignable '${withinTypeId}' with subscribable '${subscribableName}'." )
+          cleanUpCompleted( conn, subscribableName, withinTypeId )
+          INFO.log( s"Cleaned away data associated with completed assignable '${withinTypeId}' in subscribable '${subscribableName}'." )
 
-  def cleanUpPreviouslyCompleted( conn : Connection, subscribableName : SubscribableName ) : Unit =
-    val mbLastWithinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, subscribableName )
-    mbLastWithinTypeId.foreach: wti =>
-      LatestSchema.Table.Assignment.cleanAwayAssignable( conn, subscribableName, wti)
-      LatestSchema.Table.Assignable.delete( conn, subscribableName, wti )
-      LatestSchema.Join.ItemAssignableAssignment.clearOldCache( conn )
-      DEBUG.log( s"Assignable (item collection) defined by subscribable name '${subscribableName}', within-type-id '${wti}' has been deleted." )
-      DEBUG.log( "Cached values of items fully distributed have been cleared." )
+  def cleanUpCompleted( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Unit =
+    LatestSchema.Table.Assignment.cleanAwayAssignable( conn, subscribableName, withinTypeId )
+    LatestSchema.Table.Assignable.delete( conn, subscribableName, withinTypeId )
+    LatestSchema.Join.ItemAssignableAssignment.clearOldCache( conn ) // sets item status to ItemAssignability.Cleared for all fully-distributed items
+    DEBUG.log( s"Assignable (item collection) defined by subscribable name '${subscribableName}', within-type-id '${withinTypeId}' has been deleted." )
+    DEBUG.log( "Cached values of items fully distributed have been cleared." )
 
   def addFeed( ds : DataSource, nf : NascentFeed ) : Task[Set[FeedInfo]] =
     withConnectionTransactional( ds ): conn =>

@@ -89,10 +89,12 @@ object Main extends AbstractMain, SelfLogging:
           Opts.option[String]("status-change-untemplate",help=help,metavar="fully-qualified-name").orNone
          // modified from decline's docs
         val kind = // we sometimes see type inference errors without the explicit type attributions, i'm not sure why
-          val each = Opts.flag("each",help="E-mail each item").map( _ => SubscriptionManager.Email.Each : SubscriptionManager.Email.Companion) 
-          val daily = Opts.flag("daily",help="E-mail a compilation, once a day.").map( _ => SubscriptionManager.Email.Daily : SubscriptionManager.Email.Companion)
-          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionManager.Email.Weekly : SubscriptionManager.Email.Companion)
-          (each orElse daily orElse weekly).withDefault[SubscriptionManager.Email.Companion]( SubscriptionManager.Email.Each : SubscriptionManager.Email.Companion)
+          type K = Tuple2[SubscriptionManager.Email.Companion,Option[Any]]
+          val each = Opts.flag("each",help="E-mail each item").map( _ => (SubscriptionManager.Email.Each, None) : K ) 
+          val daily = Opts.flag("daily",help="E-mail a compilation, once a day.").map( _ => (SubscriptionManager.Email.Daily, None) : K )
+          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => (SubscriptionManager.Email.Weekly, None) : K )
+          val fixed = Opts.option[Int]("num-items-per-letter",help="E-mail every fixed number of posts.",metavar="num").map( n => (SubscriptionManager.Email.Fixed, Some(n)) : K )
+          (each orElse daily orElse weekly orElse fixed).withDefault[K]( (SubscriptionManager.Email.Each, None) : K )
         val extraParams =
           def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
             strings.map{ s =>
