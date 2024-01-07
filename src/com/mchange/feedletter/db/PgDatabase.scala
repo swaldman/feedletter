@@ -395,11 +395,12 @@ object PgDatabase extends Migratory, SelfLogging:
   object Config:
     def fetchValue( conn : Connection, key : ConfigKey ) : Option[String] = LatestSchema.Table.Config.select( conn, key )
     def zfetchValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] = ZIO.attemptBlocking( LatestSchema.Table.Config.select( conn, key ) )
+    def confirmHours( conn : Connection ) : Int = fetchValue( conn, ConfigKey.ConfirmHours ).map( _.toInt ).getOrElse( Default.Config.ConfirmHours )
+    def dumpDbDir( conn : Connection ) : os.Path = fetchValue( conn, ConfigKey.DumpDbDir ).map( os.Path.apply ).getOrElse( throw new ConfigurationMissing( ConfigKey.DumpDbDir ) )
     def timeZone( conn : Connection ) : ZoneId = fetchValue( conn, ConfigKey.TimeZone ).map( str => ZoneId.of(str) ).getOrElse( ZoneId.systemDefault() )
     def mailBatchDelaySeconds( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailBatchDelaySeconds ).map( _.toInt ).getOrElse( Default.Config.MailBatchDelaySeconds )
     def mailMaxRetries( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailMaxRetries ).map( _.toInt ).getOrElse( Default.Config.MailMaxRetries )
     def mailBatchSize( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( Default.Config.MailBatchSize )
-    def dumpDbDir( conn : Connection ) : os.Path = fetchValue( conn, ConfigKey.DumpDbDir ).map( os.Path.apply ).getOrElse( throw new ConfigurationMissing( ConfigKey.DumpDbDir ) )
     def webDaemonPort( conn : Connection ) : Int = fetchValue( conn, ConfigKey.WebDaemonPort ).map( _.toInt ).getOrElse( Default.Config.WebDaemonPort )
     def webDaemonInterface( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebDaemonInterface ).getOrElse( Default.Config.WebDaemonInterface )
     def webApiProtocol( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebApiProtocol ).getOrElse( Default.Config.WebApiProtocol )
@@ -426,6 +427,8 @@ object PgDatabase extends Migratory, SelfLogging:
     ( url, bp )
 
   def webApiUrlBasePath( ds : DataSource ) : Task[(String, List[String])] = withConnectionTransactional( ds )( webApiUrlBasePath )
+
+  def confirmHours( ds : DataSource ) : Task[Int] = withConnectionTransactional( ds )( Config.confirmHours )
 
   def pullMailGroup( conn : Connection ) : Set[MailSpec.WithTemplate] =
     val batchSize = Config.mailBatchSize( conn )
@@ -571,3 +574,13 @@ object PgDatabase extends Migratory, SelfLogging:
 
   def checkMustReloadTapirApi( ds : DataSource ) : Task[Boolean] = withConnectionTransactional(ds)( checkMustReloadTapirApi )
   def clearMustReloadTapirApi( ds : DataSource ) : Task[Unit]    = withConnectionTransactional(ds)( clearMustReloadTapirApi )
+
+  def expireUnconfirmed( conn : Connection ) : Unit =
+    val confirmHours = math.max(Config.confirmHours( conn ), 0)
+    DEBUG.log( s"Expiring unconfirmed subscriptions at least ${confirmHours} hours old." )
+    val expiredThreshold = Instant.now().minusSeconds( confirmHours * 60 )
+    val subscriptionsExpired = LatestSchema.Table.Subscription.expireUnconfirmedAddedBefore( conn, expiredThreshold )
+    if subscriptionsExpired > 0 then
+      INFO.log( s"Expired ${subscriptionsExpired} unconfirmed subscriptions at least ${confirmHours} hours old." )
+
+  def expireUnconfirmed( ds : DataSource ) : Task[Unit] = withConnectionTransactional( ds )( expireUnconfirmed )

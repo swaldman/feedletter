@@ -8,9 +8,11 @@ object Default:
     val RecheckEveryMinutes       = 10
 
   object Style:
-    val StylePort = 8080
+    val StyleInterface = "0.0.0.0"
+    val StylePort      = 8080
 
   object Config:
+    val ConfirmHours          : Int         = 48
     val MailBatchSize         : Int         = 100
     val MailBatchDelaySeconds : Int         = 10 * 60 // 10 mins
     val MailMaxRetries        : Int         = 5

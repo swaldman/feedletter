@@ -22,6 +22,7 @@ import untemplate.Untemplate
 type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
 
 enum ConfigKey:
+  case ConfirmHours
   case DumpDbDir
   case MailBatchSize
   case MailBatchDelaySeconds
