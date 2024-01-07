@@ -245,14 +245,22 @@ object PgSchema:
           //   https://stackoverflow.com/questions/34627026/in-vs-any-operator-in-postgresql
           private val DeleteDisappearedUnassigned =
             """|DELETE FROM item
-               |WHERE assignability = 'Unassigned' AND NOT (guid IN ?)""".stripMargin
-          //  """|DELETE FROM item
-          //     |WHERE assignability = 'Unassigned' AND NOT (guid = ANY( ? ))""".stripMargin
+               |WHERE assignability = 'Unassigned' AND NOT (guid = ANY( ? ))""".stripMargin
+          private val SelectDisappearedUnassigned =
+            """|SELECT guid FROM item
+               |WHERE assignability = 'Unassigned' AND NOT (guid = ANY( ? ))""".stripMargin
           def deleteDisappearedUnassigned( conn : Connection, current : Set[Guid] ) : Int =
             Using.resource( conn.prepareStatement( DeleteDisappearedUnassigned ) ): ps =>
               val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
               ps.setArray(1, sqlArray)
               ps.executeUpdate()
+          def selectDisappearedUnassigned( conn : Connection, current : Set[Guid] ) : Set[String] =
+            Using.resource( conn.prepareStatement( SelectDisappearedUnassigned ) ): ps =>
+              val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
+              println( sqlArray )
+              ps.setArray(1, sqlArray)
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet(rs)( _.getString(1) )
           def checkStatus( conn : Connection, feedId : FeedId, guid : Guid ) : Option[ItemStatus] =
             Using.resource( conn.prepareStatement( SelectCheck ) ): ps =>
               ps.setInt   (1, feedId.toInt)
