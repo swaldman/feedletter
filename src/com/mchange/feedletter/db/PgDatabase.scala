@@ -266,9 +266,11 @@ object PgDatabase extends Migratory, SelfLogging:
         val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid )
         updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
       val deleted = LatestSchema.Table.Item.deleteDisappearedUnassigned( conn, guidToItemContent.keySet ) // so that if a post is deleted before it has been assigned, it won't be notified
-      if deleted > 0 then INFO.log( s"Deleted ${deleted} disappeared unassigned items." )
+      if deleted > 0 then
+        INFO.log( s"Deleted ${deleted} disappeared unassigned items from feed with ID ${fi.feedId}." )
+        DEBUG.log( s"GUIDs in feed with ID ${fi.feedId}, that should have been retained: " + guidToItemContent.keySet.mkString(", ") )
       LatestSchema.Table.Feed.updateLastAssigned(conn, fi.assertFeedId, timestamp)
-      INFO.log( s"Updated/assigned all items from feed with ID ${fi.feedId.getOrElse("???")}, feed URL '${fi.feedUrl}'" )
+      INFO.log( s"Updated/assigned all items from feed with ID ${fi.feedId}, feed URL '${fi.feedUrl}'" )
 
   // it's probably fine to use cached values, because we recache them continually, even after assignment
   // so they should never be very stale.
