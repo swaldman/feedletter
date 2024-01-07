@@ -41,11 +41,15 @@ def printExcludedItemsTable( eis : Set[ExcludedItem] ) : Task[Unit] =
 val SubscribableColumns = Seq(
   texttable.Column("Name"),
   texttable.Column("Feed ID"),
-  texttable.Column("Subscription Manager")
+  texttable.Column("Subscription Manager"),
+  texttable.Column("Last Completed Series")
 )
 
-def printSubscribablesTable( tups : Set[(SubscribableName,FeedId,SubscriptionManager)] ) : Task[Unit] =
-  ZIO.attempt( texttable.printProductTable( SubscribableColumns )( tups.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
+def printSubscribablesTable( tups : Set[(SubscribableName,FeedId,SubscriptionManager,Option[String])] ) : Task[Unit] =
+  val printable = tups.map: (sn, fi, sm, withTypeId) =>
+    val newWti = withTypeId.fold("")(wti => if wti.length > 20 then wti.take(20) + "..." else wti)
+    ( sn, fi, sm, newWti)
+  ZIO.attempt( texttable.printProductTable( SubscribableColumns )( printable.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
 
 val UntemplatesColumns = Seq(
   texttable.Column("Untemplate, Fully Qualified Name"),

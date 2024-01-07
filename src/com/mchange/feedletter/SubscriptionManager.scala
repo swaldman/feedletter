@@ -190,11 +190,15 @@ object SubscriptionManager extends SelfLogging:
         content          : ItemContent,
         status           : ItemStatus
       ) : Option[String] =
-        PgDatabase.mostRecentlyOpenedAssignableWithinTypeStatus( conn, feedId, subscribableName ) match
+        def nextAfter( wti : String ) : String = (wti.toLong + 1).toString
+        PgDatabase.mostRecentlyOpenedAssignableWithinTypeStatus( conn, subscribableName ) match
           case Some( AssignableWithinTypeStatus( withinTypeId, count ) ) =>
-            if count < numItemsPerLetter then Some( withinTypeId ) else Some( (withinTypeId.toLong + 1).toString )
-          case None => // first series!
-            Some("1")
+            if count < numItemsPerLetter then Some( withinTypeId ) else Some( nextAfter(withinTypeId) )
+          case None =>
+            PgDatabase.lastCompletedWithinTypeId( conn, subscribableName ) match
+              case Some(wti) => Some(nextAfter(wti))
+              case None => // first series!
+                Some("1") 
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
         currentCount == numItemsPerLetter
