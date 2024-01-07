@@ -94,7 +94,8 @@ object SubscriptionManager extends SelfLogging:
         lastCompleted  : Option[AssignableWithinTypeStatus],
         mostRecentOpen : Option[AssignableWithinTypeStatus]
       ) : Option[String] =
-        Some( WtiFormatter.format( status.lastChecked ) )
+        val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
+        Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
 
       // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
       private def extractYearWeekAndWeekFields( withinTypeId : String ) : (Int, Int, WeekFields) =
@@ -158,7 +159,8 @@ object SubscriptionManager extends SelfLogging:
         lastCompleted  : Option[AssignableWithinTypeStatus],
         mostRecentOpen : Option[AssignableWithinTypeStatus]
       ) : Option[String] =
-        Some( WtiFormatter.format( status.lastChecked ) )
+        val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
+        Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
 
       // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
       private def extractYearAndDay( withinTypeId : String ) : (Int, Int) =
