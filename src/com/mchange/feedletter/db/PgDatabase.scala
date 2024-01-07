@@ -213,38 +213,47 @@ object PgDatabase extends Migratory, SelfLogging:
     TRACE.log( s"updateAssignItem( $conn, $fi, $guid, $dbStatus, $freshContent, $now )" )
     dbStatus match
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Unassigned ) ) =>
+        val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.SECONDS ) / 60     // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
+        val stableMinutes = JDuration.between(stableSince, now).get( ChronoUnit.SECONDS ) / 60 // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
+        def afterMinDelay = seenMinutes > fi.minDelayMinutes
+        def sufficientlyStable = stableMinutes > fi.awaitStabilizationMinutes
+        def pastMaxDelay = seenMinutes > fi.maxDelayMinutes
         val newContentHash = freshContent.contentHash
         /* don't update empty over actual content, treat empty content (rare, since guid would still have been found) as just stability */
         if newContentHash == contentHash then
           val newLastChecked = now
           LatestSchema.Table.Item.updateStable( conn, fi.assertFeedId, guid, newLastChecked )
-          val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.SECONDS ) / 60     // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
-          val stableMinutes = JDuration.between(stableSince, now).get( ChronoUnit.SECONDS ) / 60 // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
-          def afterMinDelay = seenMinutes > fi.minDelayMinutes
-          def sufficientlyStable = stableMinutes > fi.awaitStabilizationMinutes
-          def pastMaxDelay = seenMinutes > fi.maxDelayMinutes
+          DEBUG.log( s"Updated last checked time on stable item, feed ID ${fi.feedId}, guid '${guid}'." )
           if (afterMinDelay && sufficientlyStable) || pastMaxDelay then
             assign( conn, fi.assertFeedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
         else
           val newStableSince = now
           val newLastChecked = now
           LatestSchema.Table.Item.updateChanged( conn, fi.assertFeedId, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
+          DEBUG.log( s"Updated stable since and last checked times, and content cache, on modified item, feed ID ${fi.feedId}, guid '${guid}'." )
+          if pastMaxDelay then
+            assign( conn, fi.assertFeedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Assigned ) ) => /* update cache only */
         val newContentHash = freshContent.contentHash
         if newContentHash != contentHash then
           LatestSchema.Table.Item.updateChanged( conn, fi.assertFeedId, guid, freshContent, prev )
+          DEBUG.log( s"Updated content cache only on already-assigned modified item, feed ID ${fi.feedId}, guid '${guid}'." )
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Cleared ) )  => /* ignore, we're done with this one */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
         def doInsert() =
           LatestSchema.Table.Item.insertNew(conn, fi.assertFeedId, guid, Some(freshContent), ItemAssignability.Unassigned)
+          DEBUG.log( s"Added new item, feed ID ${fi.feedId}, guid '${guid}'." )
           val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.assertFeedId, guid ).getOrElse:
             throw new AssertionError("Just inserted row is not found???")
           if fi.minDelayMinutes <= 0 && fi.awaitStabilizationMinutes <= 0 then // if eligible for immediate assignment...
             assign( conn, fi.assertFeedId, guid, freshContent, dbStatus )
         freshContent.pubDate match
           case Some( pd ) =>
-            if pd > fi.added then doInsert() // skip items known to be published prior to subscription
+            if pd > fi.added then
+              doInsert() // skip items known to be published prior to subscription
+            else
+              DEBUG.log("Skipping item with parseable publication date '${pd}' prior to time of subscription, feed ID ${fi.feedId}, guid '${guid}'." )
           case None =>
             doInsert()
 
