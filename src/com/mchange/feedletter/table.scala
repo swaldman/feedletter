@@ -5,6 +5,8 @@ import zio.*
 
 import untemplate.Untemplate
 
+import scala.collection.immutable
+
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 
 val FeedInfoColumns = Seq(
@@ -19,7 +21,9 @@ val FeedInfoColumns = Seq(
 )
 
 def printFeedInfoTable( fis: Set[FeedInfo] ) : Task[Unit] =
-  ZIO.attempt( texttable.printProductTable( FeedInfoColumns )( fis.toList.map( texttable.Row.apply ) ) ) // preserve the order if the set is sorted
+  val ordering = Ordering.by( (fi : FeedInfo) => ( fi.feedId.toInt, fi.feedId.toString, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.assignEveryMinutes, fi.added, fi.lastAssigned ) )
+  val sorted = immutable.SortedSet.from( fis )( using ordering )
+  ZIO.attempt( texttable.printProductTable( FeedInfoColumns )( sorted.toList.map( texttable.Row.apply ) ) )
 
 val ConfigKeyColumns = Seq( texttable.Column("Configuration Key"), texttable.Column("Value") )
 
