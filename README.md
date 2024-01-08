@@ -41,6 +41,7 @@ CREATE TABLE feed(
   min_delay_minutes           INTEGER NOT NULL,
   await_stabilization_minutes INTEGER NOT NULL,
   max_delay_minutes           INTEGER NOT NULL,
+  assign_every_minutes        INTEGER NOT NULL,
   added                       TIMESTAMP NOT NULL,
   last_assigned               TIMESTAMP NOT NULL,     -- we'll start at added
   PRIMARY KEY(id)
@@ -94,7 +95,9 @@ CREATE TABLE item(
       already been distributed to subscribers. The cache fields (`title`, `author`, `article`, `publication_date`, and `link`)
       should all be cleared in this state. `Cleared` items are not deleted, but retained indefinitely, so that we don't
       renotify if the item (an item with the same `guid`) reappears in the feed.
-    * `Excluded` — Items which are marked to always be ignored.
+    * `Excluded` — Items which are marked to always be ignored. Items are marke `Excluded` only upon initial insert.
+      Items can be manually updated from `Excluded` to `Unassigned` (timestamps should be reset to the tie of the update),
+      to cause `Excluded` posts to be published.
 
 ##### subscribable (subscription definition)
 
@@ -104,8 +107,9 @@ notified of items or collections of items.
 ```sql
 CREATE TABLE subscribable(
   subscribable_name         VARCHAR(64),
-  feed_id                   INTEGER NOT NULL,
-  subscription_manager_json JSONB NOT NULL,
+  feed_id                   INTEGER       NOT NULL,
+  subscription_manager_json JSONB         NOT NULL,
+  last_completed_wti        VARCHAR(1024),
   PRIMARY KEY (subscribable_name),
   FOREIGN KEY (feed_id) REFERENCES feed(id)
 )
@@ -118,6 +122,9 @@ the main role of a `SubscriptionManager` (a serialization of a Scala ADT) is to
    All items in a collection of items that will be distributed will share the same `within_type_id`.
 2. Determine whether a collection (identified by its `within_type_id`) is "complete" — that is,
    no further items need by assigned the same `within_type_id`.
+3. When a collection has been notified, it is deleted from the database. However, some
+   `SubscriptionManagers` need to maintain a sequence of `within_type_id` identifiers.
+   So for each subscribable, the `last_completed_wti` is retained.
 
 `SubscriptionManager` determines how collections are compiled, to what kind of destination (e-mail,
 Mastodon, mobile message, whatever) notifications will be sent, and how they will be formatted.
@@ -136,24 +143,16 @@ CREATE TABLE assignable(
   subscribable_name VARCHAR(64),
   within_type_id    VARCHAR(1024),
   opened            TIMESTAMP NOT NULL,
-  completed         TIMESTAMP,
   PRIMARY KEY(subscribable_name, within_type_id),
   FOREIGN KEY(subscribable_name) REFERENCES subscribable(subscribable_name)
 )
 ```
 
 `opened` is the timestamp of the first assignment to the collection.
-`completed` is the timestamp of when the collection was marked "completed"
 
-> [!NOTE]
-> Completed assignable could just be cleaned away, but for now we keep exactly
-> one completed item per subscription around, on the theory that some `SubscriptionManager`
-> might require information about the prior collection it generated.
->
-> This adds a bit of complexity, and I'm not sure it will be useful. In future, we
-> may omit the `completed` field, and completed assignables will simply be
-> deleted, and any items whose assignable have all been deleted will be immediately
-> cleared.
+Once an assignable has been notified ("completed"), it is simply deleted from the database.
+For each subscribable, the `within_type_id` of only the most recently completed
+assignable is retained (see `subscribable` table above).
 
 ##### assignment (an item in a collection)
 
