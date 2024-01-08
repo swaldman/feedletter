@@ -260,15 +260,15 @@ object PgDatabase extends Migratory, SelfLogging:
             throw new AssertionError("Just inserted row is not found???")
           if fi.minDelayMinutes <= 0 && fi.awaitStabilizationMinutes <= 0 then // if eligible for immediate assignment...
             assign( conn, fi.feedId, guid, freshContent, dbStatus )
-        def doExcludingInsert() =
+        def doExcludingInsert( pd : Instant ) =
           WARNING.log(s"Excluding item found with parseable publication date '${pd}', which is prior to time of initial subscription, feed ID ${fi.feedId}, guid '${guid}'." )
-          LatestSchema.Table.Item.insertNew( conn, fi.eedId, guid, None, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
+          LatestSchema.Table.Item.insertNew( conn, fi.feedId, guid, None, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
         freshContent.pubDate match
           case Some( pd ) =>
             if pd > fi.added then
               doUnassignedInsert() // skip items known to be published prior to subscription
             else
-              doExcludingInsert()
+              doExcludingInsert( pd )
           case None =>
             doUnassignedInsert()
 
