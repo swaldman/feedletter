@@ -7,6 +7,7 @@
    color: black;
    background-color: #eeeeee;
    font-family: Garamond, serif;
+   line-height: 150%;
  }
  body.confirm-body {
    background-color: #eeeef8;
@@ -29,7 +30,6 @@
    padding-left: 10%;
    padding-right: 10%;
    border: 1px solid #aaaaaa;
-   line-height: 150%;
  }
  .item-title {
    font-size: 150%;
