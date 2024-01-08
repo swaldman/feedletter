@@ -1,6 +1,36 @@
 # feedletter
 
-## More to come later...
+## Turn anything that emits RSS into a newsletter or notification bot
+
+### Introduction
+
+**feedletter** is an application that
+
+- watches RSS feeds with great care
+   * distinguishes between new items and older stuff or stuff already seen that flakily reappears
+   * awaits "finalization" of items, meaning their stabilization (and nondeletion) over specified time intervals
+- lets you define a wide variety of subscriptions to those feeds
+   * Over differnt media
+     - e-mail
+     - SMS
+     - Post to Mastodon
+     - etc
+   * In different arrangements
+     - each item as newsletter
+     - daily or weekly digests
+     - compilalions of every `n` posts
+     - etc
+- which are formatted via rich, customizable [`untemplates`](https://github.com/swaldman/untemplate-doc#readme)
+- which are managed via a web API for easy subscription, confirmation, and unsubscription by users
+
+For people accustomed to managing server-side applications, it is pretty easy to set up,
+depending only on a Postgres database and a few config files.
+
+(It runs nicely as a `systemd` service proxied by `nginx`, although it should work fine under any infrastructure you choose.)
+
+### Getting Started
+
+(more soon!)
 
 ### Developer Notes
 
