@@ -253,21 +253,24 @@ object PgDatabase extends Migratory, SelfLogging:
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Cleared ) )  => /* ignore, we're done with this one */
       case Some( ItemStatus( _, _, _, _, ItemAssignability.Excluded ) ) => /* ignore, we don't assign  */
       case None =>
-        def doInsert() =
+        def doUnassignedInsert() =
           LatestSchema.Table.Item.insertNew(conn, fi.feedId, guid, Some(freshContent), ItemAssignability.Unassigned)
           DEBUG.log( s"Added new item, feed ID ${fi.feedId}, guid '${guid}'." )
           val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedId, guid ).getOrElse:
             throw new AssertionError("Just inserted row is not found???")
           if fi.minDelayMinutes <= 0 && fi.awaitStabilizationMinutes <= 0 then // if eligible for immediate assignment...
             assign( conn, fi.feedId, guid, freshContent, dbStatus )
+        def doExcludingInsert() =
+          WARNING.log(s"Excluding item found with parseable publication date '${pd}', which is prior to time of initial subscription, feed ID ${fi.feedId}, guid '${guid}'." )
+          LatestSchema.Table.Item.insertNew( conn, fi.eedId, guid, None, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
         freshContent.pubDate match
           case Some( pd ) =>
             if pd > fi.added then
-              doInsert() // skip items known to be published prior to subscription
+              doUnassignedInsert() // skip items known to be published prior to subscription
             else
-              DEBUG.log(s"Skipping item with parseable publication date '${pd}' prior to time of subscription, feed ID ${fi.feedId}, guid '${guid}'." )
+              doExcludingInsert()
           case None =>
-            doInsert()
+            doUnassignedInsert()
 
   private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Unit =
     val nextAssign = fi.lastAssigned.plusSeconds( fi.assignEveryMinutes * 60 )
