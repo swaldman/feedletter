@@ -265,7 +265,7 @@ object PgDatabase extends Migratory, SelfLogging:
             if pd > fi.added then
               doInsert() // skip items known to be published prior to subscription
             else
-              DEBUG.log("Skipping item with parseable publication date '${pd}' prior to time of subscription, feed ID ${fi.feedId}, guid '${guid}'." )
+              DEBUG.log(s"Skipping item with parseable publication date '${pd}' prior to time of subscription, feed ID ${fi.feedId}, guid '${guid}'." )
           case None =>
             doInsert()
 
