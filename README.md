@@ -16,11 +16,8 @@
 
 6. Separately, collections (`assignable`s) are periodically marked "complete"
    and, in the same transaction forwarded to subscribers.
-7. Complete `assignable`s can be deleted, along with their `assignment`s
-   Currently, for each subscription definition (`subscribable`) the one latest
-   complete assignment is retained. That seems unnecessarily complex, and may
-   change.
-9. `item`s that are...
+7. Complete `assignable`s are deleted, along with their `assignment`s
+8. `item`s that are...
    * Already assigned
    * No longer belong to not-yet-completed `assignables` can drop their cached contents,
      and then move into the `Cleared` state.
