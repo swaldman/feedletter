@@ -35,7 +35,7 @@ object CommandConfig extends SelfLogging:
       mbComposeUntemplateName       : Option[String],
       mbConfirmUntemplateName       : Option[String],
       mbStatusChangeUntemplateName  : Option[String],
-      emailCompanion                : SubscriptionManager.Email.Companion,
+      emailCompanionAndArg          : (SubscriptionManager.Email.Companion, Option[Any]),
       extraParams                   : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
@@ -43,10 +43,11 @@ object CommandConfig extends SelfLogging:
         val statusChangeUntemplateName = mbStatusChangeUntemplateName.getOrElse( Default.Email.StatusChangeUntemplate )
 
         val subscriptionManager =
-          emailCompanion match
-            case SubscriptionManager.Email.Each =>
+          import SubscriptionManager.{Email as SMEM}
+          emailCompanionAndArg match
+            case (SMEM.Each, None) =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateSingle )
-              SubscriptionManager.Email.Each (
+              SMEM.Each (
                 from = Destination.Email(from),
                 replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
@@ -54,9 +55,9 @@ object CommandConfig extends SelfLogging:
                 statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
-            case SubscriptionManager.Email.Weekly =>
+            case (SMEM.Weekly, None) =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
-              SubscriptionManager.Email.Weekly (
+              SMEM.Weekly (
                 from = Destination.Email(from),
                 replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
@@ -64,9 +65,9 @@ object CommandConfig extends SelfLogging:
                 statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
-            case SubscriptionManager.Email.Daily =>
+            case (SMEM.Daily, None) =>
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
-              SubscriptionManager.Email.Daily (
+              SMEM.Daily (
                 from = Destination.Email(from),
                 replyTo = replyTo.map( Destination.Email.apply ),
                 composeUntemplateName = composeUntemplateName,
@@ -74,6 +75,23 @@ object CommandConfig extends SelfLogging:
                 statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
+            case (SMEM.Fixed, Some(nipl : Int)) =>
+              val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
+              SMEM.Fixed (
+                from = Destination.Email(from),
+                replyTo = replyTo.map( Destination.Email.apply ),
+                composeUntemplateName = composeUntemplateName,
+                confirmUntemplateName = confirmUntemplateName,
+                statusChangeUntemplateName = statusChangeUntemplateName,
+                numItemsPerLetter = nipl,
+                extraParams = extraParams
+              )
+            case tup @ ( SMEM.Each | SMEM.Weekly | SMEM.Daily, Some( whatev ) ) =>
+              throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, which accepts no additional arguments." )
+            case tup @ ( SMEM.Fixed, Some( whatev ) ) =>
+              throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, not of expected type Int." )
+            case tup @ ( SMEM.Fixed, None ) =>
+              throw new AssertionError( s"Missing additional argument (numItemsPerLetter : Int) expected for ${tup(0)}" )
 
         for
           ds   <- ZIO.service[DataSource]
@@ -272,13 +290,20 @@ object CommandConfig extends SelfLogging:
           .schedule( Schedule.forever )             // a successful completion signals a reload request. so we restart
       end zcommand
   object Style:
+    def untemplateName( overrideUntemplateName : Option[String], sman : SubscriptionManager ) : String =
+      overrideUntemplateName.getOrElse:
+        sman match
+          case stu : SubscriptionManager.UntemplatedStatusChange => stu.statusChangeUntemplateName
+          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
     case class ComposeUntemplateSingle(
-      subscribableName : SubscribableName,
-      selection        : ComposeSelection.Single,
-      destination      : Option[Destination],
-      withinTypeId     : Option[String],
-      interface        : String,
-      port             : Int ) extends CommandConfig:
+      subscribableName       : SubscribableName,
+      overrideUntemplateName : Option[String],
+      selection              : ComposeSelection.Single,
+      destination            : Option[Destination],
+      withinTypeId           : Option[String],
+      interface              : String,
+      port                   : Int ) extends CommandConfig:
       def digest( feedUrl : FeedUrl ) : FeedDigest =
         val digest = FeedDigest( feedUrl )
         if digest.isEmpty then
@@ -287,17 +312,12 @@ object CommandConfig extends SelfLogging:
       def guid( digest : FeedDigest ) : Guid = 
         selection match
           case ComposeSelection.Single.First  =>
-            digest.orderedGuids.head
+            digest.fileOrderedGuids.head
           case ComposeSelection.Single.Random =>
-            val n = scala.util.Random.nextInt( digest.orderedGuids.size )
-            digest.orderedGuids(n)
+            val n = scala.util.Random.nextInt( digest.fileOrderedGuids.size )
+            digest.fileOrderedGuids(n)
           case ComposeSelection.Single.Guid( guid ) =>
             guid
-      def untemplateName( sman : SubscriptionManager ) : String =
-        sman match
-          case stu : SubscriptionManager.UntemplatedCompose => stu.composeUntemplateName
-          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
@@ -307,7 +327,7 @@ object CommandConfig extends SelfLogging:
           sman     =  pair(1)
           dig      =  digest( fu )
           g        =  guid( dig )
-          un       = untemplateName(sman)
+          un       = untemplateName(overrideUntemplateName, sman)
           _        <- styleComposeSingleUntemplate(
                         un,
                         subscribableName,
@@ -326,12 +346,13 @@ object CommandConfig extends SelfLogging:
       end zcommand
     end ComposeUntemplateSingle
     case class ComposeUntemplateMultiple(
-      subscribableName : SubscribableName,
-      selection        : ComposeSelection.Multiple,
-      destination      : Option[Destination],
-      withinTypeId     : Option[String],
-      interface        : String,
-      port             : Int ) extends CommandConfig:
+      subscribableName       : SubscribableName,
+      overrideUntemplateName : Option[String],
+      selection              : ComposeSelection.Multiple,
+      destination            : Option[Destination],
+      withinTypeId           : Option[String],
+      interface              : String,
+      port                   : Int ) extends CommandConfig:
       def digest( feedUrl : FeedUrl ) : FeedDigest =
         val digest = FeedDigest( feedUrl )
         if digest.isEmpty then
@@ -340,16 +361,11 @@ object CommandConfig extends SelfLogging:
       def guids( digest : FeedDigest ) : Set[Guid] = 
         selection match
           case ComposeSelection.Multiple.First(n)  =>
-            digest.orderedGuids.take(n).toSet
+            digest.fileOrderedGuids.take(n).toSet
           case ComposeSelection.Multiple.Random(n) =>
-            scala.util.Random.shuffle( digest.orderedGuids ).take(n).toSet
+            scala.util.Random.shuffle( digest.fileOrderedGuids ).take(n).toSet
           case ComposeSelection.Multiple.Guids( values ) =>
             values
-      def untemplateName( sman : SubscriptionManager ) : String =
-        sman match
-          case stu : SubscriptionManager.UntemplatedCompose => stu.composeUntemplateName
-          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
@@ -358,10 +374,10 @@ object CommandConfig extends SelfLogging:
           fu       =  pair(0)
           sman     =  pair(1)
           dig      =  digest( fu )
-          _        <- if dig.orderedGuids.isEmpty then ZIO.fail( new NoExampleItems( s"Feed currently contains no example items to render: ${fu}" ) ) else ZIO.unit
+          _        <- if dig.fileOrderedGuids.isEmpty then ZIO.fail( new NoExampleItems( s"Feed currently contains no example items to render: ${fu}" ) ) else ZIO.unit
           gs       =  guids( dig )
-          _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.orderedGuids.size}" ) ) else ZIO.unit
-          un       = untemplateName(sman)
+          _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.fileOrderedGuids.size}" ) ) else ZIO.unit
+          un       = untemplateName(overrideUntemplateName, sman)
           _        <- styleComposeMultipleUntemplate(
                         un,
                         subscribableName,
@@ -379,12 +395,7 @@ object CommandConfig extends SelfLogging:
         yield ()
       end zcommand
     end ComposeUntemplateMultiple
-    case class Confirm( subscribableName : SubscribableName, destination : Option[Destination], interface : String, port : Int ) extends CommandConfig:
-      def untemplateName( sman : SubscriptionManager ) : String =
-        sman match
-          case stu : SubscriptionManager.UntemplatedConfirm => stu.confirmUntemplateName
-          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
+    case class Confirm( subscribableName : SubscribableName, overrideUntemplateName : Option[String], destination : Option[Destination], interface : String, port : Int ) extends CommandConfig:
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
@@ -392,7 +403,7 @@ object CommandConfig extends SelfLogging:
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
           sman     =  pair(1)
-          un       = untemplateName(sman)
+          un       = untemplateName(overrideUntemplateName, sman)
           ch       <- PgDatabase.confirmHours( ds )
           _        <- styleConfirmUntemplate(
                         un,
@@ -408,12 +419,15 @@ object CommandConfig extends SelfLogging:
           _       <- ZIO.never
         yield ()
       end zcommand
-    case class StatusChange( statusChange : SubscriptionStatusChange, subscribableName : SubscribableName, destination : Option[Destination], requiresConfirmation : Boolean, interface : String, port : Int ) extends CommandConfig:
-      def untemplateName( sman : SubscriptionManager ) : String =
-        sman match
-          case stu : SubscriptionManager.UntemplatedStatusChange => stu.statusChangeUntemplateName
-          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
+    case class StatusChange(
+      statusChange           : SubscriptionStatusChange,
+      subscribableName       : SubscribableName,
+      overrideUntemplateName : Option[String],
+      destination            : Option[Destination],
+      requiresConfirmation   : Boolean,
+      interface              : String,
+      port                   : Int
+    ) extends CommandConfig:
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
@@ -421,7 +435,7 @@ object CommandConfig extends SelfLogging:
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
           sman     =  pair(1)
-          un       = untemplateName(sman)
+          un       = untemplateName(overrideUntemplateName, sman)
           _        <- styleStatusChangeUntemplate(
                         un,
                         statusChange,

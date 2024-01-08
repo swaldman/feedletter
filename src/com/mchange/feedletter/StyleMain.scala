@@ -18,11 +18,15 @@ object StyleMain extends AbstractMain:
     val Port =
       val help = "The port on which to run a HTTP server, which will serve the rendered untemplate."
       Opts.option[Int]("port",help=help,metavar="num").withDefault( Default.Style.StylePort )
+    val UntemplateName =
+      val help = "Fully name of an untemplate to style."
+      Opts.option[String]("untemplate-name",help=help,metavar="fully-qualified-name").orNone
 
   val composeSingle =
     val header = "Style a template that composes a single item."
     val opts =
       val subscriptionName = CommonStyleOpts.SubscriptionName
+      val untemplateName = CommonStyleOpts.UntemplateName
       val selection =
         val first  = Opts.flag("first",help="Display first item in feed.").map( _ => ComposeSelection.Single.First )
         val random = Opts.flag("random",help="Choose random item from feed to display").map( _ => ComposeSelection.Single.Random )
@@ -34,14 +38,15 @@ object StyleMain extends AbstractMain:
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, s, d, wti, i, p ) =>
-        CommandConfig.Style.ComposeUntemplateSingle( sn, s, d, wti, i, p )
+      ( subscriptionName, untemplateName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, un, s, d, wti, i, p ) =>
+        CommandConfig.Style.ComposeUntemplateSingle( sn, un, s, d, wti, i, p )
     Command("compose-single",header=header)( opts )
 
   val composeMultiple =
     val header = "Style a template that composes a multiple items."
     val opts =
       val subscriptionName = CommonStyleOpts.SubscriptionName
+      val untemplateName = CommonStyleOpts.UntemplateName
       val selection =
         val first  = Opts.option[Int]("first",help="Display first n items in feed.",metavar="n").map( n => ComposeSelection.Multiple.First(n) )
         val random = Opts.option[Int]("random",help="Choose n random items from feed to display", metavar="n").map( n => ComposeSelection.Multiple.Random(n) )
@@ -53,19 +58,20 @@ object StyleMain extends AbstractMain:
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, s, d, wti, i, p ) =>
-        CommandConfig.Style.ComposeUntemplateMultiple( sn, s, d, wti, i, p )
+      ( subscriptionName, untemplateName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, un, s, d, wti, i, p ) =>
+        CommandConfig.Style.ComposeUntemplateMultiple( sn, un, s, d, wti, i, p )
     Command("compose-multiple",header=header)( opts )
 
   val confirm =
     val header = "Style a template that asks users to confirm a subscription."
     val opts =
       val subscriptionName = CommonStyleOpts.SubscriptionName
+      val untemplateName = CommonStyleOpts.UntemplateName
       val destination = CommonStyleOpts.DestinationOrDefault
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, destination, interface, port ) mapN: ( sn, d, i, p ) =>
-        CommandConfig.Style.Confirm( sn, d, i, p )
+      ( subscriptionName, untemplateName, destination, interface, port ) mapN: ( sn, un, d, i, p ) =>
+        CommandConfig.Style.Confirm( sn, un, d, i, p )
     Command("confirm",header=header)( opts )
 
   val statusChange =
@@ -77,12 +83,13 @@ object StyleMain extends AbstractMain:
         val removed   = Opts.flag("removed",help="Inform user that a subscription has been removed.").map( _ => SubscriptionStatusChange.Removed )
         (created orElse confirmed orElse removed)
       val subscriptionName = CommonStyleOpts.SubscriptionName
+      val untemplateName = CommonStyleOpts.UntemplateName
       val destination = CommonStyleOpts.DestinationOrDefault
       val preconfirmed = Opts.flag("preconfirmed",help="Set to mark the styled subscription already confirmed, or not in need of a confirmation step.").orFalse
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( kind, subscriptionName, destination, preconfirmed, interface, port ) mapN: ( k, sn, d, prec, i, p ) =>
-        CommandConfig.Style.StatusChange( k, sn, d, !prec, i, p ) // requiresConfirmation == !preconfirmed
+      ( kind, subscriptionName, untemplateName, destination, preconfirmed, interface, port ) mapN: ( k, sn, un, d, prec, i, p ) =>
+        CommandConfig.Style.StatusChange( k, sn, un, d, !prec, i, p ) // requiresConfirmation == !preconfirmed
     Command("status-change",header=header)( opts )
 
   val feedletterStyle =
