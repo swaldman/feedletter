@@ -11,7 +11,7 @@
    * distinguishes between new items and older stuff or stuff already seen that flakily reappears
    * awaits "finalization" of items, meaning their stabilization (and nondeletion) over specified time intervals
 - lets you **define a wide variety of subscriptions** to those feeds
-   * Over differnt media
+   * Over different media
      - e-mail
      - SMS (coming soon!)
      - Post to Mastodon (coming soon!)
@@ -27,7 +27,7 @@
 For people accustomed to managing server-side applications, it is pretty easy to set up,
 depending only on a Postgres database and a few config files.
 
-(It runs nicely as a `systemd` service proxied by `nginx`, although it should work fine under any infrastructure you choose.)
+It runs nicely as a `systemd` service proxied by `nginx`, although it should work fine under any infrastructure you choose.
 
 ### Getting Started
 
