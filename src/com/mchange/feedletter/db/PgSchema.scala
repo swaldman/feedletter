@@ -305,7 +305,7 @@ object PgSchema:
                |  subscribable_name         VARCHAR(64),
                |  feed_id                   INTEGER       NOT NULL,
                |  subscription_manager_json JSONB         NOT NULL,
-               |  last_completed_wti        VARCHAR(1024)
+               |  last_completed_wti        VARCHAR(1024),
                |  PRIMARY KEY (subscribable_name),
                |  FOREIGN KEY (feed_id) REFERENCES feed(id)
                |)""".stripMargin
@@ -358,7 +358,7 @@ object PgSchema:
             Using.resource( conn.prepareStatement( SelectLastCompletedWti ) ): ps =>
               ps.setString(1, subscribableName.toString())
               Using.resource( ps.executeQuery() ): rs =>
-                zeroOrOneResult("select-last-completed-wti", rs)( rs => rs.getString(1) )
+                uniqueResult("select-last-completed-wti", rs)( rs => Option(rs.getString(1)) )
           def selectUninterpretedManagerJson( conn : Connection, subscribableName : SubscribableName ) : String =
             Using.resource( conn.prepareStatement( SelectManager ) ): ps =>
               ps.setString(1, subscribableName.toString())

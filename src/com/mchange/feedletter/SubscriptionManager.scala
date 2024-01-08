@@ -336,7 +336,7 @@ object SubscriptionManager extends SelfLogging:
         case each   : Email.Each   => (eef(each),   Tag.Email_Each)
         case daily  : Email.Daily  => (edf(daily),  Tag.Email_Daily)
         case weekly : Email.Weekly => (ewf(weekly), Tag.Email_Weekly)
-        case fixed  : Email.Fixed  => (eff(fixed),  Tag.Email_Weekly)
+        case fixed  : Email.Fixed  => (eff(fixed),  Tag.Email_Fixed)
     val headerFields =
        ujson.Obj(
          "version" -> 1,

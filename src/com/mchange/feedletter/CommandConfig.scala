@@ -305,10 +305,10 @@ object CommandConfig extends SelfLogging:
       def guid( digest : FeedDigest ) : Guid = 
         selection match
           case ComposeSelection.Single.First  =>
-            digest.orderedGuids.head
+            digest.fileOrderedGuids.head
           case ComposeSelection.Single.Random =>
-            val n = scala.util.Random.nextInt( digest.orderedGuids.size )
-            digest.orderedGuids(n)
+            val n = scala.util.Random.nextInt( digest.fileOrderedGuids.size )
+            digest.fileOrderedGuids(n)
           case ComposeSelection.Single.Guid( guid ) =>
             guid
       def untemplateName( sman : SubscriptionManager ) : String =
@@ -358,9 +358,9 @@ object CommandConfig extends SelfLogging:
       def guids( digest : FeedDigest ) : Set[Guid] = 
         selection match
           case ComposeSelection.Multiple.First(n)  =>
-            digest.orderedGuids.take(n).toSet
+            digest.fileOrderedGuids.take(n).toSet
           case ComposeSelection.Multiple.Random(n) =>
-            scala.util.Random.shuffle( digest.orderedGuids ).take(n).toSet
+            scala.util.Random.shuffle( digest.fileOrderedGuids ).take(n).toSet
           case ComposeSelection.Multiple.Guids( values ) =>
             values
       def untemplateName( sman : SubscriptionManager ) : String =
@@ -376,9 +376,9 @@ object CommandConfig extends SelfLogging:
           fu       =  pair(0)
           sman     =  pair(1)
           dig      =  digest( fu )
-          _        <- if dig.orderedGuids.isEmpty then ZIO.fail( new NoExampleItems( s"Feed currently contains no example items to render: ${fu}" ) ) else ZIO.unit
+          _        <- if dig.fileOrderedGuids.isEmpty then ZIO.fail( new NoExampleItems( s"Feed currently contains no example items to render: ${fu}" ) ) else ZIO.unit
           gs       =  guids( dig )
-          _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.orderedGuids.size}" ) ) else ZIO.unit
+          _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.fileOrderedGuids.size}" ) ) else ZIO.unit
           un       = untemplateName(sman)
           _        <- styleComposeMultipleUntemplate(
                         un,

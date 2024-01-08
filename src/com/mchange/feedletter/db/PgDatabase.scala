@@ -273,8 +273,9 @@ object PgDatabase extends Migratory, SelfLogging:
     val nextAssign = fi.lastAssigned.plusSeconds( fi.assignEveryMinutes * 60 )
     val now = Instant.now()
     if now > nextAssign then
-      val FeedDigest( _, guidToItemContent, timestamp ) = FeedDigest( fi.feedUrl, now )
-      guidToItemContent.foreach: ( guid, freshContent ) =>
+      val FeedDigest( fileOrderedGuids, guidToItemContent, timestamp ) = FeedDigest( fi.feedUrl, now )
+      // we feed the entries in reverse of their reverse-chronological file ordering!
+      fileOrderedGuids.reverse.map( guid => (guid, guidToItemContent( guid ) ) ).foreach: ( guid, freshContent ) =>
         val dbStatus = LatestSchema.Table.Item.checkStatus( conn, fi.feedId, guid )
         updateAssignItem( conn, fi, guid, dbStatus, freshContent, timestamp )
       DEBUG.log( s"Deleting any as-yet-unassigned items that have been deleted from feed with ID ${fi.feedId}" )
