@@ -322,10 +322,20 @@ object PgDatabase extends Migratory, SelfLogging:
     LatestSchema.Table.MailableTemplate.ensure( conn, hash, contents )
     LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tosWithParams, subject, 0 )
 
+  private def resilientDelayedForFeedInfo( ds : DataSource, fi : FeedInfo ) : Task[Unit] =
+    val simple = withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ).zlogError( DEBUG, what = "Attempt to update/assign for ${fi}" )
+    val retrying = simple.retry( Schedule.exponential( 10.seconds, 1.5f ) && Schedule.upTo( 3.minutes ) ) // XXX: hard-coded
+    val delaying =
+      for
+        _ <- ZIO.sleep( math.round(math.random * 20).seconds ) // XXX: hard-coded
+        _ <- retrying
+      yield()
+    delaying.zlogErrorDefect( WARNING, s"Update/assign for feed ${fi.feedId}" )
+
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
     for
       feedInfos <- withConnectionTransactional( ds )( conn => LatestSchema.Table.Feed.selectAll( conn ) )
-      _         <- ZIO.collectAllParDiscard( feedInfos.map( fi => withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ).zlogErrorDefect( WARNING, s"Update/assign for feed ${fi.feedId}" ) ) )
+      _         <- ZIO.collectAllParDiscard( feedInfos.map( fi => resilientDelayedForFeedInfo(ds,fi) ) )
     yield ()
 
   def completeAssignables( ds : DataSource, apiLinkGenerator : ApiLinkGenerator ) : Task[Unit] =
