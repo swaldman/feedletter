@@ -30,6 +30,7 @@
    padding-left: 10%;
    padding-right: 10%;
    border: 1px solid #aaaaaa;
+   line-height: 150%;
  }
  .item-title {
    font-size: 150%;
@@ -80,6 +81,9 @@
    color: #008800;
  }
  @media screen and (max-width: 600px) {
+   .body {
+     line-height: 120%;
+   }
    .item {
      margin-left: 2%;
      margin-right: 2%;
