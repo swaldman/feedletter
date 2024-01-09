@@ -377,25 +377,25 @@ object PgDatabase extends Migratory, SelfLogging:
       LatestSchema.Table.Subscribable.insert( conn, subscribableName, feedId, subscriptionManager, None )
       INFO.log( s"New subscribable '${subscribableName}' defined on feed with ID ${feedId}." )
 
-  def addSubscription( ds : DataSource, subscribableName : SubscribableName, destinationJson : Destination.Json, confirmed : Boolean, now : Instant ) : Task[(SubscriptionManager,SubscriptionId)] =
-    withConnectionTransactional( ds )( conn => addSubscription( conn, subscribableName, destinationJson, confirmed, now ) )
+  def addSubscription( ds : DataSource, fromExternalApi : Boolean, subscribableName : SubscribableName, destinationJson : Destination.Json, confirmed : Boolean, now : Instant ) : Task[(SubscriptionManager,SubscriptionId)] =
+    withConnectionTransactional( ds )( conn => addSubscription( conn, fromExternalApi, subscribableName, destinationJson, confirmed, now ) )
 
-  def addSubscription( ds : DataSource, subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant ) : Task[(SubscriptionManager,SubscriptionId)] =
-    withConnectionTransactional( ds )( conn => addSubscription( conn, subscribableName, destination, confirmed, now ) )
+  def addSubscription( ds : DataSource, fromExternalApi : Boolean, subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant ) : Task[(SubscriptionManager,SubscriptionId)] =
+    withConnectionTransactional( ds )( conn => addSubscription( conn, fromExternalApi, subscribableName, destination, confirmed, now ) )
 
-  def addSubscription( conn : Connection, subscribableName : SubscribableName, destinationJson : Destination.Json, confirmed : Boolean, now : Instant ) : (SubscriptionManager,SubscriptionId) =
+  def addSubscription( conn : Connection, fromExternalApi : Boolean, subscribableName : SubscribableName, destinationJson : Destination.Json, confirmed : Boolean, now : Instant ) : (SubscriptionManager,SubscriptionId) =
     val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, subscribableName )
     val destination = subscriptionManager.materializeDestination( destinationJson )
-    val newId = addSubscription( conn, subscribableName, subscriptionManager, destination, confirmed, now )
+    val newId = addSubscription( conn, fromExternalApi, subscribableName, subscriptionManager, destination, confirmed, now )
     (subscriptionManager, newId)
 
-  def addSubscription( conn : Connection, subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant ) : (SubscriptionManager,SubscriptionId) =
+  def addSubscription( conn : Connection, fromExternalApi : Boolean, subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant ) : (SubscriptionManager,SubscriptionId) =
     val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, subscribableName )
-    val newId = addSubscription( conn, subscribableName, subscriptionManager, destination, confirmed, now )
+    val newId = addSubscription( conn, fromExternalApi, subscribableName, subscriptionManager, destination, confirmed, now )
     (subscriptionManager, newId)
 
-  def addSubscription( conn : Connection, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, destination : Destination, confirmed : Boolean, now : Instant ) : SubscriptionId =
-    subscriptionManager.validateDestinationOrThrow( conn, destination, subscribableName )
+  def addSubscription( conn : Connection, fromExternalApi : Boolean, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, destination : Destination, confirmed : Boolean, now : Instant ) : SubscriptionId =
+    subscriptionManager.validateDestinationOrThrow( conn, fromExternalApi, destination, subscribableName )
     val newId = LatestSchema.Table.Subscription.Sequence.SubscriptionSeq.selectNext( conn )
     LatestSchema.Table.Subscription.insert( conn, newId, destination, subscribableName, confirmed, now )
     INFO.log:

@@ -273,7 +273,7 @@ object V0 extends SelfLogging:
           withConnectionTransactional( ds ): conn =>
             val sname = SubscribableName(screate.subscribableName)
             val destination = screate.destination
-            val (sman, sid) = PgDatabase.addSubscription( conn, sname, destination, false, Instant.now ) // validates the destination!
+            val (sman, sid) = PgDatabase.addSubscription( conn, true, sname, destination, false, Instant.now ) // validates the destination!
             val cgl = confirmGetLink( sid )
             val confirming = sman.maybePromptConfirmation( conn, sid, sname, sman.narrowDestinationOrThrow(destination), cgl )
             val confirmedMessage =

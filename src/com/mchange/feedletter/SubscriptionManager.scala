@@ -292,7 +292,7 @@ object SubscriptionManager extends SelfLogging:
       PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
       true
 
-    override def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit =
+    override def validateDestinationOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
       destination match
         case emailDestination : Destination.Email => Some( emailDestination )
         case _ =>
@@ -397,7 +397,7 @@ sealed trait SubscriptionManager extends Jsonable:
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
   def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
-  def validateDestinationOrThrow( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Unit
+  def validateDestinationOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit
 
   /**
     * This method must either:
