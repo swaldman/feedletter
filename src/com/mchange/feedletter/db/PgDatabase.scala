@@ -395,7 +395,7 @@ object PgDatabase extends Migratory, SelfLogging:
     (subscriptionManager, newId)
 
   def addSubscription( conn : Connection, fromExternalApi : Boolean, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, destination : Destination, confirmed : Boolean, now : Instant ) : SubscriptionId =
-    subscriptionManager.validateDestinationOrThrow( conn, fromExternalApi, destination, subscribableName )
+    subscriptionManager.validateSubscriptionOrThrow( conn, fromExternalApi, destination, subscribableName )
     val newId = LatestSchema.Table.Subscription.Sequence.SubscriptionSeq.selectNext( conn )
     LatestSchema.Table.Subscription.insert( conn, newId, destination, subscribableName, confirmed, now )
     INFO.log:
