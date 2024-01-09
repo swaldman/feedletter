@@ -8,6 +8,7 @@ import com.mchange.feedletter.db.{DbVersionStatus,PgDatabase}
 
 import java.nio.file.{Path as JPath}
 import javax.sql.DataSource
+import java.time.ZoneId
 
 import com.mchange.conveniences.throwable.*
 
@@ -27,7 +28,7 @@ object CommandConfig extends SelfLogging:
           _   <- printFeedInfoTable(fis)
         yield ()
       end zcommand
-    case class DefineEmailSubscription(
+    case class DefineEmailSubscription[T](
       feedId                        : FeedId,
       subscribableName              : SubscribableName,
       from                          : String,
@@ -35,7 +36,7 @@ object CommandConfig extends SelfLogging:
       mbComposeUntemplateName       : Option[String],
       mbConfirmUntemplateName       : Option[String],
       mbStatusChangeUntemplateName  : Option[String],
-      emailCompanionAndArg          : (SubscriptionManager.Email.Companion, Option[Any]),
+      emailCompanionAndArg          : (SubscriptionManager.Email.Companion, Option[T]),
       extraParams                   : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
@@ -55,7 +56,8 @@ object CommandConfig extends SelfLogging:
                 statusChangeUntemplateName = statusChangeUntemplateName,
                 extraParams = extraParams
               )
-            case (SMEM.Weekly, None) =>
+            case (SMEM.Weekly, tz : Option[ZoneId @unchecked]) => // we'll check ourselves
+              tz.foreach( z => assert( z.isInstanceOf[ZoneId], "Only an Option[ZoneId] should be passed as the extra argument for Email.Weekly. Found '$z'." ) )
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
               SMEM.Weekly (
                 from = Destination.Email(from),
@@ -63,9 +65,11 @@ object CommandConfig extends SelfLogging:
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
                 statusChangeUntemplateName = statusChangeUntemplateName,
+                timeZone = tz,
                 extraParams = extraParams
               )
-            case (SMEM.Daily, None) =>
+            case (SMEM.Daily, tz : Option[ZoneId @unchecked]) => // we'll check ourselves
+              tz.foreach( z => assert( z.isInstanceOf[ZoneId], "Only an Option[ZoneId] should be passed as the extra argument for Email.Daily. Found '$z'." ) )
               val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
               SMEM.Daily (
                 from = Destination.Email(from),
@@ -73,6 +77,7 @@ object CommandConfig extends SelfLogging:
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
                 statusChangeUntemplateName = statusChangeUntemplateName,
+                timeZone = tz,
                 extraParams = extraParams
               )
             case (SMEM.Fixed, Some(nipl : Int)) =>
@@ -86,10 +91,10 @@ object CommandConfig extends SelfLogging:
                 numItemsPerLetter = nipl,
                 extraParams = extraParams
               )
-            case tup @ ( SMEM.Each | SMEM.Weekly | SMEM.Daily, Some( whatev ) ) =>
+            case tup @ ( SMEM.Each, Some( whatev ) ) =>
               throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, which accepts no additional arguments." )
-            case tup @ ( SMEM.Fixed, Some( whatev ) ) =>
-              throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, not of expected type Int." )
+            case tup @ ( SMEM.Fixed | SMEM.Weekly | SMEM.Daily, Some( whatev ) ) =>
+              throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, not of expected type." )
             case tup @ ( SMEM.Fixed, None ) =>
               throw new AssertionError( s"Missing additional argument (numItemsPerLetter : Int) expected for ${tup(0)}" )
 

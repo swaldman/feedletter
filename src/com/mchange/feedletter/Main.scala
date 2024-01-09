@@ -89,10 +89,16 @@ object Main extends AbstractMain, SelfLogging:
           Opts.option[String]("status-change-untemplate",help=help,metavar="fully-qualified-name").orNone
          // modified from decline's docs
         val kind = // we sometimes see type inference errors without the explicit type attributions, i'm not sure why
-          type K = Tuple2[SubscriptionManager.Email.Companion,Option[Any]]
-          val each = Opts.flag("each",help="E-mail each item").map( _ => (SubscriptionManager.Email.Each, None) : K ) 
-          val daily = Opts.flag("daily",help="E-mail a compilation, once a day.").map( _ => (SubscriptionManager.Email.Daily, None) : K )
-          val weekly = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => (SubscriptionManager.Email.Weekly, None) : K )
+          type K = Tuple2[SubscriptionManager.Email.Companion,Option[ZoneId | Int]]
+          val each = Opts.flag("each",help="E-mail each item.").map( _ => (SubscriptionManager.Email.Each, None) : K ) 
+          val daily =
+            val flag = Opts.flag("daily",help="E-mail a compilation, once a day.").map( _ => SubscriptionManager.Email.Daily )
+            val zone = CommonOpts.TimeZone.orNone
+            ( flag, zone ) mapN( (f, z) => ( f, z ) )
+          val weekly =
+            val flag = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionManager.Email.Weekly )
+            val zone = CommonOpts.TimeZone.orNone
+            ( flag, zone ) mapN( (f, z) => ( f, z ) )
           val fixed = Opts.option[Int]("num-items-per-letter",help="E-mail every fixed number of posts.",metavar="num").map( n => (SubscriptionManager.Email.Fixed, Some(n)) : K )
           (each orElse daily orElse weekly orElse fixed).withDefault[K]( (SubscriptionManager.Email.Each, None) : K )
         val extraParams =

@@ -22,6 +22,7 @@ import scala.util.control.NonFatal
 import MLevel.*
 
 import upickle.default.*
+import java.time.ZoneId
 
 object SubscriptionManager extends SelfLogging:
   val  Json = SubscriptionManagerJson
@@ -33,6 +34,8 @@ object SubscriptionManager extends SelfLogging:
     def confirmUntemplateName : String
   sealed trait UntemplatedStatusChange:
     def statusChangeUntemplateName : String
+  sealed trait PeriodBased:
+    def timeZone : Option[ZoneId]
   sealed trait TemplatingCompose extends SubscriptionManager:
     def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : this.D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams
 
@@ -69,8 +72,9 @@ object SubscriptionManager extends SelfLogging:
       composeUntemplateName      : String,
       confirmUntemplateName      : String,
       statusChangeUntemplateName : String,
+      timeZone                   : Option[ZoneId],
       extraParams                : Map[String,String]
-    ) extends Email:
+    ) extends Email, PeriodBased:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
       override val sampleWithinTypeId = "2023-week50"
@@ -84,7 +88,8 @@ object SubscriptionManager extends SelfLogging:
         content          : ItemContent,
         status           : ItemStatus
       ) : Option[String] =
-        val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
+        val tz = timeZone.getOrElse:
+          PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
 
       // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
@@ -125,8 +130,9 @@ object SubscriptionManager extends SelfLogging:
       composeUntemplateName      : String,
       confirmUntemplateName      : String,
       statusChangeUntemplateName : String,
+      timeZone                   : Option[ZoneId],
       extraParams                : Map[String,String]
-    ) extends Email:
+    ) extends Email, PeriodBased:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
 
       override val sampleWithinTypeId = "2024-day4"
@@ -140,7 +146,8 @@ object SubscriptionManager extends SelfLogging:
         content          : ItemContent,
         status           : ItemStatus
       ) : Option[String] =
-        val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
+        val tz = timeZone.getOrElse:
+          PgDatabase.Config.timeZone( conn )
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
 
       // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
@@ -174,8 +181,8 @@ object SubscriptionManager extends SelfLogging:
       composeUntemplateName      : String,
       confirmUntemplateName      : String,
       statusChangeUntemplateName : String,
-      extraParams                : Map[String,String],
-      numItemsPerLetter          : Int
+      numItemsPerLetter          : Int,
+      extraParams                : Map[String,String]
     ) extends Email:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
 
@@ -318,7 +325,7 @@ object SubscriptionManager extends SelfLogging:
     case Email_Fixed  extends Tag("Email.Fixed")
 
   private def toUJsonV1( subscriptionManager : SubscriptionManager ) : ujson.Value =
-    def esf( emailsub : Email.Instance ) : ujson.Obj =
+    def esf( emailsub : Email.Instance ) : ujson.Obj = // "email shared fields"
       val values = Seq(
         "from" -> writeJs[Destination]( emailsub.from ),
         "composeUntemplateName" -> ujson.Str( emailsub.composeUntemplateName ),
@@ -327,9 +334,13 @@ object SubscriptionManager extends SelfLogging:
         "extraParams" -> writeJs( emailsub.extraParams ) 
       ) ++ emailsub.replyTo.map( rt => ("replyTo" -> writeJs[Destination](rt) ) )
       ujson.Obj.from( values )
+    def epbsf( pbsm : Email.Instance & PeriodBased ) : ujson.Obj = // "email period-based shared fields"
+      pbsm.timeZone match
+        case Some( tz ) => ujson.Obj.from( esf( pbsm ).obj + ("timeZone" -> tz.getId()) )
+        case None       => esf( pbsm )
     def eef( each : Email.Each ) : ujson.Obj = esf( each )
-    def edf( daily : Email.Daily ) : ujson.Obj = esf( daily )
-    def ewf( weekly : Email.Weekly ) : ujson.Obj = esf( weekly )
+    def edf( daily : Email.Daily ) : ujson.Obj = epbsf( daily )
+    def ewf( weekly : Email.Weekly ) : ujson.Obj = epbsf( weekly )
     def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj + ("numItemsPerLetter" -> fixed.numItemsPerLetter) )
     val (fields, tpe) =
       subscriptionManager match
@@ -368,6 +379,7 @@ object SubscriptionManager extends SelfLogging:
           composeUntemplateName      = obj("composeUntemplateName").str,
           confirmUntemplateName      = obj("confirmUntemplateName").str,
           statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
+          timeZone                   = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
           extraParams                = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Email_Weekly => Email.Weekly(
@@ -376,6 +388,7 @@ object SubscriptionManager extends SelfLogging:
           composeUntemplateName      = obj("composeUntemplateName").str,
           confirmUntemplateName      = obj("confirmUntemplateName").str,
           statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
+          timeZone                   = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
           extraParams                = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Email_Fixed => Email.Fixed(

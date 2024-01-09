@@ -7,9 +7,9 @@ import com.monovore.decline.*
 import cats.implicits.* // for mapN
 
 import java.nio.file.{Path as JPath}
+import java.time.ZoneId
 import java.util.{Properties, Map as JMap}
 import javax.sql.DataSource
-import org.postgresql.replication.fluent.CommonOptions
 
 import com.mchange.mailutil.*
 
@@ -36,6 +36,7 @@ trait AbstractMain extends SelfLogging:
         ( instanceName, instanceUrl ) mapN: (in, iu) =>
           Destination.Mastodon( name = in, instanceUrl = iu )
       email orElse sms orElse mastodon
+    val TimeZone = Opts.option[String]("time-zone",help="ID of a time zone for determining the beginning and end of the period.",metavar="id").map( ZoneId.of ) 
   end CommonOpts
 
   val LayerDataSource : ZLayer[AppSetup, Throwable, DataSource] =
