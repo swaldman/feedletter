@@ -676,6 +676,90 @@ object PgSchema:
           object Sequence:
             object MailableSeq extends Creatable:
               protected val Create = "CREATE SEQUENCE mailable_seq AS BIGINT"
+
+        // Mastodon destinations are usually few, so we're not going to bother
+        // sharing content-addressed templates like we did for mailing
+        object MastoPostable extends Creatable:
+          protected val Create =
+            """|CREATE TABLE masto_postable(
+               |  seqnum          BIGINT,
+               |  final_content   TEXT NOT NULL,
+               |  instance_url    VARCHAR(1024) NOT NULL,
+               |  name            VARCHAR(256)  NOT NULL,
+               |  retried         INTEGER NOT NULL,
+               |  PRIMARY KEY(seqnum),
+               |)""".stripMargin
+          private val Insert =
+            """|INSERT INTO masto_postable(seqnum, final_content, instance_url, name, retried)
+               |VALUES ( ?, ?, ?, ?, ? )""".stripMargin
+          private val Delete =
+            """|DELETE FROM masto_postable
+               |WHERE seqnum = ?""".stripMargin
+          private val SelectById =
+            """|SELECT seqnum, final_content, sintance_url, name, retried
+               |FROM masto_postable""".stripMargin
+          def insert( conn : Connection, id : MastoPostableId, finalContent : String, mastoInstanceUrl : MastoInstanceUrl, mastoName : MastoName, retried : Int ) =
+            Using.resource( conn.prepareStatement( Insert ) ): ps =>
+              ps.setLong  (1, id.toLong)
+              ps.setString(2, finalContent)
+              ps.setString(3, mastoInstanceUrl.toString())
+              ps.setString(4, mastoName.toString())
+              ps.setInt   (5, retried)
+              ps.executeUpdate()
+          def delete( conn : Connection, id : MastoPostableId ) =
+            Using.resource( conn.prepareStatement( Delete ) ): ps =>
+              ps.setLong(1, id.toLong)
+              ps.executeUpdate()
+          def selectById( conn : Connection ) : Set[MastoPostable] =
+            Using.resource( conn.prepareStatement( SelectById ) ): ps =>
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet( rs )( rs => com.mchange.feedletter.MastoPostable( MastoPostableId( rs.getLong(1) ), rs.getString(2), MastoInstanceUrl( rs.getString(3) ), MastoName( rs.getString(4) ), rs.getInt(5) ) )
+          object Sequence:
+            object MastoPostableSeq extends Creatable:
+              protected val Create = "CREATE SEQUENCE masto_postable_seq AS BIGINT"
+                private val SelectNext = "SELECT nextval('masto_portable_seq')"
+                def selectNext( conn : Connection ) : MastoPostableId =
+                  Using.resource( conn.prepareStatement(SelectNext) ): ps =>
+                    Using.resource( ps.executeQuery() ): rs =>
+                      uniqueResult("select-next-masto-postable-seq", rs)( rs => MastoPostableId( rs.getLong(1) ) )
+        object MastoPostableMedia extends Creatable:
+          protected val Create =
+            """|CREATE TABLE masto_postable_media (
+               |  masto_postable_id  BIGINT,
+               |  media_url          VARCHAR(1024) NOT NULL,
+               |  mime_type          VARCHAR(256),
+               |  size               BIGINT,
+               |  alt                TEXT,
+               |  PRIMARY KEY(masto_postable_id),
+               |  FOREIGN KEY(masto_postable_id) REFERENCES masto_postable(seqnum)
+               |)""".stripMargin
+          private val Insert =
+            """|INSERT INTO masto_postable_media(masto_postable_id,media_url,mime_type,size,alt)
+               |VALUES( ?, ?, ?, ?, ? )""".stripMargin
+          private val SelectAllForId =
+            """|SELECT media_url, mime_type, size, alt
+               |FROM masto_postable_media
+               |WHERE masto_postable_id = ?""".stripMargin
+          private val DeleteById =
+            """|DELETE FROM masto_postable_media
+               |WHERE masto_postable_id = ?""".stripMargin
+          def insert( conn : Connection, id : MastoPostableId, media : ItemContent.Media ) =
+            Using.resource( conn.prepareStatement(Insert) ): ps =>
+              ps.setLong            (1, id.toLong )
+              ps.setString          (2, media.url )
+              setStringOptional( ps, 3, Types.VARCHAR, media.mimeType )
+              setLongOptional  ( ps, 4, Types.BIGINT, media.length )
+              setStringOptional( ps, 5, Types.CLOB, media.alt )
+              ps.executeUpdate()
+          def selectAllForId( conn : Connection, id : MastoPostableId ) : Set[ItemContent.Media] =
+            Using.resource( conn.prepareStatement(SelectAllForId) ): ps =>
+              ps.setLong(1, id.toLong)
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet(rs)( rs => ItemContent.Media( rs.getString(1), Option( rs.getString(2) ), Option( rs.getLong(3) ), Option( rs.getString(4) ) ) )
+          def deleteById( conn : Connection, id : MastoPostableId ) =
+            Using.resource( conn.prepareStatement( DeleteById ) ): ps =>
+              ps.setLong(1, id.toLong )
+              ps.executeUpdate()
       end Table
       object Join:
         object ItemSubscribable:
@@ -706,7 +790,7 @@ object PgSchema:
         end ItemSubscribable
         object ItemAssignment:
           private val SelectItemContentsForAssignable =
-            """|SELECT single_item_rss
+            """|SELECT item.guid, single_item_rss
                |FROM item
                |INNER JOIN assignment
                |ON item.guid = assignment.guid
@@ -716,7 +800,7 @@ object PgSchema:
               ps.setString(1, subscribableName.toString())
               ps.setString(2, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
-                toSet( rs )( rs => ItemContent.unsafeUnpickle( rs.getString(1) ) )
+                toSet( rs )( rs => ItemContent.fromPrenormalizedSingleItemRss( rs.getString(1), rs.getString(2) ) )
         end ItemAssignment
         object ItemAssignableAssignment:
           private val SelectLiveAssignedGuids =

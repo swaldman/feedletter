@@ -36,8 +36,74 @@ object SubscriptionManager extends SelfLogging:
     def statusChangeUntemplateName : String
   sealed trait PeriodBased:
     def timeZone : Option[ZoneId]
-  sealed trait TemplatingCompose extends SubscriptionManager:
-    def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : this.D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams
+
+  object Mastodon:
+    final case class Announce( destination : Destination.Mastodon, extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon:
+
+      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
+
+      override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+        Some( guid.toString() )
+
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
+
+      def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) : Option[String] =
+        extend.MastoAnnouncementCustomizers.get( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content ) ): customizer =>
+          customizer( subscribableName, this, withinTypeId, feedUrl, content )
+
+      def defaultFormatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) : Option[String] = // ADD EXTRA-PARAMS AND GUIDs
+        //assert( contents.size == 1, s"Mastodon.Announce expects contents exactly one item, while generating default subject, we found ${contents.size}." )
+        ( content.title, content.author, content.link) match
+          case (Some(title), Some(author), Some(link)) => Some( s"[New Post] ${title}, by ${author} ${link}" )
+          case (Some(title), None,         Some(link)) => Some( s"[New Post] ${title} ${link}" )
+          case (None,        Some(author), Some(link)) => Some( s"[New Post] (untitled), by ${author} ${link}" )
+          case (None,        None,         Some(link)) => Some( s"[New Post] ${link}" )
+          case (_,           _,            None      ) =>
+            WARNING.log( s"No link found. withinTypeId: ${withinTypeId}" ) 
+            None
+
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        val uniqueContent = contents.uniqueOr: (c, nu) =>
+          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+        val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
+        val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent )
+        mbTemplate.foreach: template =>
+          val mastoDestinationsWithTemplateParams =
+            idestinations.map: idestination =>
+              val destination = idestination.destination
+              val sid = idestination.subscriptionId
+              val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
+              ( destination, templateParams )
+          mastoDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
+            val fullContent = templateParams.fill( template )
+            PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
+
+      override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
+        Map(
+          "instanceUrl" -> destination.instanceUrl,
+          "destinationName" -> destination.name
+        )
+
+      override def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
+        if fromExternalApi then
+          throw new ExternalApiForibidden( "Mastodon.Announce subscriptions must be made by an administrator, rather than via the public API." )
+        else
+          destination match
+            case mastoDestination : Destination.Mastodon => ()
+            case _ =>
+              throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
+
+      // not relevant since we don't support the external subscription API
+      override def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String ) : Boolean = false
+
+      // we're going to refactor this out shortly
+      override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String = ???
+
+
+  sealed trait Mastodon extends SubscriptionManager:
+    override type D = Destination.Mastodon
+
+    override val sampleDestination = Destination.Mastodon( name = "mothership", instanceUrl = "https://mastodon.social/" )
 
   object Email:
     type Companion = Each.type | Daily.type | Weekly.type | Fixed.type
@@ -75,6 +141,7 @@ object SubscriptionManager extends SelfLogging:
       timeZone                   : Option[ZoneId],
       extraParams                : Map[String,String]
     ) extends Email, PeriodBased:
+
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
       override val sampleWithinTypeId = "2023-week50"
@@ -217,7 +284,7 @@ object SubscriptionManager extends SelfLogging:
         s"[${subscribableName}] ${numItemsPerLetter} new items"
 
 
-  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, TemplatingCompose:
+  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange:
     def from                       : Destination.Email
     def replyTo                    : Option[Destination.Email]
     def composeUntemplateName      : String
@@ -260,18 +327,12 @@ object SubscriptionManager extends SelfLogging:
         PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
-      val args = ( subscribableName, withinTypeId, feedUrl, contents )
-      extend.SubjectCustomizers.get( subscribableName ).fold( defaultSubject.tupled(args) ): customizer =>
-        customizer.tupled( args )
+      extend.SubjectCustomizers.get( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents ) ): customizer =>
+        customizer( subscribableName, this, withinTypeId, feedUrl, contents )
 
     def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String
 
-    def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams =
-      val localArgs = ( subscribableName, withinTypeId, feedUrl, destination, subscriptionId, removeLink )
-      val customizerArgs = ( subscribableName, withinTypeId, feedUrl, destination : Destination, subscriptionId, removeLink )
-      TemplateParams( defaultComposeTemplateParams.tupled( localArgs ) ++ extend.ComposeTemplateParamCustomizers.get( subscribableName ).fold(Nil)( _.tupled.apply(customizerArgs) ) )
-
-    def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
+    override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
       val toAddress = destination.toAddress
       val toFull = toAddress.rendered
       val toNickname = toAddress.displayName
@@ -301,7 +362,7 @@ object SubscriptionManager extends SelfLogging:
 
     override def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
       destination match
-        case emailDestination : Destination.Email => Some( emailDestination )
+        case emailDestination : Destination.Email => ()
         case _ =>
           throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
 
@@ -310,7 +371,6 @@ object SubscriptionManager extends SelfLogging:
       untemplate( statusChangeInfo ).text
 
     override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
-    override def displayFull( destination : D ) : String = destination.toAddress.rendered
 
   end Email
 
@@ -319,10 +379,11 @@ object SubscriptionManager extends SelfLogging:
   object Tag:
     def forJsonVal( jsonVal : String ) : Option[Tag] = Tag.values.find( _.jsonVal == jsonVal )
   enum Tag(val jsonVal : String):
-    case Email_Each   extends Tag("Email.Each")
-    case Email_Daily  extends Tag("Email.Daily")
-    case Email_Weekly extends Tag("Email.Weekly")
-    case Email_Fixed  extends Tag("Email.Fixed")
+    case Email_Each     extends Tag("Email.Each")
+    case Email_Daily    extends Tag("Email.Daily")
+    case Email_Weekly   extends Tag("Email.Weekly")
+    case Email_Fixed    extends Tag("Email.Fixed")
+    case Masto_Announce extends Tag("Mastodon.Announce")
 
   private def toUJsonV1( subscriptionManager : SubscriptionManager ) : ujson.Value =
     def esf( emailsub : Email.Instance ) : ujson.Obj = // "email shared fields"
@@ -342,12 +403,17 @@ object SubscriptionManager extends SelfLogging:
     def edf( daily : Email.Daily ) : ujson.Obj = epbsf( daily )
     def ewf( weekly : Email.Weekly ) : ujson.Obj = epbsf( weekly )
     def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj + ("numItemsPerLetter" -> fixed.numItemsPerLetter) )
+    def maf( announce : Mastodon.Announce ) : ujson.Obj = ujson.Obj( // "mastodon announce fields"
+      "destination" -> writeJs[Destination](announce.destination),
+      "extraParams" -> writeJs( announce.extraParams ) 
+    )
     val (fields, tpe) =
       subscriptionManager match
-        case each   : Email.Each   => (eef(each),   Tag.Email_Each)
-        case daily  : Email.Daily  => (edf(daily),  Tag.Email_Daily)
-        case weekly : Email.Weekly => (ewf(weekly), Tag.Email_Weekly)
-        case fixed  : Email.Fixed  => (eff(fixed),  Tag.Email_Fixed)
+        case each     : Email.Each        => ( eef(each),     Tag.Email_Each     )
+        case daily    : Email.Daily       => ( edf(daily),    Tag.Email_Daily    )
+        case weekly   : Email.Weekly      => ( ewf(weekly),   Tag.Email_Weekly   )
+        case fixed    : Email.Fixed       => ( eff(fixed),    Tag.Email_Fixed    )
+        case announce : Mastodon.Announce => ( maf(announce), Tag.Masto_Announce )
     val headerFields =
        ujson.Obj(
          "version" -> 1,
@@ -400,17 +466,29 @@ object SubscriptionManager extends SelfLogging:
           numItemsPerLetter          = obj("numItemsPerLetter").num.toInt,
           extraParams                = read[Map[String,String]](obj("extraParams"))
         )
+        case Tag.Masto_Announce => Mastodon.Announce(
+          destination = read[Destination](obj("destination")).asInstanceOf[Destination.Mastodon],
+          extraParams = read[Map[String,String]](obj("extraParams"))
+        )
 
   given ReadWriter[SubscriptionManager] = readwriter[ujson.Value].bimap[SubscriptionManager]( toUJsonV1, fromUJsonV1 )
 
 sealed trait SubscriptionManager extends Jsonable:
-  type D <: Destination
+  type D  <: Destination
 
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
   def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
   def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit
+
+  def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams =
+    TemplateParams(
+      defaultComposeTemplateParams(subscribableName, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) ++
+      extend.ComposeTemplateParamCustomizers.get( subscribableName ).fold(Nil)( customizer => customizer( subscribableName, this, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) )
+    )
+
+  def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
 
   /**
     * This method must either:
@@ -463,6 +541,6 @@ sealed trait SubscriptionManager extends Jsonable:
     else
       Left( idestination )
 
-  def displayShort( destination : D ) : String
-  def displayFull( destination : D ) : String
+  def displayShort( destination : D ) : String = destination.shortDesc
+  def displayFull( destination : D ) : String  = destination.fullDesc
 

@@ -5,8 +5,12 @@ import scala.xml.{Elem,Node,NodeSeq,XML}
 import scala.util.{Success,Failure}
 import audiofluidity.rss.util.*
 import com.mchange.conveniences.collection.*
+import com.mchange.conveniences.string.*
 import com.mchange.sc.v1.log.*
 import MLevel.*
+import com.mchange.mailutil.Smtp
+import cats.instances.try_
+import scala.util.control.NonFatal
 
 object ItemContent:
   private lazy given logger : MLogger = MLogger(this)
@@ -22,12 +26,15 @@ object ItemContent:
         case Left( s )     => throw new FeedletterException( s"Could not create single-item RSS: $s" )
         case Right( elem ) => elem
     val normalizedSingleItemRss = stripInsignificantWhitespaceRecursive( singleItemRss, whitespaceSignificant )
-    new ItemContent( normalizedSingleItemRss )
+    new ItemContent( guid, normalizedSingleItemRss )
 
-  def unsafeUnpickle( s : String ) : ItemContent = new ItemContent( XML.loadString(s) )
+  def fromPrenormalizedSingleItemRss( guid : String, prenormalizedSingleItemRssStr : String ) : ItemContent =
+    new ItemContent( guid, XML.loadString(prenormalizedSingleItemRssStr) )
 
-case class ItemContent private ( val rssElem : Elem ):
-  given MLogger = ItemContent.logger
+  final case class Media( url : String, mimeType : Option[String], length : Option[Long], alt : Option[String] )
+
+case class ItemContent private ( val guid : String, val rssElem : Elem ):
+  import ItemContent.{Media,logger}
 
   val itemElem : Elem = (rssElem \ "channel" \ "item").uniqueOr { (ns : NodeSeq, nu : NotUnique) =>
     throw new AssertionError( s"ItemContent should only be initialized with single-item RSS, we found ${nu}." )
@@ -38,6 +45,7 @@ case class ItemContent private ( val rssElem : Elem ):
   lazy val article : Option[String]  = extractContent
   lazy val pubDate : Option[Instant] = extractPubDate
   lazy val link    : Option[String]  = extractLink
+  lazy val media   : Seq[Media]      = extractMedia
 
   def contentHash : Int = this.## // XXX: should I use a better, more guaranteed-stable hash?
 
@@ -66,7 +74,40 @@ case class ItemContent private ( val rssElem : Elem ):
     def straightLink = (itemElem \ "link").headOption
     (guidLink orElse origLink orElse straightLink).map( _.text.trim )
 
-  private def parseAuthorFromAuthorElem( authorElem : Node ) : String = authorElem.text.trim // could do better!
+  private def extractMedia = mediaFromMrssContent ++ mediaFromEnclosure
+
+  private def mediaFromMrssContent =
+    val mediaContentElems = (itemElem \ "content").filter( _.namespace.contains("://search.yahoo.com/mrss") )
+    val maybes =
+      mediaContentElems.map: elem =>
+        val url = (elem \@ "url").toOptionNotBlank
+        val mimeType = (elem \@ "type").toOptionNotBlank
+        val length = (elem \@ "fileSize").toOptionNotBlank.map( _.toLong )
+        val alt = (elem \ "description").headOption.map( _.text.trim )
+        url.map( u => Media( u, mimeType, length, alt ) )
+    maybes.actuals
+
+  private def mediaFromEnclosure =
+    val enclosureElems = (itemElem \ "enclosure")
+    val maybes =
+      enclosureElems.map: elem =>
+        val url = (elem \@ "url").toOptionNotBlank
+        val mimeType = (elem \@ "type").toOptionNotBlank
+        val length = (elem \@ "length").toOptionNotBlank.map( _.toLong )
+        url.map( u => Media( u, mimeType, length, None ) )
+    maybes.actuals
+
+  private def parseAuthorFromAuthorElem( authorElem : Node ) : String =
+    def fromAddress( a : Smtp.Address ) : String = a.displayName.getOrElse( a.email )
+    val text = authorElem.text.trim
+    try
+      val addresses = Smtp.Address.parseCommaSeparated(text)
+      val names = addresses.map( fromAddress )
+      names.size match
+        case 1 => names.head
+        case n => (names.init :+ "and ${names.last}").mkString(", ")
+    catch
+      case NonFatal( t ) => text
 
   private def lenientRdfContentNamespace(node : Node ) : Boolean =
     node.namespace.contains("://purl.org/rss/1.0/modules/content")

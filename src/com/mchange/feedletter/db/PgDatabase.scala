@@ -128,6 +128,9 @@ object PgDatabase extends Migratory, SelfLogging:
           PgSchema.V1.Table.MailableTemplate.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
+          PgSchema.V1.Table.MastoPostable.create( stmt )
+          PgSchema.V1.Table.MastoPostable.Sequence.MastoPostableSeq.create( stmt )
+          PgSchema.V1.Table.MastoPostableMedia.create( stmt )
         updateMetadataKeys(
           conn,
           (MetadataKey.SchemaVersion, "1"),
@@ -609,3 +612,11 @@ object PgDatabase extends Migratory, SelfLogging:
       INFO.log( s"Expired ${subscriptionsExpired} unconfirmed subscriptions at least ${confirmHours} hours old." )
 
   def expireUnconfirmed( ds : DataSource ) : Task[Unit] = withConnectionTransactional( ds )( expireUnconfirmed )
+
+  def queueForMastoPost( conn : Connection, fullContent : String, mastoInstanceUrl : MastoInstanceUrl, mastoName : MastoName, media : Seq[ItemContent.Media] ) =
+    val id = LatestSchema.Table.MastoPostable.Sequence.MastoPostableSeq.selectNext( conn )
+    LatestSchema.Table.MastoPostable.insert( conn, id, fullContent, mastoInstanceUrl, mastoName, 0 )
+    media.foreach( m => LatestSchema.Table.MastoPostableMedia.insert( conn, id, m ) )
+
+  def mastoPost( conn : Connection, mastoPostable : MastoPostable ) = ???
+    

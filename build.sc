@@ -33,7 +33,7 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.3-SNAPSHOT",
     ivy"com.mchange::cryptoutil:0.0.2",
-    ivy"com.mchange::conveniences:0.0.2",
+    ivy"com.mchange::conveniences:0.0.3-SNAPSHOT",
     ivy"com.lihaoyi::os-lib:0.9.1",
     ivy"com.lihaoyi::requests:0.8.0",
     ivy"com.lihaoyi::upickle:3.1.3",

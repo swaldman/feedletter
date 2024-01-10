@@ -1,8 +1,9 @@
 package com.mchange.feedletter.extend
 
-import com.mchange.feedletter.{SubjectCustomizer,SubscribableName,TemplateParamCustomizer}
+import com.mchange.feedletter.{MastoAnnouncementCustomizer, SubjectCustomizer,SubscribableName,TemplateParamCustomizer}
 
-// keys are subscription type names
+val MastoAnnouncementCustomizers = Map[SubscribableName,MastoAnnouncementCustomizer](
+)
 val SubjectCustomizers = Map[SubscribableName,SubjectCustomizer](
 )
 val ComposeTemplateParamCustomizers = Map[SubscribableName,TemplateParamCustomizer](

@@ -57,14 +57,9 @@ def styleComposeMultipleUntemplate(
   val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
-    subscriptionManager match
-      case templating : SubscriptionManager.TemplatingCompose =>
-        val d : templating.D = destination.asInstanceOf[templating.D] // how can I let the compiler know templating == subscriptionManager?
-        val sid = SubscriptionId(0)
-        val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, sid, DummyApiLinkGenerator.removeGetLink(sid) )
-        templateParams.fill( untemplateOutput )
-   // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
-   //   untemplateOutput 
+    val sid = SubscriptionId(0)
+    val templateParams = subscriptionManager.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
+    templateParams.fill( untemplateOutput )
   serveOneHtmlPage( composed, interface, port )
 
 def styleComposeSingleUntemplate(
@@ -84,14 +79,9 @@ def styleComposeSingleUntemplate(
   val untemplate = AllUntemplates.findComposeUntemplateSingle( untemplateName )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
-    subscriptionManager match
-      case templating : SubscriptionManager.TemplatingCompose =>
-        val d : templating.D = destination.asInstanceOf[templating.D] // how can I let the compiler know templating == subscriptionManager?
-        val sid = SubscriptionId(0)
-        val templateParams = templating.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, d, sid, DummyApiLinkGenerator.removeGetLink(sid) )
-        templateParams.fill( untemplateOutput )
-   // case _ => // this case will become relavant when some non-templating SubscriptionManagers are defined
-   //   untemplateOutput 
+    val sid = SubscriptionId(0)
+    val templateParams = subscriptionManager.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
+    templateParams.fill( untemplateOutput )
   serveOneHtmlPage( composed, interface, port )
 
 def styleConfirmUntemplate(

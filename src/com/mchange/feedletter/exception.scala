@@ -6,6 +6,7 @@ class UnsupportedFeedType( msg : String, cause : Throwable = null ) extends Feed
 class UntemplateNotFound( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class InvalidSubscriptionManager( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class InvalidDestination( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+class ExternalApiForibidden( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class AmbiguousDestination( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class NoExampleItems( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class WrongContentsMultiplicity( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )

@@ -1,5 +1,7 @@
 package com.mchange.feedletter
 
+import scala.annotation.targetName
+
 object FeedId:
   def apply( i : Int ) : FeedId = i
 opaque type FeedId = Int
@@ -36,4 +38,17 @@ object DestinationJson:
   def apply( s : String ) : DestinationJson = s
 opaque type DestinationJson <: Json = String
 
+object MastoName:
+  def apply( s : String ) : MastoName = s
+opaque type MastoName = String
 
+object MastoInstanceUrl:
+  def apply( s : String ) : MastoInstanceUrl = s
+opaque type MastoInstanceUrl = String
+
+object MastoPostableId:
+  def apply( l : Long ) : MastoPostableId = l
+opaque type MastoPostableId = Long
+
+
+extension ( mpid : MastoPostableId ) @targetName("mastoPostableIdToLong") def toLong : Long = mpid

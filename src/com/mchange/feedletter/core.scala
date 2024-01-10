@@ -47,8 +47,9 @@ enum SubscriptionStatusChange:
 enum Flag:
   case MustReloadTapirApi
 
-type SubjectCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
-type TemplateParamCustomizer = ( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
+type MastoAnnouncementCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) => Option[String]
+type SubjectCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
+type TemplateParamCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
 
 val LineSep = System.lineSeparator()
 
@@ -78,7 +79,7 @@ case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
   def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
 
-
+final case class MastoPostable( id : MastoPostableId, finalContent : String, instanceUrl : MastoInstanceUrl, name : MastoName, retries : Int )
 
 
 
