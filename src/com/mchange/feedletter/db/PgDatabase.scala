@@ -616,7 +616,8 @@ object PgDatabase extends Migratory, SelfLogging:
   def queueForMastoPost( conn : Connection, fullContent : String, mastoInstanceUrl : MastoInstanceUrl, mastoName : MastoName, media : Seq[ItemContent.Media] ) =
     val id = LatestSchema.Table.MastoPostable.Sequence.MastoPostableSeq.selectNext( conn )
     LatestSchema.Table.MastoPostable.insert( conn, id, fullContent, mastoInstanceUrl, mastoName, 0 )
-    media.foreach( m => LatestSchema.Table.MastoPostableMedia.insert( conn, id, m ) )
+    (0 until media.size).foreach: i =>
+      LatestSchema.Table.MastoPostableMedia.insert( conn, id, i, media(i) )
 
-  def mastoPost( conn : Connection, mastoPostable : MastoPostable ) = ???
-    
+
+

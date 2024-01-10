@@ -710,10 +710,10 @@ object PgSchema:
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setLong(1, id.toLong)
               ps.executeUpdate()
-          def selectById( conn : Connection ) : Set[MastoPostable] =
+          def selectByIdAddMedia( conn : Connection, media : Seq[ItemContent.Media] ) : Set[MastoPostable] =
             Using.resource( conn.prepareStatement( SelectById ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
-                toSet( rs )( rs => com.mchange.feedletter.MastoPostable( MastoPostableId( rs.getLong(1) ), rs.getString(2), MastoInstanceUrl( rs.getString(3) ), MastoName( rs.getString(4) ), rs.getInt(5) ) )
+                toSet( rs )( rs => com.mchange.feedletter.MastoPostable( MastoPostableId( rs.getLong(1) ), rs.getString(2), MastoInstanceUrl( rs.getString(3) ), MastoName( rs.getString(4) ), rs.getInt(5), media ) )
           object Sequence:
             object MastoPostableSeq extends Creatable:
               protected val Create = "CREATE SEQUENCE masto_postable_seq AS BIGINT"
@@ -726,36 +726,42 @@ object PgSchema:
           protected val Create =
             """|CREATE TABLE masto_postable_media (
                |  masto_postable_id  BIGINT,
+               |  position           INT,
                |  media_url          VARCHAR(1024) NOT NULL,
                |  mime_type          VARCHAR(256),
                |  size               BIGINT,
                |  alt                TEXT,
-               |  PRIMARY KEY(masto_postable_id),
+               |  PRIMARY KEY(masto_postable_id, position),
                |  FOREIGN KEY(masto_postable_id) REFERENCES masto_postable(seqnum)
                |)""".stripMargin
           private val Insert =
-            """|INSERT INTO masto_postable_media(masto_postable_id,media_url,mime_type,size,alt)
-               |VALUES( ?, ?, ?, ?, ? )""".stripMargin
+            """|INSERT INTO masto_postable_media(masto_postable_id,position,media_url,mime_type,size,alt)
+               |VALUES( ?, ?, ?, ?, ?, ? )""".stripMargin
           private val SelectAllForId =
             """|SELECT media_url, mime_type, size, alt
                |FROM masto_postable_media
-               |WHERE masto_postable_id = ?""".stripMargin
+               |WHERE masto_postable_id = ?
+               |ORDER BY position""".stripMargin
           private val DeleteById =
             """|DELETE FROM masto_postable_media
                |WHERE masto_postable_id = ?""".stripMargin
-          def insert( conn : Connection, id : MastoPostableId, media : ItemContent.Media ) =
+          def insert( conn : Connection, id : MastoPostableId, position : Int, media : ItemContent.Media ) =
             Using.resource( conn.prepareStatement(Insert) ): ps =>
               ps.setLong            (1, id.toLong )
-              ps.setString          (2, media.url )
-              setStringOptional( ps, 3, Types.VARCHAR, media.mimeType )
-              setLongOptional  ( ps, 4, Types.BIGINT, media.length )
-              setStringOptional( ps, 5, Types.CLOB, media.alt )
+              ps.setInt             (2, position )
+              ps.setString          (3, media.url )
+              setStringOptional( ps, 4, Types.VARCHAR, media.mimeType )
+              setLongOptional  ( ps, 5, Types.BIGINT, media.length )
+              setStringOptional( ps, 6, Types.CLOB, media.alt )
               ps.executeUpdate()
-          def selectAllForId( conn : Connection, id : MastoPostableId ) : Set[ItemContent.Media] =
+          def selectAllForId( conn : Connection, id : MastoPostableId ) : Seq[ItemContent.Media] =
             Using.resource( conn.prepareStatement(SelectAllForId) ): ps =>
               ps.setLong(1, id.toLong)
               Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => ItemContent.Media( rs.getString(1), Option( rs.getString(2) ), Option( rs.getLong(3) ), Option( rs.getString(4) ) ) )
+                val builder = Seq.newBuilder[ItemContent.Media]
+                while rs.next do
+                  builder += ItemContent.Media( rs.getString(1), Option( rs.getString(2) ), Option( rs.getLong(3) ), Option( rs.getString(4) ) )
+                builder.result  
           def deleteById( conn : Connection, id : MastoPostableId ) =
             Using.resource( conn.prepareStatement( DeleteById ) ): ps =>
               ps.setLong(1, id.toLong )

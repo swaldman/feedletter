@@ -13,5 +13,6 @@ class WrongContentsMultiplicity( msg : String, cause : Throwable = null ) extend
 class EditorNotDefined( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class InvalidEditFormat( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class NoSecretSalt( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+class NoAccessToken( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class UnsuitableUntemplate( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class DuplicateKey( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
