@@ -155,15 +155,15 @@ object PgDatabase extends Migratory, SelfLogging:
 
   private def insertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.insert(conn, cfgkey, value) )
-    setMustReloadTapirApi(conn)
+    setMustReloadDaemon(conn)
 
   private def updateConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.update(conn, cfgkey, value) )
-    setMustReloadTapirApi(conn)
+    setMustReloadDaemon(conn)
 
   private def upsertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.upsert(conn, cfgkey, value) )
-    setMustReloadTapirApi(conn)
+    setMustReloadDaemon(conn)
 
   private def sort( tups : Set[Tuple2[ConfigKey,String]] ) : immutable.SortedSet[Tuple2[ConfigKey,String]] =
     immutable.SortedSet.from( tups )( using Ordering.by( tup => (tup(0).toString().toUpperCase, tup(1) ) ) )
@@ -598,12 +598,12 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscribable.selectUninterpretedManagerJson( conn, subscribableName )
 
-  def checkMustReloadTapirApi( conn : Connection ) : Boolean = LatestSchema.Table.Flags.isSet( conn, Flag.MustReloadTapirApi )
-  def clearMustReloadTapirApi( conn : Connection ) : Unit    = LatestSchema.Table.Flags.unset( conn, Flag.MustReloadTapirApi )
-  def setMustReloadTapirApi  ( conn : Connection ) : Unit    = LatestSchema.Table.Flags.set  ( conn, Flag.MustReloadTapirApi )
+  def checkMustReloadDaemon( conn : Connection ) : Boolean = LatestSchema.Table.Flags.isSet( conn, Flag.MustReloadDaemon )
+  def clearMustReloadDaemon( conn : Connection ) : Unit    = LatestSchema.Table.Flags.unset( conn, Flag.MustReloadDaemon )
+  def setMustReloadDaemon  ( conn : Connection ) : Unit    = LatestSchema.Table.Flags.set  ( conn, Flag.MustReloadDaemon )
 
-  def checkMustReloadTapirApi( ds : DataSource ) : Task[Boolean] = withConnectionTransactional(ds)( checkMustReloadTapirApi )
-  def clearMustReloadTapirApi( ds : DataSource ) : Task[Unit]    = withConnectionTransactional(ds)( clearMustReloadTapirApi )
+  def checkMustReloadDaemon( ds : DataSource ) : Task[Boolean] = withConnectionTransactional(ds)( checkMustReloadDaemon )
+  def clearMustReloadDaemon( ds : DataSource ) : Task[Unit]    = withConnectionTransactional(ds)( clearMustReloadDaemon )
 
   def expireUnconfirmed( conn : Connection ) : Unit =
     val confirmHours = math.max(Config.confirmHours( conn ), 0)

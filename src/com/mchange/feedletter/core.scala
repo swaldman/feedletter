@@ -46,7 +46,7 @@ enum SubscriptionStatusChange:
   case Created, Confirmed, Removed
 
 enum Flag:
-  case MustReloadTapirApi
+  case MustReloadDaemon
 
 type MastoAnnouncementCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) => Option[String]
 type SubjectCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String

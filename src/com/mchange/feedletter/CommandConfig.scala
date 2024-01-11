@@ -263,36 +263,12 @@ object CommandConfig extends SelfLogging:
       end zcommand
   end Db
   case object Daemon extends CommandConfig:
-      val ReloadCheckPeriod = 30.seconds // XXX: hard-coded for now
-      val RetrySchedule = Schedule.exponential( 10.seconds, 1.25f ) || Schedule.fixed( 1.minute ) // XXX: hard-coded for now
       override def zcommand : ZCommand =
-        def mustReloadCheck(ds : DataSource) =
-          for
-            _          <- ZIO.sleep(ReloadCheckPeriod)
-            mustReload <- PgDatabase.checkMustReloadTapirApi( ds )
-          yield
-            mustReload
-        val singleLoad =
-          for
-            as         <- ZIO.service[AppSetup]
-            ds         <- ZIO.service[DataSource]
-            _          <- PgDatabase.clearMustReloadTapirApi(ds)
-            tapirApi   <- com.mchange.feedletter.Daemon.tapirApi(ds,as)
-            _          <- INFO.zlog( s"Spawning daemon fibers." )
-            fuac       <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds, tapirApi ).fork
-            fmngid     <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds, as.smtpContext ).fork
-            fch        <- com.mchange.feedletter.Daemon.cyclingRetryingExpireUnconfirmedSubscriptions( ds ).fork
-            fwd        <- com.mchange.feedletter.Daemon.webDaemon( ds, as, tapirApi ).fork
-            _          <- ZIO.unit.schedule( Schedule.recurUntilZIO( _ =>  mustReloadCheck(ds).orDie ) ) // NOTE: should an error or defect occur, the fibers created are automatically interrupted
-            _          <- INFO.zlog( s"Flag ${Flag.MustReloadTapirApi} found. Shutting down daemon and restarting." )
-            _          <- fuac.interrupt
-            _          <- fmngid.interrupt
-            _          <- fch.interrupt
-            _          <- fwd.interrupt
-            _          <- DEBUG.zlog("All daemon fibers interrupted.")
-          yield ()
-        singleLoad.resurrect.retry( RetrySchedule ) // if we have database problems, keep trying to reconnect
-          .schedule( Schedule.forever )             // a successful completion signals a reload request. so we restart
+        for
+          as <- ZIO.service[AppSetup]
+          ds <- ZIO.service[DataSource]
+          _  <- com.mchange.feedletter.Daemon.startup( ds, as )
+        yield ()  
       end zcommand
   object Style:
     def untemplateName( overrideUntemplateName : Option[String], sman : SubscriptionManager ) : String =
