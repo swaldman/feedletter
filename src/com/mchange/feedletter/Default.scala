@@ -16,6 +16,7 @@ object Default:
     val MailBatchSize         : Int         = 100
     val MailBatchDelaySeconds : Int         = 10 * 60 // 10 mins
     val MailMaxRetries        : Int         = 5
+    val MastodonMaxRetries    : Int         = 10
     val WebDaemonPort         : Int         = 8024
     val WebDaemonInterface    : String      = "127.0.0.1" // use IPv4 or IPv6, anything InetAddress.getByName(...) can interpret
     val WebApiProtocol        : String      = "http"

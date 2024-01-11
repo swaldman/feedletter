@@ -308,7 +308,8 @@ object CommandConfig extends SelfLogging:
       destination            : Option[Destination],
       withinTypeId           : Option[String],
       interface              : String,
-      port                   : Int ) extends CommandConfig:
+      port                   : Int
+    ) extends CommandConfig:
       def digest( feedUrl : FeedUrl ) : FeedDigest =
         val digest = FeedDigest( feedUrl )
         if digest.isEmpty then

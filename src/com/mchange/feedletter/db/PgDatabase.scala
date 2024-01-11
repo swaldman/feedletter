@@ -25,6 +25,7 @@ import com.mchange.cryptoutil.{*, given}
 import com.mchange.feedletter.BuildInfo
 import com.mchange.feedletter.api.ApiLinkGenerator
 import com.mchange.feedletter.Main.Admin.subscribe
+import cats.instances.try_
 
 object PgDatabase extends Migratory, SelfLogging:
   val LatestSchema = PgSchema.V1
@@ -428,6 +429,7 @@ object PgDatabase extends Migratory, SelfLogging:
     def timeZone( conn : Connection ) : ZoneId = fetchValue( conn, ConfigKey.TimeZone ).map( str => ZoneId.of(str) ).getOrElse( ZoneId.systemDefault() )
     def mailBatchDelaySeconds( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailBatchDelaySeconds ).map( _.toInt ).getOrElse( Default.Config.MailBatchDelaySeconds )
     def mailMaxRetries( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailMaxRetries ).map( _.toInt ).getOrElse( Default.Config.MailMaxRetries )
+    def mastodonMaxRetries( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MastodonMaxRetries ).map( _.toInt ).getOrElse( Default.Config.MastodonMaxRetries )
     def mailBatchSize( conn : Connection ) : Int = fetchValue( conn, ConfigKey.MailBatchSize ).map( _.toInt ).getOrElse( Default.Config.MailBatchSize )
     def webDaemonPort( conn : Connection ) : Int = fetchValue( conn, ConfigKey.WebDaemonPort ).map( _.toInt ).getOrElse( Default.Config.WebDaemonPort )
     def webDaemonInterface( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebDaemonInterface ).getOrElse( Default.Config.WebDaemonInterface )
@@ -619,5 +621,22 @@ object PgDatabase extends Migratory, SelfLogging:
     (0 until media.size).foreach: i =>
       LatestSchema.Table.MastoPostableMedia.insert( conn, id, i, media(i) )
 
+  def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
+    val retries = Config.mastodonMaxRetries( conn )
+    LatestSchema.Table.MastoPostable.foreach( conn ): mastoPostable =>
+      attemptMastoPost( conn, appSetup, retries, mastoPostable )
 
+  def attemptMastoPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, mastoPostable : MastoPostable ) : Boolean =
+    LatestSchema.Table.MastoPostable.delete(conn, mastoPostable.id)
+    try
+      mastoPost( appSetup, mastoPostable )
+      INFO.log( s"Notification posted to Mastodon destination ${mastoPostable.instanceUrl}." )
+      true
+    catch
+      case NonFatal(t) =>
+        val lastRetryMessage = if mastoPostable.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
+        WARNING.log( s"Failed attempt to post to Mastodon destination '${mastoPostable.instanceUrl}', retried = ${mastoPostable.retried} ${lastRetryMessage}", t )
+        val newId = LatestSchema.Table.MastoPostable.Sequence.MastoPostableSeq.selectNext( conn )
+        LatestSchema.Table.MastoPostable.insert( conn, newId, mastoPostable.finalContent, mastoPostable.instanceUrl, mastoPostable.name, mastoPostable.retried + 1 )
+        false
 

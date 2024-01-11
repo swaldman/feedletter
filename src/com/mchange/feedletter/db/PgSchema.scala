@@ -7,6 +7,7 @@ import scala.util.Using
 import com.mchange.cryptoutil.{Hash, given}
 
 import com.mchange.feedletter.*
+import com.mchange.feedletter.Destination.Key
 
 object PgSchema:
   trait Creatable:
@@ -686,7 +687,7 @@ object PgSchema:
                |  final_content   TEXT NOT NULL,
                |  instance_url    VARCHAR(1024) NOT NULL,
                |  name            VARCHAR(256)  NOT NULL,
-               |  retried         INTEGER NOT NULL,
+               |  retried         INTEGER       NOT NULL,
                |  PRIMARY KEY(seqnum),
                |)""".stripMargin
           private val Insert =
@@ -696,6 +697,10 @@ object PgSchema:
             """|DELETE FROM masto_postable
                |WHERE seqnum = ?""".stripMargin
           private val SelectById =
+            """|SELECT final_content, sintance_url, name, retried
+               |FROM masto_postable
+               |WHERE seqnum = ?""".stripMargin
+          private val SelectAll =
             """|SELECT seqnum, final_content, sintance_url, name, retried
                |FROM masto_postable""".stripMargin
           def insert( conn : Connection, id : MastoPostableId, finalContent : String, mastoInstanceUrl : MastoInstanceUrl, mastoName : MastoName, retried : Int ) =
@@ -710,10 +715,21 @@ object PgSchema:
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setLong(1, id.toLong)
               ps.executeUpdate()
-          def selectByIdAddMedia( conn : Connection, media : Seq[ItemContent.Media] ) : Set[MastoPostable] =
+          def selectByIdAndMedia( conn : Connection, id : MastoPostableId, media : Seq[ItemContent.Media] ) : Set[MastoPostable] =
             Using.resource( conn.prepareStatement( SelectById ) ): ps =>
+              ps.setLong(1, id.toLong)
               Using.resource( ps.executeQuery() ): rs =>
-                toSet( rs )( rs => com.mchange.feedletter.MastoPostable( MastoPostableId( rs.getLong(1) ), rs.getString(2), MastoInstanceUrl( rs.getString(3) ), MastoName( rs.getString(4) ), rs.getInt(5), media ) )
+                toSet( rs )( rs => com.mchange.feedletter.MastoPostable( MastoPostableId( id.toLong ), rs.getString(1), MastoInstanceUrl( rs.getString(2) ), MastoName( rs.getString(3) ), rs.getInt(4), media ) )
+          def foreach( conn : Connection )( action : MastoPostable => Unit ) =
+            Using.resource( conn.prepareStatement(SelectAll) ): ps =>
+              Using.resource( ps.executeQuery() ): rs =>
+                val id           = MastoPostableId( rs.getLong(1) )
+                val finalContent = rs.getString(2)
+                val instanceUrl  = MastoInstanceUrl( rs.getString(3) )
+                val name         = MastoName( rs.getString(4) )
+                val retried      = rs.getInt(5)
+                val media        = MastoPostableMedia.selectAllForId(conn, id)
+                action( com.mchange.feedletter.MastoPostable( id, finalContent, instanceUrl, name, retried, media ) )
           object Sequence:
             object MastoPostableSeq extends Creatable:
               protected val Create = "CREATE SEQUENCE masto_postable_seq AS BIGINT"

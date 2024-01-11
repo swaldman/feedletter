@@ -13,7 +13,7 @@ private def filenameForMimeType( mimeType : String ) : String =
     case ...
 
   val base = scala.util.Random.nextLong()
-*/  
+*/
 
 def postMedia( accessToken : String, instanceUrl : String, media : ItemContent.Media ) : String =
   val mediaEndpoint = pathJoin( instanceUrl, "api/v2/media" )
@@ -39,12 +39,12 @@ def postMedia( accessToken : String, instanceUrl : String, media : ItemContent.M
   val jsonOut = ujson.read(response.text())
   jsonOut.obj("id").str // the id comes back as a JSON *String*, not a number
 
-def mastoPost( as : AppSetup, destination : Destination.Mastodon, mastoPostable : MastoPostable ) =
-  val accessTokenKey = s"feedletter.masto.access.token.${destination.name}"
+def mastoPost( as : AppSetup, mastoPostable : MastoPostable ) =
+  val accessTokenKey = s"feedletter.masto.access.token.${mastoPostable.name}"
   val accessToken = as.secrets.get( accessTokenKey ).getOrElse:
     throw new NoAccessToken( s"No access token found in application secrets under key '${accessTokenKey}'." )
-  val mediaIds = mastoPostable.media.map( media => postMedia(accessToken, destination.instanceUrl, media) )
-  val statusEndpoint = pathJoin( destination.instanceUrl, "api/v1/statuses/" )
+  val mediaIds = mastoPostable.media.map( media => postMedia(accessToken, mastoPostable.instanceUrl.toString(), media) )
+  val statusEndpoint = pathJoin( mastoPostable.instanceUrl.toString(), "api/v1/statuses/" )
   val headers = Map (
     "Authorization" -> s"Bearer ${accessToken}",
     "Content-Type"  ->  "application/json",

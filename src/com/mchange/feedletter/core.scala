@@ -27,6 +27,7 @@ enum ConfigKey:
   case MailBatchSize
   case MailBatchDelaySeconds
   case MailMaxRetries
+  case MastodonMaxRetries
   case TimeZone
   case WebDaemonPort
   case WebDaemonInterface
@@ -79,7 +80,7 @@ case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
   def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
 
-final case class MastoPostable( id : MastoPostableId, finalContent : String, instanceUrl : MastoInstanceUrl, name : MastoName, retries : Int, media : Seq[ItemContent.Media] )
+final case class MastoPostable( id : MastoPostableId, finalContent : String, instanceUrl : MastoInstanceUrl, name : MastoName, retried : Int, media : Seq[ItemContent.Media] )
 
 
 
