@@ -56,6 +56,6 @@ def mastoPost( as : AppSetup, mastoPostable : MastoPostable ) =
     )
     ujson.write(obj)
   requests.post( statusEndpoint, data=jsonData, headers=headers )
-  
-    
+
+
 

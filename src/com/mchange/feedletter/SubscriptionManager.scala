@@ -57,7 +57,7 @@ object SubscriptionManager extends SelfLogging:
           case (Some(title), Some(author), Some(link)) => Some( s"[New Post] ${title}, by ${author} ${link}" )
           case (Some(title), None,         Some(link)) => Some( s"[New Post] ${title} ${link}" )
           case (None,        Some(author), Some(link)) => Some( s"[New Post] (untitled), by ${author} ${link}" )
-          case (None,        None,         Some(link)) => Some( s"[New Post] ${link}" )
+          case (None,        None,         Some(link)) => Some( s"[New Post] (untitled) ${link}" )
           case (_,           _,            None      ) =>
             WARNING.log( s"No link found. withinTypeId: ${withinTypeId}" ) 
             None
