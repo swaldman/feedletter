@@ -609,11 +609,6 @@ object PgDatabase extends Migratory, SelfLogging:
     (0 until media.size).foreach: i =>
       LatestSchema.Table.MastoPostableMedia.insert( conn, id, i, media(i) )
 
-  def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
-    val retries = Config.mastodonMaxRetries( conn )
-    LatestSchema.Table.MastoPostable.foreach( conn ): mastoPostable =>
-      attemptMastoPost( conn, appSetup, retries, mastoPostable )
-
   def attemptMastoPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, mastoPostable : MastoPostable ) : Boolean =
     LatestSchema.Table.MastoPostable.delete(conn, mastoPostable.id)
     try
@@ -627,4 +622,12 @@ object PgDatabase extends Migratory, SelfLogging:
         val newId = LatestSchema.Table.MastoPostable.Sequence.MastoPostableSeq.selectNext( conn )
         LatestSchema.Table.MastoPostable.insert( conn, newId, mastoPostable.finalContent, mastoPostable.instanceUrl, mastoPostable.name, mastoPostable.retried + 1 )
         false
+
+  def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
+    val retries = Config.mastodonMaxRetries( conn )
+    LatestSchema.Table.MastoPostable.foreach( conn ): mastoPostable =>
+      attemptMastoPost( conn, appSetup, retries, mastoPostable )
+
+  def notifyAllMastoPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
+    withConnectionTransactional( ds )( conn => notifyAllMastoPosts( conn, appSetup ) )
 
