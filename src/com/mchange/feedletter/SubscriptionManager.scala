@@ -476,6 +476,8 @@ object SubscriptionManager extends SelfLogging:
 sealed trait SubscriptionManager extends Jsonable:
   type D  <: Destination
 
+  def extraParams : Map[String,String]
+
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
   def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
