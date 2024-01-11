@@ -54,10 +54,10 @@ object SubscriptionManager extends SelfLogging:
       def defaultFormatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) : Option[String] = // ADD EXTRA-PARAMS AND GUIDs
         //assert( contents.size == 1, s"Mastodon.Announce expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         ( content.title, content.author, content.link) match
-          case (Some(title), Some(author), Some(link)) => Some( s"[New Post] ${title}, by ${author} ${link}" )
-          case (Some(title), None,         Some(link)) => Some( s"[New Post] ${title} ${link}" )
-          case (None,        Some(author), Some(link)) => Some( s"[New Post] (untitled), by ${author} ${link}" )
-          case (None,        None,         Some(link)) => Some( s"[New Post] (untitled) ${link}" )
+          case (Some(title), Some(author), Some(link)) => Some( s"[${subscribableName}] New Post: ${title}, by ${author} ${link}" )
+          case (Some(title), None,         Some(link)) => Some( s"[${subscribableName}] New Post: ${title} ${link}" )
+          case (None,        Some(author), Some(link)) => Some( s"[${subscribableName}] New Untitled Post, by ${author} ${link}" )
+          case (None,        None,         Some(link)) => Some( s"[${subscribableName}] New Untitled Post at ${link}" )
           case (_,           _,            None      ) =>
             WARNING.log( s"No link found. withinTypeId: ${withinTypeId}" ) 
             None
