@@ -610,6 +610,9 @@ object PgDatabase extends Migratory, SelfLogging:
       LatestSchema.Table.MastoPostableMedia.insert( conn, id, i, media(i) )
 
   def attemptMastoPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, mastoPostable : MastoPostable ) : Boolean =
+    val media = mastoPostable.media
+    if media.nonEmpty then
+      LatestSchema.Table.MastoPostableMedia.deleteById(conn, mastoPostable.id)
     LatestSchema.Table.MastoPostable.delete(conn, mastoPostable.id)
     try
       mastoPost( appSetup, mastoPostable )
@@ -621,6 +624,8 @@ object PgDatabase extends Migratory, SelfLogging:
         WARNING.log( s"Failed attempt to post to Mastodon destination '${mastoPostable.instanceUrl}', retried = ${mastoPostable.retried} ${lastRetryMessage}", t )
         val newId = LatestSchema.Table.MastoPostable.Sequence.MastoPostableSeq.selectNext( conn )
         LatestSchema.Table.MastoPostable.insert( conn, newId, mastoPostable.finalContent, mastoPostable.instanceUrl, mastoPostable.name, mastoPostable.retried + 1 )
+        (0 until media.size).foreach: i =>
+          LatestSchema.Table.MastoPostableMedia.insert( conn, mastoPostable.id, i, media(i) )
         false
 
   def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
