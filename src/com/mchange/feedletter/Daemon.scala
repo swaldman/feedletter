@@ -19,7 +19,9 @@ object Daemon extends SelfLogging:
 
   private object CyclingSchedule:
     val updateAssignComplete = Schedule.spaced( 1.minute ).jittered(0.0, 0.5) // XXX: hard-coded for now
-    def mailNextGroup( mailBatchDelaySeconds : Int ) = Schedule.spaced( mailBatchDelaySeconds.second )
+    def mailNextGroup( mailBatchDelaySeconds : Int ) =
+      val initDelay = scala.util.Random.nextInt(mailBatchDelaySeconds).seconds
+      Schedule.delayed( Schedule.once.map( _ => initDelay ) ) andThen Schedule.spaced( mailBatchDelaySeconds.seconds )
     val checkReloadWebDaemon = Schedule.spaced( 30.seconds )
     val expireUnconfirmedSubscriptions = Schedule.fixed( 1.hours )
 
