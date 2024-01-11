@@ -271,12 +271,12 @@ object CommandConfig extends SelfLogging:
         yield ()  
       end zcommand
   object Style:
-    def untemplateName( overrideUntemplateName : Option[String], sman : SubscriptionManager ) : String =
+    def untemplateName( overrideUntemplateName : Option[String], sman : SubscriptionManager, subscribableName : SubscribableName ) : String =
       overrideUntemplateName.getOrElse:
         sman match
           case stu : SubscriptionManager.UntemplatedStatusChange => stu.statusChangeUntemplateName
-          //case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-          //  throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
+          case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+            throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
     case class ComposeUntemplateSingle(
       subscribableName       : SubscribableName,
       overrideUntemplateName : Option[String],
@@ -309,7 +309,7 @@ object CommandConfig extends SelfLogging:
           sman     =  pair(1)
           dig      =  digest( fu )
           g        =  guid( dig )
-          un       = untemplateName(overrideUntemplateName, sman)
+          un       = untemplateName(overrideUntemplateName, sman, subscribableName)
           _        <- styleComposeSingleUntemplate(
                         un,
                         subscribableName,
@@ -359,7 +359,7 @@ object CommandConfig extends SelfLogging:
           _        <- if dig.fileOrderedGuids.isEmpty then ZIO.fail( new NoExampleItems( s"Feed currently contains no example items to render: ${fu}" ) ) else ZIO.unit
           gs       =  guids( dig )
           _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.fileOrderedGuids.size}" ) ) else ZIO.unit
-          un       = untemplateName(overrideUntemplateName, sman)
+          un       = untemplateName(overrideUntemplateName, sman, subscribableName)
           _        <- styleComposeMultipleUntemplate(
                         un,
                         subscribableName,
@@ -385,7 +385,7 @@ object CommandConfig extends SelfLogging:
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
           sman     =  pair(1)
-          un       = untemplateName(overrideUntemplateName, sman)
+          un       = untemplateName(overrideUntemplateName, sman, subscribableName)
           ch       <- PgDatabase.confirmHours( ds )
           _        <- styleConfirmUntemplate(
                         un,
@@ -417,7 +417,7 @@ object CommandConfig extends SelfLogging:
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
           sman     =  pair(1)
-          un       = untemplateName(overrideUntemplateName, sman)
+          un       = untemplateName(overrideUntemplateName, sman, subscribableName)
           _        <- styleStatusChangeUntemplate(
                         un,
                         statusChange,
