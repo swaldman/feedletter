@@ -7,22 +7,20 @@ import com.mchange.feedletter.api.ApiLinkGenerator
 import com.mchange.mailutil.*
 
 import MLevel.*
-import com.mchange.feedletter.db.withConnection
 import com.mchange.feedletter.db.withConnectionTransactional
-import com.mchange.feedletter.SubscriptionManager.Tag.forJsonVal
 
 object Daemon extends SelfLogging:
 
   private object RetrySchedule:
     val updateAssignComplete = Schedule.exponential( 10.seconds, 1.25f ) && Schedule.upTo( 5.minutes ) // XXX: hard-coded for now
-    val mailNextGroupIfDue = updateAssignComplete // XXX: for now!
+    val mailNextGroup = updateAssignComplete // XXX: for now!
     val expireUnconfirmedSubscriptions = updateAssignComplete
     val mainDaemon = Schedule.exponential( 10.seconds, 1.25f ) || Schedule.fixed( 1.minute ) // XXX: hard-coded for now, retries forever
 
   private object CyclingSchedule:
-    val updateAssignComplete = Schedule.fixed( 1.minute ).jittered(0.0, 0.5) // XXX: hard-coded for now
-    val mailNextGroupIfDue = updateAssignComplete // XXX: for now!
-    val checkReloadWebDaemon = Schedule.fixed( 30.seconds )
+    val updateAssignComplete = Schedule.spaced( 1.minute ).jittered(0.0, 0.5) // XXX: hard-coded for now
+    def mailNextGroup( mailBatchDelaySeconds : Int ) = Schedule.spaced( mailBatchDelaySeconds.second )
+    val checkReloadWebDaemon = Schedule.spaced( 30.seconds )
     val expireUnconfirmedSubscriptions = Schedule.fixed( 1.hours )
 
   // updateAssign and complete are distinct transactions,
@@ -42,20 +40,20 @@ object Daemon extends SelfLogging:
     retryingUpdateAssignComplete( ds, apiLinkGenerator )
       .catchAll( t => WARNING.zlog( "Retry cycle for updateAssignComplete failed...", t ) )
       .schedule( CyclingSchedule.updateAssignComplete )
-      .map( _ => () )
+      .unit
       .onInterrupt( DEBUG.zlog( "cyclingRetryingUpdateAsignComplete fiber interrupted." ) )
 
-  private def retryingMailNextGroupIfDue( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
-    PgDatabase.mailNextGroupIfDue( ds, smtpContext )
-      .zlogErrorDefect( WARNING, what = "mailNextGroupIfDue" )
-      .retry( RetrySchedule.mailNextGroupIfDue )
+  private def retryingMailNextGroup( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
+    PgDatabase.mailNextGroup( ds, smtpContext )
+      .zlogErrorDefect( WARNING, what = "mailNextGroup" )
+      .retry( RetrySchedule.mailNextGroup )
 
-  private def cyclingRetryingMailNextGroupIfDue( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
-    retryingMailNextGroupIfDue( ds, smtpContext )
+  private def cyclingRetryingMailNextGroup( ds : DataSource, smtpContext : Smtp.Context, mailBatchDelaySeconds : Int ) : Task[Unit] =
+    retryingMailNextGroup( ds, smtpContext )
       .catchAll( t => WARNING.zlog( "Retry cycle for mailNextGroupIfDue failed...", t ) )
-      .schedule( CyclingSchedule.mailNextGroupIfDue )
-      .map( _ => () )
-      .onInterrupt( DEBUG.zlog( "cyclingRetryingMailNextGroupIfDue fiber interrupted." ) )
+      .schedule( CyclingSchedule.mailNextGroup( mailBatchDelaySeconds ) )
+      .unit
+      .onInterrupt( DEBUG.zlog( "cyclingRetryingMailNextGroup fiber interrupted." ) )
 
   private def retryingExpireUnconfirmedSubscriptions( ds : DataSource ) : Task[Unit] =
     PgDatabase.expireUnconfirmed( ds )
@@ -66,7 +64,7 @@ object Daemon extends SelfLogging:
     retryingExpireUnconfirmedSubscriptions( ds )
       .catchAll( t => WARNING.zlog( "Retry cycle for expireUnconfirmedSubscriptions failed...", t ) )
       .schedule( CyclingSchedule.expireUnconfirmedSubscriptions )
-      .map( _ => () )
+      .unit
       .onInterrupt( DEBUG.zlog( "expireUnconfirmedSubscriptions fiber interrupted." ) )
 
   def tapirApi( ds : DataSource, as : AppSetup ) : Task[api.V0.TapirApi] =
@@ -104,20 +102,21 @@ object Daemon extends SelfLogging:
         mustReload
     val singleLoad =
       for
-        _          <- PgDatabase.clearMustReloadDaemon(ds)
-        tapirApi   <- com.mchange.feedletter.Daemon.tapirApi(ds,as)
-        _          <- INFO.zlog( s"Spawning daemon fibers." )
-        fuac       <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds, tapirApi ).fork
-        fmngid     <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroupIfDue( ds, as.smtpContext ).fork
-        fch        <- com.mchange.feedletter.Daemon.cyclingRetryingExpireUnconfirmedSubscriptions( ds ).fork
-        fwd        <- com.mchange.feedletter.Daemon.webDaemon( ds, as, tapirApi ).fork
-        _          <- ZIO.unit.schedule( Schedule.recurUntilZIO( _ =>  mustReloadCheck(ds).orDie ) ) // NOTE: should an error or defect occur, the fibers created are automatically interrupted
-        _          <- INFO.zlog( s"Flag ${Flag.MustReloadDaemon} found. Shutting down daemon and restarting." )
-        _          <- fuac.interrupt
-        _          <- fmngid.interrupt
-        _          <- fch.interrupt
-        _          <- fwd.interrupt
-        _          <- DEBUG.zlog("All daemon fibers interrupted.")
+        _        <- PgDatabase.clearMustReloadDaemon(ds)
+        mbds     <- withConnectionTransactional( ds )( conn => PgDatabase.Config.mailBatchDelaySeconds(conn) )
+        tapirApi <- tapirApi(ds,as)
+        _        <- INFO.zlog( s"Spawning daemon fibers." )
+        fuac     <- com.mchange.feedletter.Daemon.cyclingRetryingUpdateAssignComplete( ds, tapirApi ).fork
+        fmng     <- com.mchange.feedletter.Daemon.cyclingRetryingMailNextGroup( ds, as.smtpContext, mbds ).fork
+        fch      <- com.mchange.feedletter.Daemon.cyclingRetryingExpireUnconfirmedSubscriptions( ds ).fork
+        fwd      <- com.mchange.feedletter.Daemon.webDaemon( ds, as, tapirApi ).fork
+        _        <- ZIO.unit.schedule( Schedule.recurUntilZIO( _ =>  mustReloadCheck(ds).orDie ) ) // NOTE: should an error or defect occur, the fibers created are automatically interrupted
+        _        <- INFO.zlog( s"Flag ${Flag.MustReloadDaemon} found. Shutting down daemon and restarting." )
+        _        <- fuac.interrupt
+        _        <- fmng.interrupt
+        _        <- fch.interrupt
+        _        <- fwd.interrupt
+        _        <- DEBUG.zlog("All daemon fibers interrupted.")
       yield ()
     singleLoad.resurrect.retry( RetrySchedule.mainDaemon ) // if we have database problems, keep trying to reconnect
       .schedule( Schedule.forever ) // a successful completion signals a reload request. so we restart

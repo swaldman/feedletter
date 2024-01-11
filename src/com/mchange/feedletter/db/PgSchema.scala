@@ -83,27 +83,6 @@ object PgSchema:
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => Tuple2( ConfigKey.valueOf( rs.getString(1) ), rs.getString(2) ) )
 
-        object Times extends Creatable:
-          protected val Create = "CREATE TABLE times( key VARCHAR(64) PRIMARY KEY, value TIMESTAMP NOT NULL )"
-          private val Select = "SELECT value FROM times WHERE key = ?"
-          private val Upsert =
-            """|INSERT INTO times(key, value)
-               |VALUES ( ?, ? )
-               |ON CONFLICT(key) DO UPDATE
-               |SET value = ?""".stripMargin
-          def select( conn : Connection, key : TimesKey ) : Option[Instant] =
-            Using.resource( conn.prepareStatement( this.Select ) ): ps =>
-              ps.setString(1, key.toString())
-              Using.resource( ps.executeQuery() ): rs =>
-                zeroOrOneResult("select-times-item", rs)( _.getTimestamp(1).toInstant() )
-          def upsert( conn : Connection, key : TimesKey, value : Instant ) =
-            Using.resource( conn.prepareStatement( this.Upsert ) ): ps =>
-              val tvalue = Timestamp.from(value)
-              ps.setString   (1, key.toString())
-              ps.setTimestamp(2, tvalue )
-              ps.setTimestamp(3, tvalue )
-              ps.executeUpdate()
-
         object Flags extends Creatable:
           protected val Create = "CREATE TABLE flags( flag VARCHAR(64) PRIMARY KEY )"
           private val Select = "SELECT flag FROM flags WHERE flag = ?"

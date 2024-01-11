@@ -226,7 +226,7 @@ object CommandConfig extends SelfLogging:
           as <- ZIO.service[AppSetup]
           ds <- ZIO.service[DataSource]
           _  <- PgDatabase.ensureDb( ds )
-          _  <- PgDatabase.forceMailNextGroup( ds, as.smtpContext )
+          _  <- PgDatabase.mailNextGroup( ds, as.smtpContext )
         yield ()
       end zcommand
   object Db:

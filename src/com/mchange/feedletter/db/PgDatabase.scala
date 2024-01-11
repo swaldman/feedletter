@@ -112,7 +112,6 @@ object PgDatabase extends Migratory, SelfLogging:
       withConnectionTransactional( ds ): conn =>
         Using.resource( conn.createStatement() ): stmt =>
           PgSchema.V1.Table.Config.create( stmt )
-          PgSchema.V1.Table.Times.create( stmt )
           PgSchema.V1.Table.Flags.create( stmt )
           PgSchema.V1.Table.Feed.create( stmt )
           PgSchema.V1.Table.Feed.Sequence.FeedSeq.create( stmt )
@@ -493,20 +492,9 @@ object PgDatabase extends Migratory, SelfLogging:
     val mswts   = pullMailGroup( conn )
     mswts.foreach( mswt => attemptMail( conn, retries, mswt, smtpContext ) )
 
-  def forceMailNextGroup( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
+  def mailNextGroup( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       mailNextGroup( conn, smtpContext )
-
-  def mailNextGroupIfDue( conn : Connection, smtpContext : Smtp.Context ) =
-    val now = Instant.now()
-    val nextMailingTime = LatestSchema.Table.Times.select( conn, TimesKey.MailNextBatch ).getOrElse( now )
-    if now >= nextMailingTime then
-      mailNextGroup( conn, smtpContext )
-      val delay = Config.mailBatchDelaySeconds( conn )
-      LatestSchema.Table.Times.upsert( conn, TimesKey.MailNextBatch, now.plusSeconds( delay ) )
-
-  def mailNextGroupIfDue( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] = withConnectionTransactional( ds ): conn =>
-    mailNextGroupIfDue(conn, smtpContext )
 
   def hasMetadataTable( conn : Connection ) : Boolean =
     Using.resource( conn.getMetaData().getTables(null,null,PgSchema.Unversioned.Table.Metadata.Name,null) )( _.next() )
