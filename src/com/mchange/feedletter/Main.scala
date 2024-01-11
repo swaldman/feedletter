@@ -101,22 +101,23 @@ object Main extends AbstractMain, SelfLogging:
             ( flag, zone ) mapN( (f, z) => ( f, z ) )
           val fixed = Opts.option[Int]("num-items-per-letter",help="E-mail every fixed number of posts.",metavar="num").map( n => (SubscriptionManager.Email.Fixed, Some(n)) : K )
           (each orElse daily orElse weekly orElse fixed).withDefault[K]( (SubscriptionManager.Email.Each, None) : K )
-        val extraParams =
-          def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
-            strings.map{ s =>
-              s.split(":", 2) match
-                case Array(key, value) => Validated.valid(Tuple2(key, value))
-                case _ => Validated.invalidNel(s"Invalid key:value pair: ${s}")
-            }.sequence
-          Opts.options[String]("extra-param", "An extra params your notification renderers might use.", metavar = "key:value")
-            .map( _.toList)
-            .withDefault(Nil)
-            .mapValidated( validate )
-            .map( Map.from )
-        end extraParams
+        val extraParams = CommonOpts.ExtraParams
         ( feedId, name, from, replyTo, composeUntemplateName, confirmUntemplateName, statusChangeUntemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, comun, conun, scun, k, ep ) =>
           CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, comun, conun, scun, k, ep )
       Command("define-email-subscription",header=header)( opts )
+    val defineMastodonSubscription =
+      val header = "Define a kind of Mastodon subscription."
+      val opts =
+        val feedId =
+          val help = "The ID of the RSS feed to be subscribed."
+          Opts.option[Int]("feed-id", help=help, metavar="feed-id").map( FeedId.apply )
+        val name =
+          val help = "A name for the new kind of email subscription."
+          Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
+        val extraParams = CommonOpts.ExtraParams
+        ( feedId, name, extraParams ) mapN: ( fi, n, ep ) =>
+          CommandConfig.Admin.DefineMastodonSubscription( fi, n, ep )
+      Command("define-mastodon-subscription",header=header)( opts )
     val editSubscriptionDefinition =
       val header = "Edit a subscription definition."
       val opts =
@@ -275,7 +276,7 @@ object Main extends AbstractMain, SelfLogging:
           val header = "Administer and configure an installation."
           val opts =
             import Admin.*
-            Opts.subcommands(addFeed, defineEmailSubscription, editSubscriptionDefinition, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
+            Opts.subcommands(addFeed, defineEmailSubscription, defineMastodonSubscription, editSubscriptionDefinition, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
           Command( name="admin", header=header )( opts )
         val crank =
           val header = "Run a usually recurring operation a single time."

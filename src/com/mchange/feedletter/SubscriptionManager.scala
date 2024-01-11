@@ -38,7 +38,7 @@ object SubscriptionManager extends SelfLogging:
     def timeZone : Option[ZoneId]
 
   object Mastodon:
-    final case class Announce( destination : Destination.Mastodon, extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon:
+    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
 
@@ -404,7 +404,6 @@ object SubscriptionManager extends SelfLogging:
     def ewf( weekly : Email.Weekly ) : ujson.Obj = epbsf( weekly )
     def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj + ("numItemsPerLetter" -> fixed.numItemsPerLetter) )
     def maf( announce : Mastodon.Announce ) : ujson.Obj = ujson.Obj( // "mastodon announce fields"
-      "destination" -> writeJs[Destination](announce.destination),
       "extraParams" -> writeJs( announce.extraParams ) 
     )
     val (fields, tpe) =
@@ -467,7 +466,6 @@ object SubscriptionManager extends SelfLogging:
           extraParams                = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Masto_Announce => Mastodon.Announce(
-          destination = read[Destination](obj("destination")).asInstanceOf[Destination.Mastodon],
           extraParams = read[Map[String,String]](obj("extraParams"))
         )
 

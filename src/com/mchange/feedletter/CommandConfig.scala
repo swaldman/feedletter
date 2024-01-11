@@ -107,6 +107,22 @@ object CommandConfig extends SelfLogging:
           _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
         yield ()
       end zcommand
+    case class DefineMastodonSubscription(
+      feedId                        : FeedId,
+      subscribableName              : SubscribableName,
+      extraParams                   : Map[String,String]
+    ) extends CommandConfig:
+      override def zcommand : ZCommand =
+        val subscriptionManager = SubscriptionManager.Mastodon.Announce( extraParams )
+        for
+          ds   <- ZIO.service[DataSource]
+          _    <- PgDatabase.ensureDb( ds )
+          _    <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
+          tups <- PgDatabase.listSubscribables(ds)
+          _    <- printSubscribablesTable(tups)
+          _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
+        yield ()
+      end zcommand
     case class EditSubscriptionDefinition( name : SubscribableName ) extends CommandConfig:
       def prettifyJson( jsonStr : String ) : String =
         import upickle.default.*

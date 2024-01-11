@@ -5,6 +5,7 @@ import java.lang.System
 
 import com.monovore.decline.*
 import cats.implicits.* // for mapN
+import cats.data.{NonEmptyList,Validated,ValidatedNel}
 
 import java.nio.file.{Path as JPath}
 import java.time.ZoneId
@@ -17,11 +18,6 @@ import MLevel.*
 
 trait AbstractMain extends SelfLogging:
   object CommonOpts:
-    val Secrets = 
-      val help = "Path to properties file containing SMTP, postgres, c3p0, and other configuration details."
-      val opt  = Opts.option[JPath]("secrets",help=help,metavar="propsfile")
-      val env  = Opts.env[JPath]("FEEDLETTER_SECRETS", help=help)
-      (opt orElse env).orNone
     val AnyDestination : Opts[Destination] =
       val email =
         val general = Opts.option[String]("e-mail",help="The e-mail address to subscribe.",metavar="address")
@@ -36,6 +32,23 @@ trait AbstractMain extends SelfLogging:
         ( instanceName, instanceUrl ) mapN: (in, iu) =>
           Destination.Mastodon( name = in, instanceUrl = iu )
       email orElse sms orElse mastodon
+    val ExtraParams : Opts[Map[String,String]] =
+      def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
+        strings.map{ s =>
+          s.split(":", 2) match
+            case Array(key, value) => Validated.valid(Tuple2(key, value))
+            case _ => Validated.invalidNel(s"Invalid key:value pair: ${s}")
+        }.sequence
+      Opts.options[String]("extra-param", "An extra params your notification renderers might use.", metavar = "key:value")
+        .map( _.toList)
+        .withDefault(Nil)
+        .mapValidated( validate )
+        .map( Map.from )
+    val Secrets = 
+      val help = "Path to properties file containing SMTP, postgres, c3p0, and other configuration details."
+      val opt  = Opts.option[JPath]("secrets",help=help,metavar="propsfile")
+      val env  = Opts.env[JPath]("FEEDLETTER_SECRETS", help=help)
+      (opt orElse env).orNone
     val TimeZone = Opts.option[String]("time-zone",help="ID of a time zone for determining the beginning and end of the period.",metavar="id").map( ZoneId.of ) 
   end CommonOpts
 
