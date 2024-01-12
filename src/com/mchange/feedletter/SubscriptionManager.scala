@@ -28,14 +28,34 @@ object SubscriptionManager extends SelfLogging:
   val  Json = SubscriptionManagerJson
   type Json = SubscriptionManagerJson
 
-  sealed trait UntemplatedCompose:
+  sealed trait UntemplatedCompose extends SubscriptionManager:
     def composeUntemplateName : String
-  sealed trait UntemplatedConfirm:
+  sealed trait UntemplatedConfirm extends SubscriptionManager:
     def confirmUntemplateName : String
-  sealed trait UntemplatedStatusChange:
+  sealed trait UntemplatedStatusChange extends SubscriptionManager:
     def statusChangeUntemplateName : String
   sealed trait PeriodBased:
     def timeZone : Option[ZoneId]
+
+  sealed trait SupportsExternalSubscriptionApi extends SubscriptionManager:
+    /**
+      * This method must either:
+      *
+      * * Send a notification that will lead to a future confirmation by the user, and return `true`
+      *
+      * OR
+      *
+      * * Update the the confirmed field of the subscription to already `true`, and then return false
+      *
+      * @param conn
+      * @param destination
+      * @param subscribableName
+      * @param confirmGetLink
+      *
+      * @return whether a subscriber has been prompted for a future confirmation
+      */
+    def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, confirmGetLink : String ) : Boolean
+    def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String = ???
 
   object Mastodon:
     final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon:
@@ -83,22 +103,6 @@ object SubscriptionManager extends SelfLogging:
           "instanceUrl" -> destination.instanceUrl,
           "destinationName" -> destination.name
         )
-
-      override def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
-        if fromExternalApi then
-          throw new ExternalApiForibidden( "Mastodon.Announce subscriptions must be made by an administrator, rather than via the public API." )
-        else
-          destination match
-            case mastoDestination : Destination.Mastodon => ()
-            case _ =>
-              throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
-
-      // not relevant since we don't support the external subscription API
-      override def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String ) : Boolean = false
-
-      // we're going to refactor this out shortly
-      override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String = ???
-
 
   sealed trait Mastodon extends SubscriptionManager:
     override type D = Destination.Mastodon
@@ -284,7 +288,7 @@ object SubscriptionManager extends SelfLogging:
         s"[${subscribableName}] ${numItemsPerLetter} new items"
 
 
-  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange:
+  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, SupportsExternalSubscriptionApi:
     def from                       : Destination.Email
     def replyTo                    : Option[Destination.Email]
     def composeUntemplateName      : String
@@ -359,12 +363,6 @@ object SubscriptionManager extends SelfLogging:
         confirmUntemplate( confirmInfo ).text
       PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
       true
-
-    override def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
-      destination match
-        case emailDestination : Destination.Email => ()
-        case _ =>
-          throw new InvalidDestination( s"[${subscribableName}] Email subscription requires email destination. Destination '${destination}' is not. Rejecting." )
 
     override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String =
       val untemplate = AllUntemplates.findStatusChangeUntemplate(statusChangeUntemplateName)
@@ -480,7 +478,15 @@ sealed trait SubscriptionManager extends Jsonable:
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
   def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
   def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
-  def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit
+
+  def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
+    if fromExternalApi && !supportsExternalSubscriptionApi then
+      throw new ExternalApiForibidden( s"[${subscribableName}]: Subscriptions must be made by an administrator, rather than via the public API." )
+    else
+      narrowDestination( destination ) match
+        case Right( _ ) => ()
+        case Left ( _ ) =>
+          throw new InvalidDestination( s"[${subscribableName}] Incorrect destination type. We expect a ${sampleDestination.getClass.getName()}. Destination '${destination}' is not. Rejecting." )
 
   def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams =
     TemplateParams(
@@ -490,30 +496,10 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
 
-  /**
-    * This method must either:
-    *
-    * * Send a notification that will lead to a future confirmation by the user, and return `true`
-    *
-    * OR
-    *
-    * * Update the the confirmed field of the subscription to already `true`, and then return false
-    *
-    * @param conn
-    * @param destination
-    * @param subscribableName
-    * @param confirmGetLink
-    *
-    * @return whether a subscriber has been prompted for a future confirmation
-    */
-  def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String ) : Boolean
-
   def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
 
   def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )
   def jsonPretty : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this, indent=4) )
-
-  def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String
 
   def materializeDestination( destinationJson : Destination.Json ) : D = Destination.materialize( destinationJson ).asInstanceOf[D]
 
@@ -543,4 +529,6 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def displayShort( destination : D ) : String = destination.shortDesc
   def displayFull( destination : D ) : String  = destination.fullDesc
+
+  def supportsExternalSubscriptionApi : Boolean = this.isInstanceOf[SubscriptionManager.SupportsExternalSubscriptionApi]
 
