@@ -6,6 +6,7 @@ import java.time.Instant
 import scala.collection.immutable
 import scala.xml.{Elem,XML}
 
+import audiofluidity.rss.atom.rssElemFromAtomFeedElem
 
 object FeedDigest:
   // we should err on the side of the timestamp being slightly early, so there's no risk
@@ -16,6 +17,7 @@ object FeedDigest:
     val rssElem =
       rootElem.label match
         case "rss" => rootElem
+        case "feed" => rssElemFromAtomFeedElem( rootElem )
         case other => throw new UnsupportedFeedType(s"'${other}' cannot be the root element of a supported feed type.")
     val items : Seq[Elem] = (rssElem \\ "item").map( _.asInstanceOf[Elem] )
     val fileOrderedGuids = items.map( _ \ "guid" ).map( _.text.trim ).map( Guid.apply )

@@ -54,7 +54,12 @@ case class ItemContent private ( val guid : String, val rssElem : Elem ):
     def mbAuthor  = (itemElem \ "author").headOption.map( parseAuthorFromAuthorElem )
     mbCreator orElse mbAuthor
 
-  private def extractContent = ((itemElem \ "encoded").filter(lenientRdfContentNamespace).headOption orElse (itemElem \ "description").headOption).map( _.text.trim )
+  private def extractContent =
+    val contentElem =
+      (itemElem \ "encoded").filter(lenientRdfContentNamespace).headOption orElse
+      (itemElem \ "content").filter(lenientAtomNamespace).headOption orElse
+      (itemElem \ "description").headOption
+    contentElem.map( _.text.trim )
 
   private def extractTitle = (itemElem \ "title").headOption.map( _.text.trim )
 
@@ -77,7 +82,7 @@ case class ItemContent private ( val guid : String, val rssElem : Elem ):
   private def extractMedia = mediaFromMrssContent ++ mediaFromEnclosure
 
   private def mediaFromMrssContent =
-    val mediaContentElems = (itemElem \ "content").filter( _.namespace.contains("://search.yahoo.com/mrss") )
+    val mediaContentElems = (itemElem \ "content").filter( lenientMediaNamespace )
     val maybes =
       mediaContentElems.map: elem =>
         val url = (elem \@ "url").toOptionNotBlank
@@ -114,3 +119,10 @@ case class ItemContent private ( val guid : String, val rssElem : Elem ):
 
   private def lenientDublinCoreNamespace(node : Node ) : Boolean =
     node.namespace.contains("://purl.org/dc/elements/1.1")
+
+  private def lenientAtomNamespace(node : Node ) : Boolean =
+    node.namespace.contains("://www.w3.org/2005/Atom")
+
+  private def lenientMediaNamespace(node : Node ) : Boolean =
+    node.namespace.contains("://search.yahoo.com/mrss")
+
