@@ -64,6 +64,12 @@
  }
  .item-contents {
  }
+ .item-contents blockquote {
+   margin-left: 0;
+   padding-left: 1em;
+   border-left: 2px solid black;
+   
+ }
  .unsubscribe {
    padding-top: 0.5rem;
  }
