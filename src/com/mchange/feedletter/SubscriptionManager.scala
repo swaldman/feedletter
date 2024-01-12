@@ -395,12 +395,12 @@ object SubscriptionManager extends SelfLogging:
       ujson.Obj.from( values )
     def epbsf( pbsm : Email.Instance & PeriodBased ) : ujson.Obj = // "email period-based shared fields"
       pbsm.timeZone match
-        case Some( tz ) => ujson.Obj.from( esf( pbsm ).obj + ("timeZone" -> tz.getId()) )
+        case Some( tz ) => ujson.Obj.from( esf( pbsm ).obj addOne( ("timeZone" -> tz.getId()) ) )
         case None       => esf( pbsm )
     def eef( each : Email.Each ) : ujson.Obj = esf( each )
     def edf( daily : Email.Daily ) : ujson.Obj = epbsf( daily )
     def ewf( weekly : Email.Weekly ) : ujson.Obj = epbsf( weekly )
-    def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj + ("numItemsPerLetter" -> fixed.numItemsPerLetter) )
+    def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj addOne( ("numItemsPerLetter" -> fixed.numItemsPerLetter) ) )
     def maf( announce : Mastodon.Announce ) : ujson.Obj = ujson.Obj( // "mastodon announce fields"
       "extraParams" -> writeJs( announce.extraParams ) 
     )
