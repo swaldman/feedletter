@@ -40,9 +40,6 @@ val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatS
     case multiple : ComposeInfo.Multiple => {
 ()>    
     <p>The following <( multiple.contents.size )> posts have been published to <b><( info.subscriptionName )></b>:</p>
-    <ul>
-      <( /* multiple.contents.map( ic => ic.title.getOrElse( "Untitled Post" ) ).map( t => s"<li>$t</li>" ).mkString("\n") */ "" )>
-    </ul>
 <()    
     }
     

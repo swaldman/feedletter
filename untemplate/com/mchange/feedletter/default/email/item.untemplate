@@ -9,6 +9,15 @@ end ifLink
 
 val (info, contents) = tup
 
+val images = contents.media.filter( _.mimeType.map( _.startsWith("image") ).getOrElse(false) )
+
+val (topImageUrl, bottomImageUrls) =
+  images.size match
+    case 0 => (None, None)
+    case 1 => (Some(images.head.url), None)
+    case n => (None, Some(images.map(_.url)))
+end val
+
 ( tup : (ComposeInfo.Universal, ItemContent) )[]~()>
 
     <div class="item">
@@ -27,6 +36,13 @@ val (info, contents) = tup
       </div>
 <()
   }
+  topImageUrl.foreach { url =>
+()>
+      <div class="media-image top-image">
+        <img src="<( url )>">
+      </div>
+<()
+  }
   contents.article.foreach { article =>
 ()>
       <div class="item-contents">
@@ -38,6 +54,21 @@ val (info, contents) = tup
 ()>
       <div class="item-date">
         Published <( formatter.format( pubDate.atZone(ZoneId.systemDefault()) ) )>
+      </div>
+<()
+  }
+  if bottomImageUrls.nonEmpty then {
+()>
+      <div class="bottom-images">
+<()
+    bottomImageUrls.foreach { url =>
+()>
+        <div class="media-image top-image">
+          <img src="<( url )>">
+        </div>
+<()
+    }
+()>
       </div>
 <()
   }

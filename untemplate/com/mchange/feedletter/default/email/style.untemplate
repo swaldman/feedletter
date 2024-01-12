@@ -68,7 +68,12 @@
    margin-left: 0;
    padding-left: 1em;
    border-left: 2px solid black;
-   
+ }
+ .media-image {
+   width: 100%;
+ }
+ .media-image img {
+   width: 100%;
  }
  .unsubscribe {
    padding-top: 0.5rem;
