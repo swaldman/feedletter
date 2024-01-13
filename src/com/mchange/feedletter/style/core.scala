@@ -2,6 +2,11 @@ package com.mchange.feedletter.style
 
 import com.mchange.feedletter.*
 
+import untemplate.Untemplate
+
+def untemplateInputType( template : Untemplate.AnyUntemplate ) : String =
+  template.UntemplateInputTypeCanonical.getOrElse( template.UntemplateInputTypeDeclared )
+
 object ComposeInfo:
   sealed trait Universal:
     def feedUrl             : String

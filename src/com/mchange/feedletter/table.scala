@@ -1,5 +1,7 @@
 package com.mchange.feedletter
 
+import com.mchange.feedletter.style.untemplateInputType
+
 import com.mchange.sc.v1.texttable
 import zio.*
 

@@ -17,9 +17,7 @@ import scala.collection.{immutable,mutable}
 import com.mchange.conveniences.www.*
 import trivialtemplate.TrivialTemplate
 
-import untemplate.Untemplate
-
-type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
+final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant )
 
 enum ConfigKey:
   case ConfirmHours
@@ -36,29 +34,20 @@ enum ConfigKey:
   case WebApiBasePath
   case WebApiPort
 
-object SecretsKey:
-  val FeedletterJdbcUrl      = "feedletter.jdbc.url"
-  val FeedletterJdbcUser     = "feedletter.jdbc.user"
-  val FeedletterJdbcPassword = "feedletter.jdbc.password"
-  val FeedletterSecretSalt   = "feedletter.secret.salt"
+final case class ExcludedItem( feedId : FeedId, guid : Guid, link : Option[String] )
 
-enum SubscriptionStatusChange:
-  case Created, Confirmed, Removed
+final case class FeedInfo( feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant )
 
 enum Flag:
   case MustReloadDaemon
 
-type MastoAnnouncementCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) => Option[String]
-type SubjectCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
-type TemplateParamCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
+case class IdentifiedDestination[T <: Destination]( subscriptionId : SubscriptionId, destination : T )
 
 val LineSep = System.lineSeparator()
 
-case class IdentifiedDestination[T <: Destination]( subscriptionId : SubscriptionId, destination : T )
+type MastoAnnouncementCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) => Option[String]
 
-case class SubscriptionInfo( id : SubscriptionId, name : SubscribableName, manager : SubscriptionManager, destination : Destination, confirmed : Boolean )
-
-final case class FeedInfo( feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant )
+final case class MastoPostable( id : MastoPostableId, finalContent : String, instanceUrl : MastoInstanceUrl, name : MastoName, retried : Int, media : Seq[ItemContent.Media] )
 
 object NascentFeed:
   def apply( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) : NascentFeed =
@@ -66,12 +55,21 @@ object NascentFeed:
     NascentFeed( feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes, now, now )
 final case class NascentFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant )
 
-final case class ExcludedItem( feedId : FeedId, guid : Guid, link : Option[String] )
+object SecretsKey:
+  val FeedletterJdbcUrl      = "feedletter.jdbc.url"
+  val FeedletterJdbcUser     = "feedletter.jdbc.user"
+  val FeedletterJdbcPassword = "feedletter.jdbc.password"
+  val FeedletterSecretSalt   = "feedletter.secret.salt"
 
-final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant )
+type SubjectCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 
-def untemplateInputType( template : Untemplate.AnyUntemplate ) : String =
-  template.UntemplateInputTypeCanonical.getOrElse( template.UntemplateInputTypeDeclared )
+case class SubscriptionInfo( id : SubscriptionId, name : SubscribableName, manager : SubscriptionManager, destination : Destination, confirmed : Boolean )
+
+enum SubscriptionStatusChange:
+  case Created, Confirmed, Removed
+
+type TemplateParamCustomizer =
+  ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
 
 object TemplateParams:
   def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )
@@ -80,8 +78,7 @@ case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
   def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
 
-final case class MastoPostable( id : MastoPostableId, finalContent : String, instanceUrl : MastoInstanceUrl, name : MastoName, retried : Int, media : Seq[ItemContent.Media] )
-
+type ZCommand = ZIO[AppSetup & DataSource, Throwable, Any]
 
 
 
