@@ -6,7 +6,8 @@ import com.mchange.feedletter.{
   FeedId,
   FeedUrl,
   Guid,
-  SubscribableName
+  SubscribableName,
+  str
 }
 
 class FeedletterDbException(msg : String, cause : Throwable = null ) extends FeedletterException(msg, cause)
@@ -30,5 +31,5 @@ class AssignableCompleted(
 ) extends FeedletterDbException(
   msg =
     s"Assignable ('${feedId}', '${subscribableName}', '${withinTypeId}') has already been completed and cannot be further assigned to." +
-    forGuid.fold("")(guid => s" (Item '${guid.toString()}' could not be included in this assignable.)")
+    forGuid.fold("")(guid => s" (Item '${guid.str}' could not be included in this assignable.)")
 )

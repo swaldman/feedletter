@@ -139,7 +139,7 @@ object PgSchema:
           def insert( conn : Connection, feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant ) : Int =
             Using.resource(conn.prepareStatement(this.Insert)): ps =>
               ps.setInt       (1, feedId.toInt)
-              ps.setString    (2, feedUrl.toString())
+              ps.setString    (2, feedUrl.str)
               ps.setInt       (3, minDelayMinutes )
               ps.setInt       (4, awaitStabilizationMinutes)
               ps.setInt       (5, maxDelayMinutes )
@@ -227,14 +227,14 @@ object PgSchema:
                |WHERE assignability = 'Unassigned' AND feed_id = ? AND NOT (guid = ANY( ? ))""".stripMargin
           def deleteDisappearedUnassignedForFeed( conn : Connection, feedId : FeedId, current : Set[Guid] ) : Int =
             Using.resource( conn.prepareStatement( DeleteDisappearedUnassignedForFeed ) ): ps =>
-              val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.toString()).toArray)
+              val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.str).toArray)
               ps.setInt(1, feedId.toInt)
               ps.setArray (2, sqlArray)
               ps.executeUpdate()
           def checkStatus( conn : Connection, feedId : FeedId, guid : Guid ) : Option[ItemStatus] =
             Using.resource( conn.prepareStatement( SelectCheck ) ): ps =>
               ps.setInt   (1, feedId.toInt)
-              ps.setString(2, guid.toString())
+              ps.setString(2, guid.str)
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("item-check-select", rs): rs =>
                   ItemStatus( rs.getInt(1), rs.getTimestamp(2).toInstant(), rs.getTimestamp(3).toInstant(), rs.getTimestamp(4).toInstant(), ItemAssignability.valueOf(rs.getString(5)) )
@@ -246,7 +246,7 @@ object PgSchema:
             Using.resource( conn.prepareStatement( this.UpdateStable) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastChecked))
               ps.setInt      (2, feedId.toInt)
-              ps.setString   (3, guid.toString())
+              ps.setString   (3, guid.str)
               ps.executeUpdate()
           def updateChanged( conn : Connection, feedId : FeedId, guid : Guid, newContent : ItemContent, newStatus : ItemStatus ) =
             Using.resource( conn.prepareStatement( this.UpdateChanged ) ): ps =>
@@ -257,20 +257,20 @@ object PgSchema:
               ps.setTimestamp         ( 5, Timestamp.from(newStatus.stableSince))
               ps.setString            ( 6, newStatus.assignability.toString())
               ps.setInt               ( 7, feedId.toInt)
-              ps.setString            ( 8, guid.toString())
+              ps.setString            ( 8, guid.str)
               ps.executeUpdate()
           def updateLastCheckedAssignability( conn : Connection, feedId : FeedId, guid : Guid, lastChecked : Instant, assignability : ItemAssignability ) =
             Using.resource( conn.prepareStatement( this.UpdateLastCheckedAssignability) ): ps =>
               ps.setTimestamp(1, Timestamp.from(lastChecked))
               ps.setString   (2, assignability.toString())
               ps.setInt      (3, feedId.toInt)
-              ps.setString   (4, guid.toString())
+              ps.setString   (4, guid.str)
               ps.executeUpdate()
           def insertNew( conn : Connection, feedId : FeedId, guid : Guid, itemContent : Option[ItemContent], assignability : ItemAssignability ) : Int =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               val now = Instant.now
               ps.setInt              (  1, feedId.toInt )
-              ps.setString           (  2, guid.toString() )
+              ps.setString           (  2, guid.str )
               itemContent.fold(ps.setNull(3, Types.CLOB))   (ic => ps.setString(3, ic.rssElem.toString() ))
               itemContent.fold(ps.setNull(4, Types.INTEGER))(ic => ps.setInt(4, ic.contentHash ))
               itemContent.fold(ps.setNull(5, Types.VARCHAR))(ic => setStringOptional(ps, 5, Types.VARCHAR, ic.link))
@@ -318,12 +318,12 @@ object PgSchema:
           def updateLastCompletedWti( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) =
             Using.resource( conn.prepareStatement( UpdateLastCompletedWti ) ): ps =>
               ps.setString(1, withinTypeId)
-              ps.setString(2, subscribableName.toString())
+              ps.setString(2, subscribableName.str)
               ps.executeUpdate()
           def updateSubscriptionManagerJson( conn : Connection, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager ) =
             Using.resource( conn.prepareStatement( UpdateManagerJson ) ): ps =>
-              ps.setString(1, subscriptionManager.json.toString())
-              ps.setString(2, subscribableName.toString())
+              ps.setString(1, subscriptionManager.json.str)
+              ps.setString(2, subscribableName.str)
               ps.executeUpdate()
           def selectSubscribableNamesByFeedId( conn : Connection, feedId : FeedId ) : Set[SubscribableName] =
             Using.resource( conn.prepareStatement( this.SelectSubscribableNamesByFeedId ) ): ps =>
@@ -336,12 +336,12 @@ object PgSchema:
                 toSet(rs)( rs => ( SubscribableName( rs.getString(1) ), FeedId( rs.getInt(2) ), SubscriptionManager.materialize(SubscriptionManager.Json(rs.getString(3)) ), Option(rs.getString(4)) ) )
           def selectLastCompletedWti( conn : Connection, subscribableName : SubscribableName ) : Option[String] =
             Using.resource( conn.prepareStatement( SelectLastCompletedWti ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult("select-last-completed-wti", rs)( rs => Option(rs.getString(1)) )
           def selectUninterpretedManagerJson( conn : Connection, subscribableName : SubscribableName ) : String =
             Using.resource( conn.prepareStatement( SelectManager ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult("select-uninterpreted-manager-json", rs)( rs => rs.getString(1) )
           def selectManager( conn : Connection, subscribableName : SubscribableName ) : SubscriptionManager =
@@ -349,14 +349,14 @@ object PgSchema:
             SubscriptionManager.materialize( json )
           def selectFeedIdAndManager( conn : Connection, subscribableName : SubscribableName ) : (FeedId, SubscriptionManager) =
             Using.resource( conn.prepareStatement( SelectFeedIdAndManager ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult("select-feed-id-and-subscription-manager", rs)( rs => ( FeedId( rs.getInt(1) ), SubscriptionManager.materialize(SubscriptionManager.Json(rs.getString(2)) ) ) )
           def insert( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, subscriptionManager : SubscriptionManager, lastCompletedWti : Option[String] ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               ps.setInt   (2, feedId.toInt)
-              ps.setString(3, subscriptionManager.json.toString())
+              ps.setString(3, subscriptionManager.json.str)
               setStringOptional(ps, 4, Types.VARCHAR, lastCompletedWti )
               ps.executeUpdate()
         object Assignable extends Creatable:
@@ -392,7 +392,7 @@ object PgSchema:
                |WHERE subscribable_name = ? AND within_type_id = ?""".stripMargin
           def selectOpened( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Option[Instant] =
             Using.resource( conn.prepareStatement( SelectOpened ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
                 zeroOrOneResult("select-open-assignable", rs)( _.getTimestamp(1).toInstant() )
@@ -402,18 +402,18 @@ object PgSchema:
                 toSet(rs)( rs => AssignableKey( SubscribableName( rs.getString(1) ), rs.getString(2) ) )
           def selectWithinTypeIdMostRecentOpened( conn : Connection, subscribableName : SubscribableName ) : Option[String] =
             Using.resource( conn.prepareStatement( this.SelectWithinTypeIdMostRecentOpened ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               Using.resource(ps.executeQuery()): rs =>
                 zeroOrOneResult("assignable-select-most-recent-opened-within-type-id", rs)( _.getString(1) )
           def insert( conn : Connection, subscribableName : SubscribableName, withinTypeId : String, opened : Instant ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-              ps.setString   (1, subscribableName.toString())
+              ps.setString   (1, subscribableName.str)
               ps.setString   (2, withinTypeId)
               ps.setTimestamp(3, Timestamp.from(opened))
               ps.executeUpdate()
           def delete( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) =
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
               ps.executeUpdate()
         object Assignment extends Creatable:
@@ -437,19 +437,19 @@ object PgSchema:
                |WHERE subscribable_name = ? AND within_type_id = ?""".stripMargin
           def selectCountWithinAssignable( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Int =
             Using.resource( conn.prepareStatement( this.SelectCountWithinAssignable ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult( "select-count-within-assignable", rs )( _.getInt(1) )
           def insert( conn : Connection, subscribableName : SubscribableName, withinTypeId : String, guid : Guid ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
-              ps.setString(3, guid.toString())
+              ps.setString(3, guid.str)
               ps.executeUpdate()
           def cleanAwayAssignable( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) =
             Using.resource( conn.prepareStatement( CleanAwayAssignable ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
               ps.executeUpdate()
 
@@ -506,21 +506,21 @@ object PgSchema:
           /*
           def selectDestinationJsonsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[Destination.Json] =
             Using.resource( conn.prepareStatement( this.SelectDestinationJsonsForSubscribable ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => Destination.Json( rs.getString(1) ) )
           */
           def selectConfirmedIdentifiedDestinationsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[IdentifiedDestination[Destination]] =
             Using.resource( conn.prepareStatement( SelectConfirmedIdentifiedDestinationsForSubscribable ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => IdentifiedDestination( SubscriptionId( rs.getLong(1) ), Destination.materialize( Destination.Json( rs.getString(2) ) ) ) )
           def insert( conn : Connection, subscriptionId : SubscriptionId, destination : Destination, subscribableName : SubscribableName, confirmed : Boolean, now : Instant ) =
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               ps.setLong     (1, subscriptionId.toLong)
-              ps.setString   (2, destination.json.toString())
+              ps.setString   (2, destination.json.str)
               ps.setString   (3, destination.unique)
-              ps.setString   (4, subscribableName.toString())
+              ps.setString   (4, subscribableName.str)
               ps.setBoolean  (5, confirmed)
               ps.setTimestamp(6, Timestamp.from(now))
               ps.executeUpdate()
@@ -630,9 +630,9 @@ object PgSchema:
           def insert( conn : Connection, hash : Hash.SHA3_256, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], to : AddressHeader[To], subject : String, templateParams : TemplateParams, retried : Int ) =
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               ps.setString         (1, hash.hex)
-              ps.setString         (2, from.toString())
-              setStringOptional(ps, 3, Types.VARCHAR, replyTo.map(_.toString()))
-              ps.setString         (4, to.toString())
+              ps.setString         (2, from.str)
+              setStringOptional(ps, 3, Types.VARCHAR, replyTo.map(_.str))
+              ps.setString         (4, to.str)
               ps.setString         (5, subject)
               ps.setString         (6, templateParams.toString())
               ps.setInt            (7, retried)
@@ -641,9 +641,9 @@ object PgSchema:
             Using.resource( conn.prepareStatement( this.Insert ) ): ps =>
               tosWithTemplateParams.foreach: (to, templateParams) =>
                 ps.setString         (1, hash.hex)
-                ps.setString         (2, from.toString())
-                setStringOptional(ps, 3, Types.VARCHAR, replyTo.map(_.toString()))
-                ps.setString         (4, to.toString())
+                ps.setString         (2, from.str)
+                setStringOptional(ps, 3, Types.VARCHAR, replyTo.map(_.str))
+                ps.setString         (4, to.str)
                 ps.setString         (5, subject)
                 ps.setString         (6, templateParams.toString())
                 ps.setInt            (7, retried)
@@ -686,8 +686,8 @@ object PgSchema:
             Using.resource( conn.prepareStatement( Insert ) ): ps =>
               ps.setLong  (1, id.toLong)
               ps.setString(2, finalContent)
-              ps.setString(3, mastoInstanceUrl.toString())
-              ps.setString(4, mastoName.toString())
+              ps.setString(3, mastoInstanceUrl.str)
+              ps.setString(4, mastoName.str)
               ps.setInt   (5, retried)
               ps.executeUpdate()
           def delete( conn : Connection, id : MastoPostableId ) =
@@ -773,7 +773,7 @@ object PgSchema:
                |WHERE subscribable.subscribable_name = ?""".stripMargin
           def selectFeedIdUrlForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedId, FeedUrl ) =
             Using.resource( conn.prepareStatement( SelectFeedIdUrlForSubscribableName ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult("select-feed-id-url-for-subname", rs): rs =>
                   ( FeedId( rs.getInt(1) ), FeedUrl( rs.getString(2) ) )
@@ -785,7 +785,7 @@ object PgSchema:
                |WHERE subscribable.subscribable_name = ?""".stripMargin
           def selectFeedUrlSubscriptionManagerForSubscribableName( conn : Connection, subscribableName : SubscribableName ) : ( FeedUrl, SubscriptionManager ) =
             Using.resource( conn.prepareStatement( SelectFeedUrlSubscriptionManagerForSubscribableName ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               Using.resource( ps.executeQuery() ): rs =>
                 uniqueResult("select-feed-url-subscription-type-for-subname", rs): rs =>
                   ( FeedUrl( rs.getString(1) ), SubscriptionManager.materialize( SubscriptionManager.Json(rs.getString(2)) ) )
@@ -799,7 +799,7 @@ object PgSchema:
                |WHERE assignment.subscribable_name = ? AND assignment.within_type_id = ?""".stripMargin
           def selectItemContentsForAssignable( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Set[ItemContent] =
             Using.resource( conn.prepareStatement( SelectItemContentsForAssignable ) ): ps =>
-              ps.setString(1, subscribableName.toString())
+              ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
                 toSet( rs )( rs => ItemContent.fromPrenormalizedSingleItemRss( rs.getString(1), rs.getString(2) ) )

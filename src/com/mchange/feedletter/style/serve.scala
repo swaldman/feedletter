@@ -36,7 +36,7 @@ def styleStatusChangeUntemplate(
 ) : Task[Unit] =
   val unsubscribeLink = DummyApiLinkGenerator.removeGetLink(SubscriptionId(0))
   val resubscribeLink = DummyApiLinkGenerator.createGetLink(subscriptionName,destination)
-  val sci = StatusChangeInfo( statusChange, subscriptionName.toString(), subscriptionManager, destination, requiresConfirmation, unsubscribeLink, resubscribeLink )
+  val sci = StatusChangeInfo( statusChange, subscriptionName.str, subscriptionManager, destination, requiresConfirmation, unsubscribeLink, resubscribeLink )
   val untemplate = AllUntemplates.findStatusChangeUntemplate( untemplateName )
   val filled = untemplate( sci ).text
   serveOneHtmlPage( filled, interface, port )
@@ -54,7 +54,7 @@ def styleComposeMultipleUntemplate(
   port                : Int
 ) : Task[Unit] =
   val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
-  val composeInfo = ComposeInfo.Multiple( feedUrl.toString(), subscriptionName.toString(), subscriptionManager, withinTypeId, contents )
+  val composeInfo = ComposeInfo.Multiple( feedUrl.str, subscriptionName.str, subscriptionManager, withinTypeId, contents )
   val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
@@ -76,7 +76,7 @@ def styleComposeSingleUntemplate(
   port                : Int
 ) : Task[Unit] =
   val contents = digest.guidToItemContent( guid )
-  val composeInfo = ComposeInfo.Single( feedUrl.toString(), subscriptionName.toString(), subscriptionManager, withinTypeId, contents )
+  val composeInfo = ComposeInfo.Single( feedUrl.str, subscriptionName.str, subscriptionManager, withinTypeId, contents )
   val untemplate = AllUntemplates.findComposeUntemplateSingle( untemplateName )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
@@ -110,7 +110,7 @@ def styleRemovalNotificationUntemplate(
   port                : Int
 ) : Task[Unit] =
   val sid = SubscriptionId(0)
-  val rnInfo = RemovalNotificationInfo( subscriptionName.toString(), subscriptionManager, destination, DummyApiLinkGenerator.createGetLink(subscriptionName,destination))
+  val rnInfo = RemovalNotificationInfo( subscriptionName.str, subscriptionManager, destination, DummyApiLinkGenerator.createGetLink(subscriptionName,destination))
   val untemplate = AllUntemplates.findRemovalNotificationUntemplate( untemplateName )
   val filled = untemplate( rnInfo ).text
   serveOneHtmlPage( filled, interface, port )

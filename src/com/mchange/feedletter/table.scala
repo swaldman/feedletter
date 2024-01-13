@@ -23,7 +23,7 @@ val FeedInfoColumns = Seq(
 )
 
 def printFeedInfoTable( fis: Set[FeedInfo] ) : Task[Unit] =
-  val ordering = Ordering.by( (fi : FeedInfo) => ( fi.feedId.toInt, fi.feedId.toString, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.assignEveryMinutes, fi.added, fi.lastAssigned ) )
+  val ordering = Ordering.by( (fi : FeedInfo) => ( fi.feedId.toInt, fi.feedUrl.str, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.assignEveryMinutes, fi.added, fi.lastAssigned ) )
   val sorted = immutable.SortedSet.from( fis )( using ordering )
   ZIO.attempt( texttable.printProductTable( FeedInfoColumns )( sorted.toList.map( texttable.Row.apply ) ) )
 
@@ -39,7 +39,7 @@ val ExcludedItemsColumns = Seq(
 )
 
 def extractExcludedItem( ei : ExcludedItem ) : Seq[String] =
-  ei.feedId.toString() :: ei.guid.toString() :: ei.link.getOrElse("") :: Nil
+  ei.feedId.toString :: ei.guid.str :: ei.link.getOrElse("") :: Nil
 
 def printExcludedItemsTable( eis : Set[ExcludedItem] ) : Task[Unit] =
   ZIO.attempt( texttable.printTable( ExcludedItemsColumns, extractExcludedItem )( eis.map(texttable. Row.apply) ) )

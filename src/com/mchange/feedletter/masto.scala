@@ -43,8 +43,8 @@ def mastoPost( as : AppSetup, mastoPostable : MastoPostable ) =
   val accessTokenKey = s"feedletter.masto.access.token.${mastoPostable.name}"
   val accessToken = as.secrets.get( accessTokenKey ).getOrElse:
     throw new NoAccessToken( s"No access token found in application secrets under key '${accessTokenKey}'." )
-  val mediaIds = mastoPostable.media.map( media => postMedia(accessToken, mastoPostable.instanceUrl.toString(), media) )
-  val statusEndpoint = pathJoin( mastoPostable.instanceUrl.toString(), "api/v1/statuses/" )
+  val mediaIds = mastoPostable.media.map( media => postMedia(accessToken, mastoPostable.instanceUrl.str, media) )
+  val statusEndpoint = pathJoin( mastoPostable.instanceUrl.str, "api/v1/statuses/" )
   val headers = Map (
     "Authorization" -> s"Bearer ${accessToken}",
     "Content-Type"  ->  "application/json",

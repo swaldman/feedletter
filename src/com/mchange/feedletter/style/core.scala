@@ -34,7 +34,7 @@ object ComposeSelection:
   sealed trait Multiple
 
 case class ConfirmInfo( destination : Destination, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, confirmGetLink : String, confirmHours : Int ):
-  def subscriptionName = subscribableName.toString()
+  def subscriptionName = subscribableName.str
 
 case class RemovalNotificationInfo(
   subscriptionName     : String,

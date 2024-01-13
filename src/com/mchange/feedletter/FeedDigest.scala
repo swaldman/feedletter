@@ -21,14 +21,14 @@ object FeedDigest:
         case other => throw new UnsupportedFeedType(s"'${other}' cannot be the root element of a supported feed type.")
     val items : Seq[Elem] = (rssElem \\ "item").map( _.asInstanceOf[Elem] )
     val fileOrderedGuids = items.map( _ \ "guid" ).map( _.text.trim ).map( Guid.apply )
-    val itemContents = fileOrderedGuids.map( g => ItemContent.fromRssGuid(rssElem,g.toString()) ) 
+    val itemContents = fileOrderedGuids.map( g => ItemContent.fromRssGuid(rssElem,g.str) ) 
     val guidToItemContent = fileOrderedGuids.zip( itemContents ).toMap
     FeedDigest( fileOrderedGuids, guidToItemContent, asOf )
 
   def apply( is : InputStream) : FeedDigest = apply( is, Instant.now() )
 
   def apply( feedUrl : FeedUrl, asOf : Instant = Instant.now() ) : FeedDigest =
-    requests.get.stream( feedUrl.toString() ).readBytesThrough( is => this.apply(is, asOf) )
+    requests.get.stream( feedUrl.str ).readBytesThrough( is => this.apply(is, asOf) )
 
 final case class FeedDigest( fileOrderedGuids : Seq[Guid], guidToItemContent : immutable.Map[Guid,ItemContent], timestamp : Instant ):
   def isEmpty  : Boolean = fileOrderedGuids.isEmpty

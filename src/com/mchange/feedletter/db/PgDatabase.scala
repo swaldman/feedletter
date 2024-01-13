@@ -476,7 +476,7 @@ object PgDatabase extends Migratory, SelfLogging:
     try
       val contents = mswt.templateParams.fill( mswt.template )
       given Smtp.Context = smtpContext
-      Smtp.sendSimpleHtmlOnly( contents, subject = mswt.subject, from = mswt.from.toString(), to = mswt.to.toString(), replyTo = mswt.replyTo.map(_.toString()).toSeq )
+      Smtp.sendSimpleHtmlOnly( contents, subject = mswt.subject, from = mswt.from.str, to = mswt.to.str, replyTo = mswt.replyTo.map(_.str).toSeq )
       INFO.log(s"Mail sent from '${mswt.from}' to '${mswt.to}' with subject '${mswt.subject}'")
     catch
       case NonFatal(t) =>

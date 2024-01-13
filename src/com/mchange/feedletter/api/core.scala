@@ -126,7 +126,7 @@ object V0 extends SelfLogging:
   sealed trait SubscriptionStatusChanged( val statusChange : SubscriptionStatusChange )
 
   extension ( sinfo : SubscriptionInfo )
-    def thin : SubscriptionStatusChanged.Info = SubscriptionStatusChanged.Info( sinfo.name.toString, sinfo.destination )
+    def thin : SubscriptionStatusChanged.Info = SubscriptionStatusChanged.Info( sinfo.name.str, sinfo.destination )
 
   object ResponsePayload:
     object Subscription:
@@ -157,7 +157,7 @@ object V0 extends SelfLogging:
     val removeEndpointUrl = pathJoin( serverUrl, removeFullPath )
 
     def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String =
-      val createRequest = RequestPayload.Subscription.Create( subscribableName.toString, destination )
+      val createRequest = RequestPayload.Subscription.Create( subscribableName.str, destination )
       createEndpointUrl + "?" + createRequest.toGetParams
 
     def confirmGetLink( sid : SubscriptionId ) : String =
@@ -259,7 +259,7 @@ object V0 extends SelfLogging:
               val sman = sinfo.manager
               sman match
                 case vsman : SubscriptionManager.SupportsExternalSubscriptionApi =>
-                  vsman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name.toString, sman, sinfo.destination, !sinfo.confirmed, removeGetLink(sinfo.id), createGetLink(sinfo.name, sinfo.destination) ) )
+                  vsman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name.str, sman, sinfo.destination, !sinfo.confirmed, removeGetLink(sinfo.id), createGetLink(sinfo.name, sinfo.destination) ) )
                 case _ => // we should never see this, shared logic should have checked already
                   throw new InvalidSubscribable(s"Subscribable '${sinfo.name}' does not support the external subscription API. (Manager '${sinfo.manager}' does not support.)")
             case None =>
