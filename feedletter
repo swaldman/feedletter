@@ -4,39 +4,25 @@
 
 #./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
 #./millw --no-server runMain com.mchange.feedletter.Main "$@"
-#./millw --no-server runMain com.mchange.feedletter.Main "$@"
+
+# Style commands need to be run with the -w flag, but are managed
+# by the separate script feedletter-style
 
 # A bit (well, very) fragile...
-
-# NOTE: For now, style commands are run by a separate feedletter-style launcher.
-#       Running a style subcommand will fail.
-#       But we might want to reintegrate sometime in the future, so I've included the case
 
 MAINCMD=$0
 
 if [[ "$1" == "--secrets" ]]; then
-    SUBCMD=$3
-    SUBSUBCMD=$4
+    SUBCMD="$3"
 else
     SUBCMD="$1"
-    SUBSUBCMD="$2" 
 fi
 
-# echo $MAINCMD
-# echo $SUBCMD
-# echo $SUBSUBCMD
-
 if [[ "$MAINCMD" == "./feedletter" || "$MAINCMD" == "feedletter" ]]; then
-    if [[ "$SUBCMD" == "admin" ]]; then
-	if [[ "$SUBSUBCMD" == "edit-subscription-definition" ]]; then  # we need native strea,
-            ./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
-	else
-	    ./millw --no-server runMain com.mchange.feedletter.Main "$@"
-	fi
-    elif [[ "$SUBCMD" == "style" ]]; then                            # we need to watch and rerun server in background
-	./millw --no-server --watch runMainBackground com.mchange.feedletter.Main "$@"
+    if [[ "$SUBCMD" == "edit-subscribable" ]]; then  # we need native streams...
+        ./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
     else
-	./millw --no-server runMain com.mchange.feedletter.Main "$@"
+        ./millw --no-server runMain com.mchange.feedletter.Main "$@"
     fi
 else
     echo "Expected this command to be 'feedletter' or './feedletter'"

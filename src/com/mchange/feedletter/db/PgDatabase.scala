@@ -24,8 +24,6 @@ import com.mchange.cryptoutil.{*, given}
 
 import com.mchange.feedletter.BuildInfo
 import com.mchange.feedletter.api.ApiLinkGenerator
-import com.mchange.feedletter.Main.Admin.subscribe
-import cats.instances.try_
 
 object PgDatabase extends Migratory, SelfLogging:
   val LatestSchema = PgSchema.V1
