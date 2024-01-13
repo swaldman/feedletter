@@ -11,7 +11,6 @@ import DateTimeFormatter.ISO_LOCAL_DATE
 
 import scala.collection.immutable
 
-import com.mchange.feedletter.db.{AddressHeader, AssignableKey, AssignableWithinTypeStatus, From, ItemStatus, ReplyTo, To}
 import com.mchange.feedletter.api.ApiLinkGenerator
 
 import scala.collection.immutable

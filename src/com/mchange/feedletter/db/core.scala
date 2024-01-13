@@ -1,5 +1,7 @@
 package com.mchange.feedletter.db
 
+import com.mchange.feedletter.*
+
 import zio.*
 import java.sql.*
 import java.time.Instant
@@ -7,26 +9,11 @@ import javax.sql.DataSource
 import scala.util.control.NonFatal
 import java.lang.System
 
-import com.mchange.feedletter.{Destination,FeedId,FeedUrl,SubscribableName,TemplateParams}
-
 import com.mchange.cryptoutil.*
 
-import com.mchange.mailutil.Smtp
-
-final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assignability : ItemAssignability )
-final case class AssignableWithinTypeStatus( withinTypeId : String, count : Int )
-final case class AssignableKey( subscribableName : SubscribableName, withinTypeId : String )
-
-sealed trait AddressHeaderType
-opaque type To      <: AddressHeaderType = Nothing
-opaque type From    <: AddressHeaderType = Nothing
-opaque type ReplyTo <: AddressHeaderType = Nothing
-
-object AddressHeader:
-  def apply[T <: AddressHeaderType]( s : String )                      : AddressHeader[T] = s
-  def apply[T <: AddressHeaderType]( address : Smtp.Address )          : AddressHeader[T] = address.rendered
-  def apply[T <: AddressHeaderType]( destination : Destination.Email ) : AddressHeader[T] = destination.rendered
-opaque type AddressHeader[T <: AddressHeaderType] = String
+enum MetadataKey:
+  case SchemaVersion
+  case CreatorAppVersion
 
 object MailSpec:
   final case class WithHash(
@@ -51,39 +38,7 @@ object MailSpec:
     retried : Int
   )
 
-enum MetadataKey:
-  case SchemaVersion
-  case CreatorAppVersion
-
-enum TimesKey:
-  case MailNextBatch
-
-
-/*
- * Maps directly to a postgres enum,
- * if this is changed, keep that in sync
- */
-enum ItemAssignability:
-  case Unassigned
-  case Assigned
-  case Cleared
-  case Excluded
-
 def acquireConnection( ds : DataSource ) : Task[Connection] = ZIO.attemptBlocking( ds.getConnection )
-
-def releaseConnection( conn : Connection ) : UIO[Unit] = ZIO.succeed:
-  try
-    conn.close()
-  catch
-    case NonFatal(t) =>
-      System.err.println("Best-attempt close() of Connection yielded a throwable!")
-      t.printStackTrace()
-
-def withConnection[T]( ds : DataSource )( operation : Connection => T ) : Task[T] =
-  withConnectionZIO( ds )( conn => ZIO.attemptBlocking( operation(conn) ) )
-
-def withConnectionZIO[T]( ds : DataSource )( operation : Connection => Task[T]) : Task[T] =
-  ZIO.acquireReleaseWith(acquireConnection(ds))( releaseConnection )( operation )
 
 private def _inTransactionZIO[T]( conn : Connection )( transactioningHappyPath : Connection => Task[T]) : Task[T] =
   val rollback : PartialFunction[Throwable,Task[T]] =
@@ -100,9 +55,6 @@ def inTransaction[T]( conn : Connection )( op : Connection => T) : Task[T] =
     out
   _inTransactionZIO(conn)(transactioningHappyPath)
 
-def withConnectionTransactional[T]( ds : DataSource )( op : Connection => T) : Task[T] =
-  withConnectionZIO(ds)( conn => inTransaction(conn)( op ) )
-
 def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task[T] =
   val transactioningHappyPath = (cxn : Connection ) =>
     for
@@ -112,8 +64,28 @@ def inTransactionZIO[T]( conn : Connection )( op : Connection => Task[T]) : Task
     yield out
   _inTransactionZIO(conn)(transactioningHappyPath)
 
-def withConnectionTransactionalZIO[T]( ds : DataSource )( op : Connection => Task[T] ) : Task[T] =
-  withConnectionZIO(ds)( conn => inTransactionZIO(conn)( op ) )
+def releaseConnection( conn : Connection ) : UIO[Unit] = ZIO.succeed:
+  try
+    conn.close()
+  catch
+    case NonFatal(t) =>
+      System.err.println("Best-attempt close() of Connection yielded a throwable!")
+      t.printStackTrace()
+
+def setStringOptional( ps : PreparedStatement, position : Int, sqlType : Int, value : Option[String] ) =
+  value match
+    case Some( s ) => ps.setString(position, s)
+    case None      => ps.setNull( position, sqlType )
+
+def setTimestampOptional( ps : PreparedStatement, position : Int, value : Option[Timestamp] ) =
+  value match
+    case Some( ts ) => ps.setTimestamp(position, ts)
+    case None       => ps.setNull( position, Types.TIMESTAMP )
+
+def setLongOptional( ps : PreparedStatement, position : Int, sqlType : Int, value : Option[Long] ) =
+  value match
+    case Some( l ) => ps.setLong(position, l)
+    case None      => ps.setNull( position, sqlType )
 
 def toSet[T]( rs : ResultSet )( extract : ResultSet => T ) : Set[T] =
   val builder = Set.newBuilder[T]
@@ -131,6 +103,18 @@ def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultS
     else
       out
 
+def withConnection[T]( ds : DataSource )( operation : Connection => T ) : Task[T] =
+  withConnectionZIO( ds )( conn => ZIO.attemptBlocking( operation(conn) ) )
+
+def withConnectionZIO[T]( ds : DataSource )( operation : Connection => Task[T]) : Task[T] =
+  ZIO.acquireReleaseWith(acquireConnection(ds))( releaseConnection )( operation )
+
+def withConnectionTransactional[T]( ds : DataSource )( op : Connection => T) : Task[T] =
+  withConnectionZIO(ds)( conn => inTransaction(conn)( op ) )
+
+def withConnectionTransactionalZIO[T]( ds : DataSource )( op : Connection => Task[T] ) : Task[T] =
+  withConnectionZIO(ds)( conn => inTransactionZIO(conn)( op ) )
+
 def zeroOrOneResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : Option[T] =
   if !rs.next() then
     None
@@ -140,19 +124,4 @@ def zeroOrOneResult[T]( queryDesc : String, rs : ResultSet )( materialize : Resu
       throw new NonUniqueRow(s"Expected a unique value for ${queryDesc}. Multiple rows found.")
     else
       Some(out)
-
-def setStringOptional( ps : PreparedStatement, position : Int, sqlType : Int, value : Option[String] ) =
-  value match
-    case Some( s ) => ps.setString(position, s)
-    case None      => ps.setNull( position, sqlType )
-
-def setTimestampOptional( ps : PreparedStatement, position : Int, value : Option[Timestamp] ) =
-  value match
-    case Some( ts ) => ps.setTimestamp(position, ts)
-    case None       => ps.setNull( position, Types.TIMESTAMP )
-
-def setLongOptional( ps : PreparedStatement, position : Int, sqlType : Int, value : Option[Long] ) =
-  value match
-    case Some( l ) => ps.setLong(position, l)
-    case None      => ps.setNull( position, sqlType )
 

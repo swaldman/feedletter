@@ -10,14 +10,16 @@ import javax.sql.DataSource
 
 import scala.util.Using
 
-import db.AssignableKey
-
 import scala.collection.{immutable,mutable}
 
 import com.mchange.conveniences.www.*
 import trivialtemplate.TrivialTemplate
 
 final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant )
+
+final case class AssignableKey( subscribableName : SubscribableName, withinTypeId : String )
+
+final case class AssignableWithinTypeStatus( withinTypeId : String, count : Int )
 
 enum ConfigKey:
   case ConfirmHours
@@ -41,7 +43,19 @@ final case class FeedInfo( feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes :
 enum Flag:
   case MustReloadDaemon
 
-case class IdentifiedDestination[T <: Destination]( subscriptionId : SubscriptionId, destination : T )
+final case class IdentifiedDestination[T <: Destination]( subscriptionId : SubscriptionId, destination : T )
+
+/*
+ * Maps directly to a postgres enum,
+ * if this is changed, keep that in sync
+ */
+enum ItemAssignability:
+  case Unassigned
+  case Assigned
+  case Cleared
+  case Excluded
+
+final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked : Instant, stableSince : Instant, assignability : ItemAssignability )
 
 val LineSep = System.lineSeparator()
 
@@ -63,7 +77,7 @@ object SecretsKey:
 
 type SubjectCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
 
-case class SubscriptionInfo( id : SubscriptionId, name : SubscribableName, manager : SubscriptionManager, destination : Destination, confirmed : Boolean )
+final case class SubscriptionInfo( id : SubscriptionId, name : SubscribableName, manager : SubscriptionManager, destination : Destination, confirmed : Boolean )
 
 enum SubscriptionStatusChange:
   case Created, Confirmed, Removed
@@ -74,7 +88,7 @@ type TemplateParamCustomizer =
 object TemplateParams:
   def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )
   val empty = TemplateParams( Map.empty )
-case class TemplateParams( toMap : Map[String,String] ):
+final case class TemplateParams( toMap : Map[String,String] ):
   override def toString(): String = wwwFormEncodeUTF8( toMap.toSeq* )
   def fill( template : String ) = TrivialTemplate( template ).resolve(this.toMap, TrivialTemplate.Defaults.AsIs)
 
