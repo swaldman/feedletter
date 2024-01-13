@@ -1,5 +1,6 @@
-package com.mchange.feedletter
+package com.mchange.feedletter.style
 
+import com.mchange.feedletter.*
 import com.monovore.decline.*
 import cats.implicits.* // for mapN
 import cats.data.{NonEmptyList,Validated,ValidatedNel}

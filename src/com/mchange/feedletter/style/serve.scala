@@ -1,6 +1,8 @@
-package com.mchange.feedletter
+package com.mchange.feedletter.style
 
 import zio.*
+
+import com.mchange.feedletter.*
 import com.mchange.feedletter.api.ApiLinkGenerator
 
 object DummyApiLinkGenerator extends ApiLinkGenerator:

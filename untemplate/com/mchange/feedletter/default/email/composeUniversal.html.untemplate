@@ -17,7 +17,7 @@ val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatS
 <html>
   <head>
     <style>
-<( style() )>
+<( style_css() )>
     </style>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -43,7 +43,7 @@ val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatS
 <()    
     }
     
-    info.contentsSet.foreach( ic => writer.write( item( info, ic ).text ) )
+    info.contentsSet.foreach( ic => writer.write( item_html( info, ic ).text ) )
 ()>
 
     <div class="unsubscribe">

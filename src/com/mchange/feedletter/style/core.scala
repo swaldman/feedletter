@@ -1,10 +1,6 @@
-package com.mchange.feedletter
+package com.mchange.feedletter.style
 
-import zio.*
-
-import untemplate.Untemplate
-
-import db.AssignableKey
+import com.mchange.feedletter.*
 
 object ComposeInfo:
   sealed trait Universal:
@@ -31,4 +27,24 @@ object ComposeSelection:
     case class Random( n : Int ) extends Multiple
     case class Guids( values : Set[Guid] ) extends Multiple
   sealed trait Multiple
+
+case class ConfirmInfo( destination : Destination, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, confirmGetLink : String, confirmHours : Int ):
+  def subscriptionName = subscribableName.toString()
+
+case class RemovalNotificationInfo(
+  subscriptionName     : String,
+  subscriptionManager  : SubscriptionManager,
+  destination          : Destination,
+  resubscribeLink      : String
+)
+
+case class StatusChangeInfo(
+  change               : SubscriptionStatusChange,
+  subscriptionName     : String,
+  subscriptionManager  : SubscriptionManager,
+  destination          : Destination,
+  requiresConfirmation : Boolean,
+  unsubscribeLink      : String,
+  resubscribeLink      : String
+)
 

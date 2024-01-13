@@ -2,6 +2,7 @@ package com.mchange.feedletter.api
 
 import com.mchange.feedletter.*
 import com.mchange.feedletter.db.PgDatabase
+import com.mchange.feedletter.style.StatusChangeInfo
 
 import com.mchange.cryptoutil.{*,given}
 

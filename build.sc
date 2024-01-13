@@ -66,7 +66,7 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     //
     // e.g. out = out.copy(extraImports=Seq("draft.*"))
 
-    out = out.copy(extraImports=Seq("com.mchange.feedletter.*"))
+    out = out.copy(extraImports=Seq("com.mchange.feedletter.*","com.mchange.feedletter.style.*"))
 
     out
   }

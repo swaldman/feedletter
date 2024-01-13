@@ -1,5 +1,7 @@
 package com.mchange.feedletter
 
+import com.mchange.feedletter.style.*
+
 import java.sql.Connection
 import java.time.{LocalDate,Instant}
 import java.time.format.DateTimeFormatter

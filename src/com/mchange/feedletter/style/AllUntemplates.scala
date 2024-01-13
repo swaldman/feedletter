@@ -1,8 +1,11 @@
-package com.mchange.feedletter
+package com.mchange.feedletter.style
+
+import com.mchange.feedletter.*
 
 import untemplate.Untemplate
 
 import scala.collection.mutable
+import scala.annotation.tailrec
 
 // We define this mutable(!) registry, rather than using IndexedUntemplates directly,
 // because we may in future wish to define "binary" distributions that nevertheless
@@ -84,67 +87,49 @@ object AllUntemplates:
         this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Compose untemplate '$fqn' does not appear to be defined." ) ): ut =>
           throw new UnsuitableUntemplate( s"'$fqn' appears not to be a compose untemplate. (input type: ${untemplateInputType(ut)})" )
 
-  private def isCompose( candidate : Untemplate.AnyUntemplate ) : Boolean =
-    candidate.UntemplateInputTypeCanonical match
-      case Some( ctype ) => ctype.startsWith("com.mchange.feedletter.ComposeInfo")
-      case None =>
-        val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "ComposeInfo" :: "com.mchange.feedletter.ComposeInfo" :: "feedletter.ComposeInfo" :: Nil
-        prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
-
   private def canComposeSingle( candidate : Untemplate.AnyUntemplate ) : Boolean = isComposeSingle( candidate ) || isComposeUniversal( candidate )
-  
-  private def isComposeSingle( candidate : Untemplate.AnyUntemplate ) : Boolean =
-    candidate.UntemplateInputTypeCanonical match
-      case Some( "com.mchange.feedletter.ComposeInfo.Single" ) => true
-      case Some( _ ) => false
-      case None =>
-        val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "ComposeInfo.Single" :: "com.mchange.feedletter.ComposeInfo.Single" :: "feedletter.ComposeInfo.Single" :: Nil
-        prefixes.find( checkMe == _ ).nonEmpty
 
   private def canComposeMultiple( candidate : Untemplate.AnyUntemplate ) : Boolean = isComposeMultiple( candidate ) || isComposeUniversal( candidate )
 
-  private def isComposeMultiple( candidate : Untemplate.AnyUntemplate ) : Boolean =
-    candidate.UntemplateInputTypeCanonical match
-      case Some( "com.mchange.feedletter.ComposeInfo.Multiple" ) => true
-      case Some( _ ) => false
-      case None =>
-        val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "ComposeInfo.Multiple" :: "com.mchange.feedletter.ComposeInfo.Multiple" :: "feedletter.ComposeInfo.Multiple" :: Nil
-        prefixes.find( checkMe == _ ).nonEmpty
+  private def suffixes(fqn : String) : Set[String] =
+    val elements = fqn.split('.').toList
 
-  private def isComposeUniversal( candidate : Untemplate.AnyUntemplate ) : Boolean =
-    candidate.UntemplateInputTypeCanonical match
-      case Some( "com.mchange.feedletter.ComposeInfo.Universal" ) => true
-      case Some( _ ) => false
-      case None =>
-        val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "ComposeInfo.Universal" :: "com.mchange.feedletter.ComposeInfo.Universal" :: "feedletter.ComposeInfo.Universal" :: Nil
-        prefixes.find( checkMe == _ ).nonEmpty
-        
-  private def isConfirm( candidate : Untemplate.AnyUntemplate ) : Boolean =
-    candidate.UntemplateInputTypeCanonical match
-      case Some( ctype ) => ctype == "com.mchange.feedletter.ConfirmInfo"
-      case None =>
-        val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "ConfirmInfo" :: "com.mchange.feedletter.ConfirmInfo" :: "feedletter.ConfirmInfo" :: Nil
-        prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
+    @tailrec
+    def build( from : List[String], accum : Set[List[String]] ) : Set[List[String]] =
+      from match
+        case head :: tail => build( tail, accum + from )
+        case Nil          => accum
+    build( elements, Set.empty ).map( _.mkString(".") )
+  end suffixes
 
-  private def isStatusChange( candidate : Untemplate.AnyUntemplate ) : Boolean =
+  private def isByInputTypeFqn( candidate : Untemplate.AnyUntemplate, fqn : String, suffixes : Set[String] ) : Boolean =
     candidate.UntemplateInputTypeCanonical match
-      case Some( ctype ) => ctype == "com.mchange.feedletter.StatusChangeInfo"
-      case None =>
-        val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "StatusChangeInfo" :: "com.mchange.feedletter.StatusChangeInfo" :: "feedletter.StatusChangeInfo" :: Nil
-        prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
+      case Some( `fqn` ) => true
+      case Some( _ )     => false
+      case None          => suffixes.contains( candidate.UntemplateInputTypeDeclared )
 
-  private def isRemovalNotification( candidate : Untemplate.AnyUntemplate ) : Boolean =
-    candidate.UntemplateInputTypeCanonical match
-      case Some( ctype ) => ctype == "com.mchange.feedletter.RemovalNotificationInfo"
-      case None =>
-        val checkMe  = candidate.UntemplateInputTypeDeclared
-        val prefixes = "RemovalNotificationInfo" :: "com.mchange.feedletter.RemovalNotificationInfo" :: "feedletter.RemovalNotificationInfo" :: Nil
-        prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
+  private def visibleType( clz : Class[?] ) = clz.getName.replace('$','.')
 
+  private val FqnComposeInfoSingle       = visibleType(classOf[ComposeInfo.Single])
+  private val FqnComposeInfoMultiple     = visibleType(classOf[ComposeInfo.Multiple])
+  private val FqnComposeInfoUniversal    = visibleType(classOf[ComposeInfo.Universal])
+  private val FqnConfirmInfo             = visibleType(classOf[ConfirmInfo])
+  private val FqnStatusChangeInfo        = visibleType(classOf[StatusChangeInfo])
+  private val FqnRemovalNotificationInfo = visibleType(classOf[RemovalNotificationInfo])
+  
+  private val SuffixesComposeInfoSingle       = suffixes( FqnComposeInfoSingle )
+  private val SuffixesComposeInfoMultiple     = suffixes( FqnComposeInfoMultiple )
+  private val SuffixesComposeInfoUniversal    = suffixes( FqnComposeInfoUniversal )
+  private val SuffixesConfirmInfo             = suffixes( FqnConfirmInfo )
+  private val SuffixesStatusChangeInfo        = suffixes( FqnStatusChangeInfo )
+  private val SuffixesRemovalNotificationInfo = suffixes( FqnRemovalNotificationInfo )
+
+  private def isComposeSingle( candidate : Untemplate.AnyUntemplate )       : Boolean = isByInputTypeFqn( candidate, FqnComposeInfoSingle, SuffixesComposeInfoSingle )
+  private def isComposeMultiple( candidate : Untemplate.AnyUntemplate )     : Boolean = isByInputTypeFqn( candidate, FqnComposeInfoMultiple, SuffixesComposeInfoMultiple )
+  private def isComposeUniversal( candidate : Untemplate.AnyUntemplate )    : Boolean = isByInputTypeFqn( candidate, FqnComposeInfoUniversal, SuffixesComposeInfoUniversal )
+  private def isConfirm( candidate : Untemplate.AnyUntemplate )             : Boolean = isByInputTypeFqn( candidate, FqnConfirmInfo, SuffixesConfirmInfo )
+  private def isStatusChange( candidate : Untemplate.AnyUntemplate )        : Boolean = isByInputTypeFqn( candidate, FqnStatusChangeInfo, SuffixesStatusChangeInfo )
+  private def isRemovalNotification( candidate : Untemplate.AnyUntemplate ) : Boolean = isByInputTypeFqn( candidate, FqnRemovalNotificationInfo, SuffixesRemovalNotificationInfo )
+
+  private def isCompose( candidate : Untemplate.AnyUntemplate ) = isComposeSingle( candidate ) || isComposeMultiple( candidate ) || isComposeUniversal( candidate )
 
