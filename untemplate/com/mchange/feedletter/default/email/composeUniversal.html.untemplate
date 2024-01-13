@@ -4,11 +4,11 @@ import java.time.format.{DateTimeFormatter,FormatStyle}
 val htmlTitle =
   info match
     case single : ComposeInfo.Single =>
-      s"""[${single.subscriptionName}] ${single.contents.title.getOrElse("(untitled post)")}"""
+      s"""[${single.subscribableName}] ${single.contents.title.getOrElse("(untitled post)")}"""
     case multiple : ComposeInfo.Multiple if multiple.contents.size == 1 =>
-      s"""[${multiple.subscriptionName}] New Post: ${multiple.contents.head.title.getOrElse("(untitled)")}"""
+      s"""[${multiple.subscribableName}] New Post: ${multiple.contents.head.title.getOrElse("(untitled)")}"""
     case multiple : ComposeInfo.Multiple =>
-      s"""[${multiple.subscriptionName}] ${multiple.contents.size} new posts"""
+      s"""[${multiple.subscribableName}] ${multiple.contents.size} new posts"""
 
 val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatStyle.LONG)
 
@@ -29,17 +29,17 @@ val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatS
   info match
     case single : ComposeInfo.Single => {
 ()>
-    <p>A <( ifLink(single.contents.link, "new post") )> has been published to <b><( single.subscriptionName )></b>:</p>
+    <p>A <( ifLink(single.contents.link, "new post") )> has been published to <b><( single.subscribableName )></b>:</p>
 <()
     }
     case multiple : ComposeInfo.Multiple if multiple.contents.size == 1 => {
 ()>
-    <p>A <( ifLink(multiple.contents.head.link, "new post") )> has been published to <b><( multiple.subscriptionName )></b>:</p>
+    <p>A <( ifLink(multiple.contents.head.link, "new post") )> has been published to <b><( multiple.subscribableName )></b>:</p>
 <()
     }
     case multiple : ComposeInfo.Multiple => {
 ()>    
-    <p>The following <( multiple.contents.size )> posts have been published to <b><( info.subscriptionName )></b>:</p>
+    <p>The following <( multiple.contents.size )> posts have been published to <b><( info.subscribableName )></b>:</p>
 <()    
     }
     
@@ -48,7 +48,7 @@ val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatS
 
     <div class="unsubscribe">
       <p>
-        You are subscribed as <code>%ToEmail%</code> to the mailing list <( info.subscriptionName )>.
+        You are subscribed as <code>%ToEmail%</code> to the mailing list <( info.subscribableName )>.
         We'd miss you, but you can click <a href="%RemoveLink%">here</a> to unsubscribe.
       </p>
     </div>

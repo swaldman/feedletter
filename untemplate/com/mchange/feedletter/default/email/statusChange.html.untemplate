@@ -9,7 +9,7 @@ val d = scala.xml.Utility.escape( sci.destination.fullDesc )
     </style>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>[<( sci.subscriptionName )>] Subscription <( sci.change )></title>
+    <title>[<( sci.subscribableName )>] Subscription <( sci.change )></title>
   </head>
   <body>
     <div class="item">
@@ -21,7 +21,7 @@ val d = scala.xml.Utility.escape( sci.destination.fullDesc )
 
         <hr style="border-bottom: 1px solid black">
 
-        <p><( d )> has been subscribed to <b><( sci.subscriptionName )></b>.</p>
+        <p><( d )> has been subscribed to <b><( sci.subscribableName )></b>.</p>
 <()
         if sci.requiresConfirmation then {
 ()>
@@ -44,7 +44,7 @@ val d = scala.xml.Utility.escape( sci.destination.fullDesc )
 
         <hr style="border-bottom: 1px solid black">
 
-        <p>The subscription of <( d )> to <b><( sci.subscriptionName )></b> has been confirmed.</p>
+        <p>The subscription of <( d )> to <b><( sci.subscribableName )></b> has been confirmed.</p>
 
         <p>If you confirmed this subscription in error, you can <a href="<( sci.unsubscribeLink )>">unsubscribe</a>.</p>
 <()
@@ -55,7 +55,7 @@ val d = scala.xml.Utility.escape( sci.destination.fullDesc )
 
         <hr style="border-bottom: 1px solid black">
 
-        <p><( d )> has been unsubscribed from <b><( sci.subscriptionName )></b>.</p>
+        <p><( d )> has been unsubscribed from <b><( sci.subscribableName )></b>.</p>
 
         <p>If you unsubscribed in error, you can resubscribe by <a href="<( sci.resubscribeLink )>">clicking here</a>.</p>
 <()

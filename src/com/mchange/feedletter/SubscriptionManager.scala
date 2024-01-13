@@ -322,7 +322,7 @@ object SubscriptionManager extends SelfLogging:
       val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
       val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
       val fullTemplate =
-        val info = ComposeInfo.Single( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents.head )
+        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, contents.head )
         val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
         compose( info ).text
       val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
@@ -333,7 +333,7 @@ object SubscriptionManager extends SelfLogging:
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
         val fullTemplate =
-          val info = ComposeInfo.Multiple( feedUrl.toString(), assignableKey.subscribableName.toString(), this, assignableKey.withinTypeId, contents )
+          val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, contents )
           val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
           compose( info ).text
         val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
@@ -377,7 +377,7 @@ object SubscriptionManager extends SelfLogging:
       val subject = s"[${subscribableName}] Unsubscribed! We are sorry to see you go." // XXX: Hardcoded subject, revisit someday
       val mailText =
         val removalNotificationUntemplate = AllUntemplates.findRemovalNotificationUntemplate( removalNotificationUntemplateName )
-        val removalNotificationInfo = RemovalNotificationInfo( subscribableName.toString(), this, destination, createGetLink )
+        val removalNotificationInfo = RemovalNotificationInfo( subscribableName, this, destination, createGetLink )
         removalNotificationUntemplate( removalNotificationInfo ).text
       PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
       true

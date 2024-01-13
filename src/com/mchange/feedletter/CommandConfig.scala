@@ -28,7 +28,7 @@ object CommandConfig extends SelfLogging:
           _   <- printFeedInfoTable(fis)
         yield ()
       end zcommand
-    case class DefineEmailSubscription[T](
+    case class DefineEmailSubscribable[T](
       feedId                               : FeedId,
       subscribableName                     : SubscribableName,
       from                                 : String,
@@ -113,7 +113,7 @@ object CommandConfig extends SelfLogging:
           _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
         yield ()
       end zcommand
-    case class DefineMastodonSubscription(
+    case class DefineMastodonSubscribable(
       feedId                        : FeedId,
       subscribableName              : SubscribableName,
       extraParams                   : Map[String,String]
@@ -129,7 +129,7 @@ object CommandConfig extends SelfLogging:
           _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
         yield ()
       end zcommand
-    case class EditSubscriptionDefinition( name : SubscribableName ) extends CommandConfig:
+    case class EditSubscribable( name : SubscribableName ) extends CommandConfig:
       def prettifyJson( jsonStr : String ) : String =
         import upickle.default.*
         write( read[ujson.Value]( jsonStr ), indent = 4 )

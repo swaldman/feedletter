@@ -21,7 +21,7 @@ end confirmHoursWarning
     </style>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Confirm Subscription to <( info.subscriptionName )></title>
+    <title>Confirm Subscription to <( info.subscribableName )></title>
   </head>
   <body class="confirm-body">
     <div class="confirm-main">
@@ -44,7 +44,7 @@ end confirmHoursWarning
       </ul>
 
       <p>Love,<br>
-      &nbsp;&nbsp;<i><( info.subscriptionName )></i>
+      &nbsp;&nbsp;<i><( info.subscribableName )></i>
     </div>
   </body>
 </html>

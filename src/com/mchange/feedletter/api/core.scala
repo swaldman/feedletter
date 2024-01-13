@@ -119,7 +119,7 @@ object V0 extends SelfLogging:
     lazy val toGetParams : String = wwwFormEncodeUTF8( toMap.toSeq* )
 
   object SubscriptionStatusChanged:
-    case class Info( subscriptionName : String, destination : Destination ) // does NOT extend SubscriptionStatusChanged
+    case class Info( subscribableName : String, destination : Destination ) // does NOT extend SubscriptionStatusChanged
     case class Created( info : Info )         extends SubscriptionStatusChanged( SubscriptionStatusChange.Created )
     case class Confirmed( info : Info )       extends SubscriptionStatusChanged( SubscriptionStatusChange.Confirmed )
     case class Removed( info : Option[Info] ) extends SubscriptionStatusChanged( SubscriptionStatusChange.Removed )
@@ -259,7 +259,7 @@ object V0 extends SelfLogging:
               val sman = sinfo.manager
               sman match
                 case vsman : SubscriptionManager.SupportsExternalSubscriptionApi =>
-                  vsman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name.str, sman, sinfo.destination, !sinfo.confirmed, removeGetLink(sinfo.id), createGetLink(sinfo.name, sinfo.destination) ) )
+                  vsman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name, sman, sinfo.destination, !sinfo.confirmed, removeGetLink(sinfo.id), createGetLink(sinfo.name, sinfo.destination) ) )
                 case _ => // we should never see this, shared logic should have checked already
                   throw new InvalidSubscribable(s"Subscribable '${sinfo.name}' does not support the external subscription API. (Manager '${sinfo.manager}' does not support.)")
             case None =>

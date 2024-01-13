@@ -63,14 +63,14 @@ object Main extends AbstractMain, SelfLogging:
           val nf = NascentFeed(FeedUrl(fu), t(0), t(1), t(2), t(3) )
           CommandConfig.Admin.AddFeed( nf )
       Command("add-feed",header=header)( opts )
-    val defineEmailSubscription =
-      val header = "Define a kind of e-mail subscription."
+    val defineEmailSubscribable =
+      val header = "Define a new email subscribable, a mailing lost to which users can subscribe."
       val opts =
         val feedId =
-          val help = "The ID of the RSS feed to be subscribed."
+          val help = "The ID of the RSS feed to be watched."
           Opts.option[Int]("feed-id", help=help, metavar="feed-id").map( FeedId.apply )
         val name =
-          val help = "A name for the new kind of email subscription."
+          val help = "A name for the new subscribable."
           Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
         val from =
           val help = "The email address from which emails should be sent."
@@ -106,29 +106,29 @@ object Main extends AbstractMain, SelfLogging:
           (each orElse daily orElse weekly orElse fixed).withDefault[K]( (SubscriptionManager.Email.Each, None) : K )
         val extraParams = CommonOpts.ExtraParams
         ( feedId, name, from, replyTo, composeUntemplateName, confirmUntemplateName, removalNotificationUntemplateName, statusChangeUntemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, comun, conun, rnun, scun, k, ep ) =>
-          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, comun, conun, rnun, scun, k, ep )
-      Command("define-email-subscription",header=header)( opts )
-    val defineMastodonSubscription =
-      val header = "Define a kind of Mastodon subscription."
+          CommandConfig.Admin.DefineEmailSubscribable( fi, n, f, rt, comun, conun, rnun, scun, k, ep )
+      Command("define-email-subscribable",header=header)( opts )
+    val defineMastodonSubscribable =
+      val header = "Define a Mastodon subscribable, a source from which Mastodon feeds can receive automatic posts.."
       val opts =
         val feedId =
-          val help = "The ID of the RSS feed to be subscribed."
+          val help = "The ID of the RSS feed to be watched."
           Opts.option[Int]("feed-id", help=help, metavar="feed-id").map( FeedId.apply )
         val name =
-          val help = "A name for the new kind of email subscription."
+          val help = "A name for the new subscribable."
           Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
         val extraParams = CommonOpts.ExtraParams
         ( feedId, name, extraParams ) mapN: ( fi, n, ep ) =>
-          CommandConfig.Admin.DefineMastodonSubscription( fi, n, ep )
-      Command("define-mastodon-subscription",header=header)( opts )
-    val editSubscriptionDefinition =
-      val header = "Edit a subscription definition."
+          CommandConfig.Admin.DefineMastodonSubscribable( fi, n, ep )
+      Command("define-mastodon-subscribable",header=header)( opts )
+    val editSubscribable =
+      val header = "Edit an already-defined subscribable."
       val opts =
         val name =
-          val help = "Name of an existing email subscription."
+          val help = "Name of an existing subscribable."
           Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
-        name.map( n => CommandConfig.Admin.EditSubscriptionDefinition(n) )
-      Command("edit-subscription-definition",header=header)( opts )
+        name.map( n => CommandConfig.Admin.EditSubscribable(n) )
+      Command("edit-subscribable",header=header)( opts )
     val listComposeUntemplates =
       val header = "List available templates for composing notifications."
       val opts = Opts( CommandConfig.Admin.ListComposeUntemplates )
@@ -145,10 +145,10 @@ object Main extends AbstractMain, SelfLogging:
       val header = "List all feeds the application is watching."
       val opts = Opts( CommandConfig.Admin.ListFeeds )
       Command("list-feeds",header=header)( opts )
-    val listSubscriptionDefinitions =
-      val header = "List all subscription definitions."
+    val listSubscribables =
+      val header = "List all subscribables."
       val opts = Opts( CommandConfig.Admin.ListSubscribables )
-      Command("list-subscription-definitions",header=header)( opts )
+      Command("list-subscribables",header=header)( opts )
     val setConfig =
       val header = "Set configuration parameters."
       def simpleConfigOpt[T]( key : ConfigKey )( name : String, help : String, metavar : String )(using Argument[T]) : Opts[Option[(ConfigKey,String)]] =
@@ -229,14 +229,14 @@ object Main extends AbstractMain, SelfLogging:
         ( from, to ) mapN ( (f,t) => CommandConfig.Admin.SendTestEmail(f,t) )
       Command("send-test-email", header=header)( opts )
     val subscribe =
-      val header = "Subscribe to a defined subscription."
+      val header = "Subscribe to a subscribable."
       val opts =
-        val subscriptionName =
-          val help = "The name of an already-defined subscription."
-          Opts.option[String]("subscription-name",help=help,metavar="name").map( SubscribableName.apply )
+        val subscribableName =
+          val help = "The name of an already-defined subscribable."
+          Opts.option[String]("subscribable-name",help=help,metavar="name").map( SubscribableName.apply )
         val destination = CommonOpts.AnyDestination
         val unconfirmed = Opts.flag("unconfirmed", help="Mark the subscription unconfirmed.").orFalse
-        ( subscriptionName, destination, unconfirmed ) mapN: (sn, d, uc) =>
+        ( subscribableName, destination, unconfirmed ) mapN: (sn, d, uc) =>
           CommandConfig.Admin.Subscribe( AdminSubscribeOptions(sn, d, !uc, Instant.now) ) // ! our flag is unconfirmed, our field is confirmed
       Command("subscribe", header=header)( opts )
 
@@ -279,7 +279,7 @@ object Main extends AbstractMain, SelfLogging:
           val header = "Administer and configure an installation."
           val opts =
             import Admin.*
-            Opts.subcommands(addFeed, defineEmailSubscription, defineMastodonSubscription, editSubscriptionDefinition, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscriptionDefinitions, sendTestEmail, setConfig, subscribe)
+            Opts.subcommands(addFeed, defineEmailSubscribable, defineMastodonSubscribable, editSubscribable, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscribables, sendTestEmail, setConfig, subscribe)
           Command( name="admin", header=header )( opts )
         val crank =
           val header = "Run a usually recurring operation a single time."

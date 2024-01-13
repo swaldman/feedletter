@@ -27,7 +27,7 @@ def serveOneHtmlPage( html : String, interface : String, port : Int ) : Task[Uni
 def styleStatusChangeUntemplate(
   untemplateName       : String,
   statusChange         : SubscriptionStatusChange,
-  subscriptionName     : SubscribableName,
+  subscribableName     : SubscribableName,
   subscriptionManager  : SubscriptionManager,
   destination          : subscriptionManager.D,
   requiresConfirmation : Boolean,
@@ -35,15 +35,15 @@ def styleStatusChangeUntemplate(
   port                 : Int
 ) : Task[Unit] =
   val unsubscribeLink = DummyApiLinkGenerator.removeGetLink(SubscriptionId(0))
-  val resubscribeLink = DummyApiLinkGenerator.createGetLink(subscriptionName,destination)
-  val sci = StatusChangeInfo( statusChange, subscriptionName.str, subscriptionManager, destination, requiresConfirmation, unsubscribeLink, resubscribeLink )
+  val resubscribeLink = DummyApiLinkGenerator.createGetLink(subscribableName,destination)
+  val sci = StatusChangeInfo( statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation, unsubscribeLink, resubscribeLink )
   val untemplate = AllUntemplates.findStatusChangeUntemplate( untemplateName )
   val filled = untemplate( sci ).text
   serveOneHtmlPage( filled, interface, port )
 
 def styleComposeMultipleUntemplate(
   untemplateName      : String,
-  subscriptionName    : SubscribableName,
+  subscribableName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
   withinTypeId        : String,
   destination         : subscriptionManager.D,
@@ -54,18 +54,18 @@ def styleComposeMultipleUntemplate(
   port                : Int
 ) : Task[Unit] =
   val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
-  val composeInfo = ComposeInfo.Multiple( feedUrl.str, subscriptionName.str, subscriptionManager, withinTypeId, contents )
+  val composeInfo = ComposeInfo.Multiple( feedUrl, subscribableName, subscriptionManager, withinTypeId, contents )
   val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
     val sid = SubscriptionId(0)
-    val templateParams = subscriptionManager.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
+    val templateParams = subscriptionManager.composeTemplateParams( subscribableName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
     templateParams.fill( untemplateOutput )
   serveOneHtmlPage( composed, interface, port )
 
 def styleComposeSingleUntemplate(
   untemplateName      : String,
-  subscriptionName    : SubscribableName,
+  subscribableName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
   withinTypeId        : String,
   destination         : subscriptionManager.D,
@@ -76,18 +76,18 @@ def styleComposeSingleUntemplate(
   port                : Int
 ) : Task[Unit] =
   val contents = digest.guidToItemContent( guid )
-  val composeInfo = ComposeInfo.Single( feedUrl.str, subscriptionName.str, subscriptionManager, withinTypeId, contents )
+  val composeInfo = ComposeInfo.Single( feedUrl, subscribableName, subscriptionManager, withinTypeId, contents )
   val untemplate = AllUntemplates.findComposeUntemplateSingle( untemplateName )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
     val sid = SubscriptionId(0)
-    val templateParams = subscriptionManager.composeTemplateParams( subscriptionName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
+    val templateParams = subscriptionManager.composeTemplateParams( subscribableName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
     templateParams.fill( untemplateOutput )
   serveOneHtmlPage( composed, interface, port )
 
 def styleConfirmUntemplate(
   untemplateName      : String,
-  subscriptionName    : SubscribableName,
+  subscribableName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
   destination         : subscriptionManager.D,
   feedUrl             : FeedUrl,
@@ -96,21 +96,21 @@ def styleConfirmUntemplate(
   port                : Int
 ) : Task[Unit] =
   val sid = SubscriptionId(0)
-  val confirmInfo = ConfirmInfo( destination, subscriptionName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), confirmHours )
+  val confirmInfo = ConfirmInfo( destination, subscribableName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), confirmHours )
   val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
   val filled = untemplate( confirmInfo ).text
   serveOneHtmlPage( filled, interface, port )
 
 def styleRemovalNotificationUntemplate(
   untemplateName      : String,
-  subscriptionName    : SubscribableName,
+  subscribableName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
   destination         : subscriptionManager.D,
   interface           : String,
   port                : Int
 ) : Task[Unit] =
   val sid = SubscriptionId(0)
-  val rnInfo = RemovalNotificationInfo( subscriptionName.str, subscriptionManager, destination, DummyApiLinkGenerator.createGetLink(subscriptionName,destination))
+  val rnInfo = RemovalNotificationInfo( subscribableName, subscriptionManager, destination, DummyApiLinkGenerator.createGetLink(subscribableName,destination))
   val untemplate = AllUntemplates.findRemovalNotificationUntemplate( untemplateName )
   val filled = untemplate( rnInfo ).text
   serveOneHtmlPage( filled, interface, port )

@@ -9,16 +9,16 @@ def untemplateInputType( template : Untemplate.AnyUntemplate ) : String =
 
 object ComposeInfo:
   sealed trait Universal:
-    def feedUrl             : String
-    def subscriptionName    : String
+    def feedUrl             : FeedUrl
+    def subscribableName    : SubscribableName
     def subscriptionManager : SubscriptionManager
     def withinTypeId        : String
     def contents            : ItemContent | Set[ItemContent]
     def contentsSet         : Set[ItemContent]
   end Universal
-  case class Single( feedUrl : String, subscriptionName : String, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal:
+  case class Single( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal:
     override lazy val contentsSet : Set[ItemContent] = Set( contents )
-  case class Multiple( feedUrl : String, subscriptionName : String, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal:
+  case class Multiple( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal:
     override lazy val contentsSet : Set[ItemContent] = contents
 
 object ComposeSelection:
@@ -33,11 +33,10 @@ object ComposeSelection:
     case class Guids( values : Set[Guid] ) extends Multiple
   sealed trait Multiple
 
-case class ConfirmInfo( destination : Destination, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, confirmGetLink : String, confirmHours : Int ):
-  def subscriptionName = subscribableName.str
+case class ConfirmInfo( destination : Destination, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, confirmGetLink : String, confirmHours : Int )
 
 case class RemovalNotificationInfo(
-  subscriptionName     : String,
+  subscribableName     : SubscribableName,
   subscriptionManager  : SubscriptionManager,
   destination          : Destination,
   resubscribeLink      : String
@@ -45,7 +44,7 @@ case class RemovalNotificationInfo(
 
 case class StatusChangeInfo(
   change               : SubscriptionStatusChange,
-  subscriptionName     : String,
+  subscribableName     : SubscribableName,
   subscriptionManager  : SubscriptionManager,
   destination          : Destination,
   requiresConfirmation : Boolean,

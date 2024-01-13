@@ -9,9 +9,9 @@ import java.nio.file.{Path as JPath}
 
 object StyleMain extends AbstractMain:
   object CommonStyleOpts:
-    val SubscriptionName =
-      val help = "The name of an already defined subscription that will use this template."
-      Opts.option[String]("subscription-name",help=help,metavar="name").map( SubscribableName.apply )
+    val SubscribableName =
+      val help = "The name of an already defined subscribable that will use this template."
+      Opts.option[String]("subscribable-name",help=help,metavar="name").map( com.mchange.feedletter.SubscribableName.apply )
     val DestinationOrDefault = CommonOpts.AnyDestination.orNone
     val Interface =
       val help = "The interface on which to bind an HTTP server, which will serve the rendered untemplate."
@@ -26,7 +26,7 @@ object StyleMain extends AbstractMain:
   val composeSingle =
     val header = "Style a template that composes a single item."
     val opts =
-      val subscriptionName = CommonStyleOpts.SubscriptionName
+      val subscribableName = CommonStyleOpts.SubscribableName
       val untemplateName = CommonStyleOpts.UntemplateName
       val selection =
         val first  = Opts.flag("first",help="Display first item in feed.").map( _ => ComposeSelection.Single.First )
@@ -39,14 +39,14 @@ object StyleMain extends AbstractMain:
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, untemplateName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, un, s, d, wti, i, p ) =>
+      ( subscribableName, untemplateName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, un, s, d, wti, i, p ) =>
         CommandConfig.Style.ComposeUntemplateSingle( sn, un, s, d, wti, i, p )
     Command("compose-single",header=header)( opts )
 
   val composeMultiple =
     val header = "Style a template that composes a multiple items."
     val opts =
-      val subscriptionName = CommonStyleOpts.SubscriptionName
+      val subscribableName = CommonStyleOpts.SubscribableName
       val untemplateName = CommonStyleOpts.UntemplateName
       val selection =
         val first  = Opts.option[Int]("first",help="Display first n items in feed.",metavar="n").map( n => ComposeSelection.Multiple.First(n) )
@@ -59,19 +59,19 @@ object StyleMain extends AbstractMain:
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, untemplateName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, un, s, d, wti, i, p ) =>
+      ( subscribableName, untemplateName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, un, s, d, wti, i, p ) =>
         CommandConfig.Style.ComposeUntemplateMultiple( sn, un, s, d, wti, i, p )
     Command("compose-multiple",header=header)( opts )
 
   val confirm =
     val header = "Style a template that asks users to confirm a subscription."
     val opts =
-      val subscriptionName = CommonStyleOpts.SubscriptionName
+      val subscribableName = CommonStyleOpts.SubscribableName
       val untemplateName = CommonStyleOpts.UntemplateName
       val destination = CommonStyleOpts.DestinationOrDefault
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, untemplateName, destination, interface, port ) mapN: ( sn, un, d, i, p ) =>
+      ( subscribableName, untemplateName, destination, interface, port ) mapN: ( sn, un, d, i, p ) =>
         CommandConfig.Style.Confirm( sn, un, d, i, p )
     Command("confirm",header=header)( opts )
 
@@ -83,25 +83,25 @@ object StyleMain extends AbstractMain:
         val confirmed = Opts.flag("confirmed",help="Inform user that a subscription has been confirmed.").map( _ => SubscriptionStatusChange.Confirmed )
         val removed   = Opts.flag("removed",help="Inform user that a subscription has been removed.").map( _ => SubscriptionStatusChange.Removed )
         (created orElse confirmed orElse removed)
-      val subscriptionName = CommonStyleOpts.SubscriptionName
+      val subscribableName = CommonStyleOpts.SubscribableName
       val untemplateName = CommonStyleOpts.UntemplateName
       val destination = CommonStyleOpts.DestinationOrDefault
       val preconfirmed = Opts.flag("preconfirmed",help="Set to mark the styled subscription already confirmed, or not in need of a confirmation step.").orFalse
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( kind, subscriptionName, untemplateName, destination, preconfirmed, interface, port ) mapN: ( k, sn, un, d, prec, i, p ) =>
+      ( kind, subscribableName, untemplateName, destination, preconfirmed, interface, port ) mapN: ( k, sn, un, d, prec, i, p ) =>
         CommandConfig.Style.StatusChange( k, sn, un, d, !prec, i, p ) // requiresConfirmation == !preconfirmed
     Command("status-change",header=header)( opts )
 
   val removalNotification =
     val header = "Style a template that notifies users that they have subscribed."
     val opts =
-      val subscriptionName = CommonStyleOpts.SubscriptionName
+      val subscribableName = CommonStyleOpts.SubscribableName
       val untemplateName = CommonStyleOpts.UntemplateName
       val destination = CommonStyleOpts.DestinationOrDefault
       val interface = CommonStyleOpts.Interface
       val port = CommonStyleOpts.Port
-      ( subscriptionName, untemplateName, destination, interface, port ) mapN: ( sn, un, d, i, p ) =>
+      ( subscribableName, untemplateName, destination, interface, port ) mapN: ( sn, un, d, i, p ) =>
         CommandConfig.Style.RemovalNotification( sn, un, d, i, p )
     Command("removal-notification",header=header)( opts )
 
