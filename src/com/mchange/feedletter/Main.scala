@@ -84,6 +84,9 @@ object Main extends AbstractMain, SelfLogging:
         val confirmUntemplateName =
           val help = "Fully qualified name of untemplate that will ask for e-mail confirmations."
           Opts.option[String]("confirm-untemplate",help=help,metavar="fully-qualified-name").orNone
+        val removalNotificationUntemplateName =
+          val help = "Fully qualified name of untemplate that be mailed to users upon unsubscription."
+          Opts.option[String]("removal-notification-untemplate",help=help,metavar="fully-qualified-name").orNone
         val statusChangeUntemplateName =
           val help = "Fully qualified name of untemplate that will render results of GET request to the API."
           Opts.option[String]("status-change-untemplate",help=help,metavar="fully-qualified-name").orNone
@@ -102,8 +105,8 @@ object Main extends AbstractMain, SelfLogging:
           val fixed = Opts.option[Int]("num-items-per-letter",help="E-mail every fixed number of posts.",metavar="num").map( n => (SubscriptionManager.Email.Fixed, Some(n)) : K )
           (each orElse daily orElse weekly orElse fixed).withDefault[K]( (SubscriptionManager.Email.Each, None) : K )
         val extraParams = CommonOpts.ExtraParams
-        ( feedId, name, from, replyTo, composeUntemplateName, confirmUntemplateName, statusChangeUntemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, comun, conun, scun, k, ep ) =>
-          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, comun, conun, scun, k, ep )
+        ( feedId, name, from, replyTo, composeUntemplateName, confirmUntemplateName, removalNotificationUntemplateName, statusChangeUntemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, comun, conun, rnun, scun, k, ep ) =>
+          CommandConfig.Admin.DefineEmailSubscription( fi, n, f, rt, comun, conun, rnun, scun, k, ep )
       Command("define-email-subscription",header=header)( opts )
     val defineMastodonSubscription =
       val header = "Define a kind of Mastodon subscription."

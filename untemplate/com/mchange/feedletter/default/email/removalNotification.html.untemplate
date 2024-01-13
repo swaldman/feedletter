@@ -1,0 +1,33 @@
+val displayName =
+  val narrowed = info.subscriptionManager.narrowDestinationOrThrow( info.destination )
+  info.subscriptionManager.displayShort( narrowed )
+end displayName
+
+( info : RemovalNotificationInfo )[]~()>
+
+<html>
+  <head>
+    <style>
+<( style() )>
+    </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unsubscribed from <( info.subscriptionName )></title>
+  </head>
+  <body>
+    <div>
+      <p>Dear <( displayName )>,</p>
+
+      <p>You have been unsubscribed from the mailing list <b><( info.subscriptionName )></b>.
+        
+      <p style="font-size: 140%;">&nbsp;&nbsp;&#x1F622;</p>
+
+      <p>If you were removed in error, or if you <i>ever</i> change your mind, please <a href="<( info.resubscribeLink )>">click here to resubscribe</a>.
+
+      <p>Au revoir,<br>
+      &nbsp;&nbsp;<i><( info.subscriptionName )></i>
+    </div>
+  </body>
+</html>
+
+

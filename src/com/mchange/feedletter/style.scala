@@ -2,7 +2,6 @@ package com.mchange.feedletter
 
 import zio.*
 import com.mchange.feedletter.api.ApiLinkGenerator
-import com.mchange.feedletter.Main.Admin.subscribe
 
 object DummyApiLinkGenerator extends ApiLinkGenerator:
   def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String =
@@ -98,5 +97,19 @@ def styleConfirmUntemplate(
   val confirmInfo = ConfirmInfo( destination, subscriptionName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), confirmHours )
   val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
   val filled = untemplate( confirmInfo ).text
+  serveOneHtmlPage( filled, interface, port )
+
+def styleRemovalNotificationUntemplate(
+  untemplateName      : String,
+  subscriptionName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  interface           : String,
+  port                : Int
+) : Task[Unit] =
+  val sid = SubscriptionId(0)
+  val rnInfo = RemovalNotificationInfo( subscriptionName.toString(), subscriptionManager, destination, DummyApiLinkGenerator.createGetLink(subscriptionName,destination))
+  val untemplate = AllUntemplates.findRemovalNotificationUntemplate( untemplateName )
+  val filled = untemplate( rnInfo ).text
   serveOneHtmlPage( filled, interface, port )
 

@@ -29,19 +29,21 @@ object CommandConfig extends SelfLogging:
         yield ()
       end zcommand
     case class DefineEmailSubscription[T](
-      feedId                        : FeedId,
-      subscribableName              : SubscribableName,
-      from                          : String,
-      replyTo                       : Option[String],
-      mbComposeUntemplateName       : Option[String],
-      mbConfirmUntemplateName       : Option[String],
-      mbStatusChangeUntemplateName  : Option[String],
-      emailCompanionAndArg          : (SubscriptionManager.Email.Companion, Option[T]),
-      extraParams                   : Map[String,String]
+      feedId                               : FeedId,
+      subscribableName                     : SubscribableName,
+      from                                 : String,
+      replyTo                              : Option[String],
+      mbComposeUntemplateName              : Option[String],
+      mbConfirmUntemplateName              : Option[String],
+      mbRemovalNotificationUntemplateName  : Option[String],
+      mbStatusChangeUntemplateName         : Option[String],
+      emailCompanionAndArg                 : (SubscriptionManager.Email.Companion, Option[T]),
+      extraParams                          : Map[String,String]
     ) extends CommandConfig:
       override def zcommand : ZCommand =
-        val confirmUntemplateName     = mbConfirmUntemplateName.getOrElse( Default.Email.ConfirmUntemplate )
-        val statusChangeUntemplateName = mbStatusChangeUntemplateName.getOrElse( Default.Email.StatusChangeUntemplate )
+        val confirmUntemplateName             = mbConfirmUntemplateName.getOrElse( Default.Email.ConfirmUntemplate )
+        val statusChangeUntemplateName        = mbStatusChangeUntemplateName.getOrElse( Default.Email.StatusChangeUntemplate )
+        val removalNotificationUntemplateName = mbRemovalNotificationUntemplateName.getOrElse( Default.Email.RemovalNotificationUntemplate )
 
         val subscriptionManager =
           import SubscriptionManager.{Email as SMEM}
@@ -54,6 +56,7 @@ object CommandConfig extends SelfLogging:
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
                 statusChangeUntemplateName = statusChangeUntemplateName,
+                removalNotificationUntemplateName = removalNotificationUntemplateName,
                 extraParams = extraParams
               )
             case (SMEM.Weekly, tz : Option[ZoneId @unchecked]) => // we'll check ourselves
@@ -65,6 +68,7 @@ object CommandConfig extends SelfLogging:
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
                 statusChangeUntemplateName = statusChangeUntemplateName,
+                removalNotificationUntemplateName = removalNotificationUntemplateName,
                 timeZone = tz,
                 extraParams = extraParams
               )
@@ -77,6 +81,7 @@ object CommandConfig extends SelfLogging:
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
                 statusChangeUntemplateName = statusChangeUntemplateName,
+                removalNotificationUntemplateName = removalNotificationUntemplateName,
                 timeZone = tz,
                 extraParams = extraParams
               )
@@ -88,6 +93,7 @@ object CommandConfig extends SelfLogging:
                 composeUntemplateName = composeUntemplateName,
                 confirmUntemplateName = confirmUntemplateName,
                 statusChangeUntemplateName = statusChangeUntemplateName,
+                removalNotificationUntemplateName = removalNotificationUntemplateName,
                 numItemsPerLetter = nipl,
                 extraParams = extraParams
               )
@@ -292,19 +298,25 @@ object CommandConfig extends SelfLogging:
         sman match
           case stu : SubscriptionManager.UntemplatedCompose => stu.composeUntemplateName
           case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-            throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
+            throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not compose through an untemplate, cannot style: $sman")
     def untemplateNameConfirm( overrideUntemplateName : Option[String], sman : SubscriptionManager, subscribableName : SubscribableName ) : String =
       overrideUntemplateName.getOrElse:
         sman match
           case stu : SubscriptionManager.UntemplatedConfirm => stu.confirmUntemplateName
           case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-            throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
+            throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render confirmations through an untemplate, cannot style: $sman")
     def untemplateNameStatusChange( overrideUntemplateName : Option[String], sman : SubscriptionManager, subscribableName : SubscribableName ) : String =
       overrideUntemplateName.getOrElse:
         sman match
           case stu : SubscriptionManager.UntemplatedStatusChange => stu.statusChangeUntemplateName
           case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
-            throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render through an untemplate, cannot style: $sman")
+            throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render status changes through an untemplate, cannot style: $sman")
+    def untemplateNameRemovalNotification( overrideUntemplateName : Option[String], sman : SubscriptionManager, subscribableName : SubscribableName ) : String =
+      overrideUntemplateName.getOrElse:
+        sman match
+          case stu : SubscriptionManager.UntemplatedRemovalNotification => stu.removalNotificationUntemplateName
+          case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+            throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render removal notifications through an untemplate, cannot style: $sman")
     case class ComposeUntemplateSingle(
       subscribableName       : SubscribableName,
       overrideUntemplateName : Option[String],
@@ -422,6 +434,27 @@ object CommandConfig extends SelfLogging:
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         fu,
                         ch,
+                        interface,
+                        port
+                      ).fork
+          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
+          _       <- ZIO.never
+        yield ()
+      end zcommand
+    case class RemovalNotification( subscribableName : SubscribableName, overrideUntemplateName : Option[String], destination : Option[Destination], interface : String, port : Int ) extends CommandConfig:
+      override def zcommand : ZCommand =
+        for
+          ds       <- ZIO.service[DataSource]
+          _        <- PgDatabase.ensureDb( ds )
+          pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
+          fu       =  pair(0)
+          sman     =  pair(1)
+          un       =  untemplateNameRemovalNotification(overrideUntemplateName, sman, subscribableName)
+          _        <- styleRemovalNotificationUntemplate(
+                        un,
+                        subscribableName,
+                        sman,
+                        destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         interface,
                         port
                       ).fork

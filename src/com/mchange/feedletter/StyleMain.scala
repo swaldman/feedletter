@@ -92,11 +92,23 @@ object StyleMain extends AbstractMain:
         CommandConfig.Style.StatusChange( k, sn, un, d, !prec, i, p ) // requiresConfirmation == !preconfirmed
     Command("status-change",header=header)( opts )
 
+  val removalNotification =
+    val header = "Style a template that notifies users that they have subscribed."
+    val opts =
+      val subscriptionName = CommonStyleOpts.SubscriptionName
+      val untemplateName = CommonStyleOpts.UntemplateName
+      val destination = CommonStyleOpts.DestinationOrDefault
+      val interface = CommonStyleOpts.Interface
+      val port = CommonStyleOpts.Port
+      ( subscriptionName, untemplateName, destination, interface, port ) mapN: ( sn, un, d, i, p ) =>
+        CommandConfig.Style.RemovalNotification( sn, un, d, i, p )
+    Command("removal-notification",header=header)( opts )
+
   val feedletterStyle =
     val header = "Iteratively edit and review the untemplates through which your posts will be notified."
     val opts : Opts[(Option[JPath], CommandConfig)] =
       val secrets = CommonOpts.Secrets
-      val subcommands = Opts.subcommands( composeMultiple, composeSingle, confirm, statusChange )
+      val subcommands = Opts.subcommands( composeMultiple, composeSingle, confirm, removalNotification, statusChange )
       ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )
     Command("feedletter-style", header=header)( opts )
 

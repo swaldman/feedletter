@@ -341,12 +341,15 @@ object V0 extends SelfLogging:
             val message =
               mbSinfo match
                 case Some(sinfo) =>
-                  if !sinfo.manager.supportsExternalSubscriptionApi then
-                    // aborts the transaction, rolls back the unsubscribe
-                    throw new InvalidSubscribable(s"Can't remove. Subscribable '${sinfo.name}' does not support the external subscription API. (Manager '${sinfo.manager}' does not support.)")
-                  else
-                    s"Unsubscribed. Subscription ${sid} of '${sinfo.destination.unique}' successfully removed."
-                case None =>   
+                  sinfo.manager match
+                    case vsman : SubscriptionManager.SupportsExternalSubscriptionApi =>
+                      val d = vsman.narrowDestinationOrThrow(sinfo.destination)
+                      vsman.maybeSendRemovalNotification(conn,sid,sinfo.name,d,createGetLink(sinfo.name,d))
+                      s"Unsubscribed. Subscription ${sid} of '${sinfo.destination.unique}' successfully removed."
+                    case _ =>  
+                      // aborts the transaction, rolls back the unsubscribe
+                      throw new InvalidSubscribable(s"Can't remove. Subscribable '${sinfo.name}' does not support the external subscription API. (Manager '${sinfo.manager}' does not support.)")
+                case None =>
                   s"Subscription with ID ${sid} does not exist or has already been removed."
             ( mbSinfo, ResponsePayload.Subscription.Removed(message, sid.toLong,SubscriptionStatusChanged.Removed(mbSinfo.map(_.thin))) )
         mapError( mainTask )

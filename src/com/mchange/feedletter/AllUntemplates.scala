@@ -19,19 +19,21 @@ object AllUntemplates:
   private var _cache : LazyCache = new LazyCache
 
   class LazyCache:
-    lazy val ComposeUntemplates         = AllUntemplates.all.filter( (k,v) => isCompose(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Universal,Nothing]]) )
-    lazy val ComposeUntemplatesSingle   = ComposeUntemplates.filter( (k,v) => canComposeSingle(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Single,Nothing]])    )
-    lazy val ComposeUntemplatesMultiple = ComposeUntemplates.filter( (k,v) => canComposeMultiple(v) ) map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Multiple,Nothing]])  )
-    lazy val ConfirmUntemplates         = AllUntemplates.all.filter( (k,v) => isConfirm(v) )         map ( (k,v) => (k, v.asInstanceOf[Untemplate[ConfirmInfo,Nothing]]) )
-    lazy val StatusChangeUntemplates    = AllUntemplates.all.filter( (k,v) => isStatusChange(v) )   map ( (k,v) => (k, v.asInstanceOf[Untemplate[StatusChangeInfo,Nothing]]) )
+    lazy val ComposeUntemplates             = AllUntemplates.all.filter( (k,v) => isCompose(v) )             map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Universal,Nothing]]) )
+    lazy val ComposeUntemplatesSingle       = ComposeUntemplates.filter( (k,v) => canComposeSingle(v) )      map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Single,Nothing]])    )
+    lazy val ComposeUntemplatesMultiple     = ComposeUntemplates.filter( (k,v) => canComposeMultiple(v) )    map ( (k,v) => (k, v.asInstanceOf[Untemplate[ComposeInfo.Multiple,Nothing]])  )
+    lazy val ConfirmUntemplates             = AllUntemplates.all.filter( (k,v) => isConfirm(v) )             map ( (k,v) => (k, v.asInstanceOf[Untemplate[ConfirmInfo,Nothing]]) )
+    lazy val StatusChangeUntemplates        = AllUntemplates.all.filter( (k,v) => isStatusChange(v) )        map ( (k,v) => (k, v.asInstanceOf[Untemplate[StatusChangeInfo,Nothing]]) )
+    lazy val RemovalNotificationUntemplates = AllUntemplates.all.filter( (k,v) => isRemovalNotification(v) ) map ( (k,v) => (k, v.asInstanceOf[Untemplate[RemovalNotificationInfo,Nothing]]) )
 
   def cache : LazyCache = this.synchronized( _cache )
 
-  def compose         = cache.ComposeUntemplates
-  def composeSingle   = cache.ComposeUntemplatesSingle
-  def composeMultiple = cache.ComposeUntemplatesMultiple
-  def confirm         = cache.ConfirmUntemplates
-  def statusChange    = cache.StatusChangeUntemplates
+  def compose             = cache.ComposeUntemplates
+  def composeSingle       = cache.ComposeUntemplatesSingle
+  def composeMultiple     = cache.ComposeUntemplatesMultiple
+  def confirm             = cache.ConfirmUntemplates
+  def statusChange        = cache.StatusChangeUntemplates
+  def removalNotification = cache.RemovalNotificationUntemplates
 
   def add( more : IterableOnce[(String,Untemplate.AnyUntemplate)] ) : Unit = this.synchronized:
     _untemplates.addAll(more)
@@ -57,8 +59,15 @@ object AllUntemplates:
     this.statusChange
       .get( fqn )
       .getOrElse:
-        this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Status-changed untemplate '$fqn' does not appear to be defined." ) ): ut =>
-          throw new UnsuitableUntemplate( s"'$fqn' appears not to be a status-changed untemplate. (input type: ${untemplateInputType(ut)})" )
+        this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Status-change untemplate '$fqn' does not appear to be defined." ) ): ut =>
+          throw new UnsuitableUntemplate( s"'$fqn' appears not to be a status-change untemplate. (input type: ${untemplateInputType(ut)})" )
+
+  def findRemovalNotificationUntemplate( fqn : String ) : untemplate.Untemplate[RemovalNotificationInfo,Nothing] =
+    this.removalNotification
+      .get( fqn )
+      .getOrElse:
+        this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Removal notification untemplate '$fqn' does not appear to be defined." ) ): ut =>
+          throw new UnsuitableUntemplate( s"'$fqn' appears not to be a removal notification. (input type: ${untemplateInputType(ut)})" )
 
   private def findComposeUntemplate( fqn : String, single : Boolean ) : Untemplate.AnyUntemplate =
     val snapshot = this.cache
@@ -128,6 +137,14 @@ object AllUntemplates:
       case None =>
         val checkMe  = candidate.UntemplateInputTypeDeclared
         val prefixes = "StatusChangeInfo" :: "com.mchange.feedletter.StatusChangeInfo" :: "feedletter.StatusChangeInfo" :: Nil
+        prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
+
+  private def isRemovalNotification( candidate : Untemplate.AnyUntemplate ) : Boolean =
+    candidate.UntemplateInputTypeCanonical match
+      case Some( ctype ) => ctype == "com.mchange.feedletter.RemovalNotificationInfo"
+      case None =>
+        val checkMe  = candidate.UntemplateInputTypeDeclared
+        val prefixes = "RemovalNotificationInfo" :: "com.mchange.feedletter.RemovalNotificationInfo" :: "feedletter.RemovalNotificationInfo" :: Nil
         prefixes.find( checkMe.startsWith( _ ) ).nonEmpty
 
 

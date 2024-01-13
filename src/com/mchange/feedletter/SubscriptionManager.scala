@@ -34,6 +34,8 @@ object SubscriptionManager extends SelfLogging:
     def confirmUntemplateName : String
   sealed trait UntemplatedStatusChange extends SubscriptionManager:
     def statusChangeUntemplateName : String
+  sealed trait UntemplatedRemovalNotification extends SubscriptionManager:
+    def removalNotificationUntemplateName : String
   sealed trait PeriodBased:
     def timeZone : Option[ZoneId]
 
@@ -55,6 +57,7 @@ object SubscriptionManager extends SelfLogging:
       * @return whether a subscriber has been prompted for a future confirmation
       */
     def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, confirmGetLink : String ) : Boolean
+    def maybeSendRemovalNotification( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean
     def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String = ???
 
   object Mastodon:
@@ -114,12 +117,13 @@ object SubscriptionManager extends SelfLogging:
     type Instance  = Each      | Daily      | Weekly      | Fixed
 
     case class Each(
-      from                       : Destination.Email,
-      replyTo                    : Option[Destination.Email],
-      composeUntemplateName      : String,
-      confirmUntemplateName      : String,
-      statusChangeUntemplateName : String,
-      extraParams                : Map[String,String]
+      from                              : Destination.Email,
+      replyTo                           : Option[Destination.Email],
+      composeUntemplateName             : String,
+      confirmUntemplateName             : String,
+      statusChangeUntemplateName        : String,
+      removalNotificationUntemplateName : String,
+      extraParams                       : Map[String,String]
     ) extends Email:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
@@ -137,13 +141,14 @@ object SubscriptionManager extends SelfLogging:
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
     final case class Weekly(
-      from                       : Destination.Email,
-      replyTo                    : Option[Destination.Email],
-      composeUntemplateName      : String,
-      confirmUntemplateName      : String,
-      statusChangeUntemplateName : String,
-      timeZone                   : Option[ZoneId],
-      extraParams                : Map[String,String]
+      from                              : Destination.Email,
+      replyTo                           : Option[Destination.Email],
+      composeUntemplateName             : String,
+      confirmUntemplateName             : String,
+      statusChangeUntemplateName        : String,
+      removalNotificationUntemplateName : String,
+      timeZone                          : Option[ZoneId],
+      extraParams                       : Map[String,String]
     ) extends Email, PeriodBased:
 
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
@@ -196,13 +201,14 @@ object SubscriptionManager extends SelfLogging:
         s"[${subscribableName}] All posts, ${weekStart} to ${weekEnd}"
 
     final case class Daily(
-      from                       : Destination.Email,
-      replyTo                    : Option[Destination.Email],
-      composeUntemplateName      : String,
-      confirmUntemplateName      : String,
-      statusChangeUntemplateName : String,
-      timeZone                   : Option[ZoneId],
-      extraParams                : Map[String,String]
+      from                              : Destination.Email,
+      replyTo                           : Option[Destination.Email],
+      composeUntemplateName             : String,
+      confirmUntemplateName             : String,
+      statusChangeUntemplateName        : String,
+      removalNotificationUntemplateName : String,
+      timeZone                          : Option[ZoneId],
+      extraParams                       : Map[String,String]
     ) extends Email, PeriodBased:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
 
@@ -247,13 +253,14 @@ object SubscriptionManager extends SelfLogging:
         s"[${subscribableName}] All posts, ${dayFormattedIsoLocal(withinTypeId)}"
 
     final case class Fixed(
-      from                       : Destination.Email,
-      replyTo                    : Option[Destination.Email],
-      composeUntemplateName      : String,
-      confirmUntemplateName      : String,
-      statusChangeUntemplateName : String,
-      numItemsPerLetter          : Int,
-      extraParams                : Map[String,String]
+      from                              : Destination.Email,
+      replyTo                           : Option[Destination.Email],
+      composeUntemplateName             : String,
+      confirmUntemplateName             : String,
+      statusChangeUntemplateName        : String,
+      removalNotificationUntemplateName : String,
+      numItemsPerLetter                 : Int,
+      extraParams                       : Map[String,String]
     ) extends Email:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
 
@@ -288,13 +295,14 @@ object SubscriptionManager extends SelfLogging:
         s"[${subscribableName}] ${numItemsPerLetter} new items"
 
 
-  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, SupportsExternalSubscriptionApi:
-    def from                       : Destination.Email
-    def replyTo                    : Option[Destination.Email]
-    def composeUntemplateName      : String
-    def confirmUntemplateName      : String
-    def statusChangeUntemplateName : String
-    def extraParams                : Map[String,String]
+  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, UntemplatedRemovalNotification, SupportsExternalSubscriptionApi:
+    def from                              : Destination.Email
+    def replyTo                           : Option[Destination.Email]
+    def composeUntemplateName             : String
+    def confirmUntemplateName             : String
+    def statusChangeUntemplateName        : String
+    def removalNotificationUntemplateName : String
+    def extraParams                       : Map[String,String]
 
     type D = Destination.Email
 
@@ -364,6 +372,15 @@ object SubscriptionManager extends SelfLogging:
       PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
       true
 
+    override def maybeSendRemovalNotification( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean =
+      val subject = s"[${subscribableName}] Unsubscribed! We are sorry to see you go." // XXX: Hardcoded subject, revisit someday
+      val mailText =
+        val removalNotificationUntemplate = AllUntemplates.findRemovalNotificationUntemplate( removalNotificationUntemplateName )
+        val removalNotificationInfo = RemovalNotificationInfo( subscribableName.toString(), this, destination, createGetLink )
+        removalNotificationUntemplate( removalNotificationInfo ).text
+      PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
+      true
+
     override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String =
       val untemplate = AllUntemplates.findStatusChangeUntemplate(statusChangeUntemplateName)
       untemplate( statusChangeInfo ).text
@@ -390,6 +407,7 @@ object SubscriptionManager extends SelfLogging:
         "composeUntemplateName" -> ujson.Str( emailsub.composeUntemplateName ),
         "confirmUntemplateName" -> ujson.Str( emailsub.confirmUntemplateName ),
         "statusChangeUntemplateName" -> ujson.Str( emailsub.statusChangeUntemplateName ),
+        "removalNotificationUntemplateName" -> ujson.Str( emailsub.removalNotificationUntemplateName ),
         "extraParams" -> writeJs( emailsub.extraParams ) 
       ) ++ emailsub.replyTo.map( rt => ("replyTo" -> writeJs[Destination](rt) ) )
       ujson.Obj.from( values )
@@ -431,37 +449,41 @@ object SubscriptionManager extends SelfLogging:
         case Tag.Email_Each => Email.Each(
           from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
           replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
-          composeUntemplateName      = obj("composeUntemplateName").str,
-          confirmUntemplateName      = obj("confirmUntemplateName").str,
-          statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
-          extraParams                = read[Map[String,String]](obj("extraParams"))
+          composeUntemplateName             = obj("composeUntemplateName").str,
+          confirmUntemplateName             = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
+          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
+          extraParams                       = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Email_Daily => Email.Daily(
           from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
           replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
-          composeUntemplateName      = obj("composeUntemplateName").str,
-          confirmUntemplateName      = obj("confirmUntemplateName").str,
-          statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
-          timeZone                   = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
-          extraParams                = read[Map[String,String]](obj("extraParams"))
+          composeUntemplateName             = obj("composeUntemplateName").str,
+          confirmUntemplateName             = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
+          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
+          timeZone                          = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
+          extraParams                       = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Email_Weekly => Email.Weekly(
           from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
           replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
-          composeUntemplateName      = obj("composeUntemplateName").str,
-          confirmUntemplateName      = obj("confirmUntemplateName").str,
-          statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
-          timeZone                   = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
-          extraParams                = read[Map[String,String]](obj("extraParams"))
+          composeUntemplateName             = obj("composeUntemplateName").str,
+          confirmUntemplateName             = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
+          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
+          timeZone                          = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
+          extraParams                       = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Email_Fixed => Email.Fixed(
           from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
           replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
-          composeUntemplateName      = obj("composeUntemplateName").str,
-          confirmUntemplateName      = obj("confirmUntemplateName").str,
-          statusChangeUntemplateName = obj("statusChangeUntemplateName").str,
-          numItemsPerLetter          = obj("numItemsPerLetter").num.toInt,
-          extraParams                = read[Map[String,String]](obj("extraParams"))
+          composeUntemplateName             = obj("composeUntemplateName").str,
+          confirmUntemplateName             = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
+          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
+          numItemsPerLetter                 = obj("numItemsPerLetter").num.toInt,
+          extraParams                       = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Masto_Announce => Mastodon.Announce(
           extraParams = read[Map[String,String]](obj("extraParams"))
