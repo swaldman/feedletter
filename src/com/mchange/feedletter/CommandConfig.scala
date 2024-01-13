@@ -223,34 +223,6 @@ object CommandConfig extends SelfLogging:
           _  <- PgDatabase.addSubscription( ds, false, aso.subscribableName, aso.destination, aso.confirmed, aso.now )
         yield ()
       end zcommand
-  object Crank:
-    case object Assign extends CommandConfig:
-      override def zcommand : ZCommand =
-        for
-          ds <- ZIO.service[DataSource]
-          _  <- PgDatabase.ensureDb( ds )
-          _  <- PgDatabase.updateAssignItems(ds)
-        yield ()
-      end zcommand
-    case object Complete extends CommandConfig:
-      override def zcommand : ZCommand =
-        for
-          ds <- ZIO.service[DataSource]
-          as <- ZIO.service[AppSetup]
-          _  <- PgDatabase.ensureDb( ds )
-          tapirApi <- com.mchange.feedletter.Daemon.tapirApi( ds, as )
-          _  <- PgDatabase.completeAssignables( ds, tapirApi )
-        yield ()
-      end zcommand
-    case object SendMailGroup extends CommandConfig:
-      override def zcommand : ZCommand =
-        for
-          as <- ZIO.service[AppSetup]
-          ds <- ZIO.service[DataSource]
-          _  <- PgDatabase.ensureDb( ds )
-          _  <- PgDatabase.mailNextGroup( ds, as.smtpContext )
-        yield ()
-      end zcommand
   object Db:
     case object Dump extends CommandConfig:
       override def zcommand : ZCommand =

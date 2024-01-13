@@ -240,20 +240,6 @@ object Main extends AbstractMain, SelfLogging:
           CommandConfig.Admin.Subscribe( AdminSubscribeOptions(sn, d, !uc, Instant.now) ) // ! our flag is unconfirmed, our field is confirmed
       Command("subscribe", header=header)( opts )
 
-  object Crank:
-    val assign =
-      val header = "Assign items to the groups (sometimes of just one) in which they will be notified."
-      val opts = Opts( CommandConfig.Crank.Assign )
-      Command("assign", header=header )( opts )
-    val complete =
-      val header = "Mark groups of assigned items as complete, and queue them for notification."
-      val opts = Opts( CommandConfig.Crank.Complete )
-      Command("complete", header=header )( opts )
-    val sendMailGroup =
-      val header = "Send one batch of queued mail."
-      val opts = Opts( CommandConfig.Crank.SendMailGroup )
-      Command("send-mail-group", header=header )( opts )
-
   object Db:
     val init =
       val header = "Initialize the database schema."
@@ -281,20 +267,14 @@ object Main extends AbstractMain, SelfLogging:
             import Admin.*
             Opts.subcommands(addFeed, defineEmailSubscribable, defineMastodonSubscribable, editSubscribable, listComposeUntemplates, listConfig, listExcludedItems, listFeeds, listSubscribables, sendTestEmail, setConfig, subscribe)
           Command( name="admin", header=header )( opts )
-        val crank =
-          val header = "Run a usually recurring operation a single time."
-          val opts =
-            import Crank.*
-            Opts.subcommands(assign, complete, sendMailGroup)
-          Command( name="crank", header=header )( opts )
         val db =
           val header = "Manage the database and database schema."
           val opts =
             import Db.*
             Opts.subcommands( init, migrate )
           Command( name="db", header=header )( opts )
-        Opts.subcommands(admin,crank,daemon,db)
+        Opts.subcommands(admin,daemon,db)
       ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )
-    Command(name="feedletter", header="Manage e-mail subscriptions to and other notifications from RSS feeds.")( opts )
+    Command(name="feedletter", header="Manage e-mail subscriptions to and notifications from RSS feeds.")( opts )
 
   override val baseCommand = feedletter
