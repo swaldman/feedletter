@@ -9,7 +9,7 @@ val d = scala.xml.Utility.escape( sci.destination.fullDesc )
     </style>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Confirm</title>
+    <title>[<( sci.subscriptionName )>] Subscription <( sci.change )></title>
   </head>
   <body>
     <div class="item">
@@ -28,7 +28,7 @@ val d = scala.xml.Utility.escape( sci.destination.fullDesc )
         <p>The subscription still needs to be confirmed.</p>
 
         <p>If this subscription was made error, please don't confirm it.</p>
-        
+
         <p>Or you can explicitly <a href="<( sci.unsubscribeLink )>">unsubscribe</a>.</p>
 <()
         }
