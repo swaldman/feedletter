@@ -60,7 +60,7 @@ object SubscriptionManager extends SelfLogging:
       */
     def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, confirmGetLink : String ) : Boolean
     def maybeSendRemovalNotification( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean
-    def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String = ???
+    def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String
 
   object Mastodon:
     final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon:
