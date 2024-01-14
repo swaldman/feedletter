@@ -345,9 +345,9 @@ object PgDatabase extends Migratory, SelfLogging:
         val AssignableKey( subscribableName, withinTypeId ) = ak
         val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, subscribableName, withinTypeId )
         val ( feedId, subscriptionManager ) = LatestSchema.Table.Subscribable.selectFeedIdAndManager( conn, subscribableName )
-        val lastAssigned = LatestSchema.Table.Feed.selectLastAssigned( conn, feedId ).getOrElse:
+        val feedLastAssigned = LatestSchema.Table.Feed.selectLastAssigned( conn, feedId ).getOrElse:
           throw new AssertionError( s"DB constraints should have ensured a row for feed with ID '${feedId}' with a NOT NULL lastAssigned, but did not?" )
-        if subscriptionManager.isComplete( conn, withinTypeId, count, lastAssigned ) then
+        if subscriptionManager.isComplete( conn, withinTypeId, count, feedLastAssigned ) then
           route( conn, ak, subscriptionManager, apiLinkGenerator )
           LatestSchema.Table.Subscribable.updateLastCompletedWti( conn, subscribableName, withinTypeId )
           cleanUpCompleted( conn, subscribableName, withinTypeId )

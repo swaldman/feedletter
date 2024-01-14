@@ -70,7 +70,7 @@ object SubscriptionManager extends SelfLogging:
       override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
-      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
 
       def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) : Option[String] =
         extend.MastoAnnouncementCustomizers.get( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content ) ): customizer =>
@@ -133,7 +133,7 @@ object SubscriptionManager extends SelfLogging:
       override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
-      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean = true
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         routeSingle( conn, assignableKey, contents, idestinations, apiLinkGenerator )
@@ -177,10 +177,10 @@ object SubscriptionManager extends SelfLogging:
         val weekNum = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
         ( year, weekNum, WeekFields.of(baseDayOfWeek, 1) )
 
-      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
         val tz = bestTimeZone( conn )
-        val laZoned = lastAssigned.atZone(tz)
+        val laZoned = feedLastAssigned.atZone(tz)
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
 
@@ -233,10 +233,10 @@ object SubscriptionManager extends SelfLogging:
         val dayStr = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
         ( yearStr.toInt, dayStr.toInt )
 
-      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
         val ( year, day ) = extractYearAndDay( withinTypeId )
         val tz = bestTimeZone( conn )
-        val laZoned = lastAssigned.atZone(tz)
+        val laZoned = feedLastAssigned.atZone(tz)
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.DAY_OF_YEAR ) > day)
 
@@ -285,7 +285,7 @@ object SubscriptionManager extends SelfLogging:
               case None => // first series!
                 Some("1") 
 
-      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
+      override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
         currentCount == numItemsPerLetter
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
@@ -499,7 +499,7 @@ sealed trait SubscriptionManager extends Jsonable:
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
   def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
-  def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean
+  def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean
 
   def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
     if fromExternalApi && !supportsExternalSubscriptionApi then
