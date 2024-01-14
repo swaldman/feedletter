@@ -39,7 +39,7 @@ object SubscriptionManager extends SelfLogging:
     def removalNotificationUntemplateName : String
   sealed trait PeriodBased extends SubscriptionManager:
     def timeZone : Option[ZoneId]
-    def bestTimeZone( conn : Connection ) : ZoneId = timeZone.getOrElse( PgDatabase.Config.timeZone( conn ) )
+    override def bestTimeZone( conn : Connection ) : ZoneId = timeZone.getOrElse( PgDatabase.Config.timeZone( conn ) )
 
   sealed trait SupportsExternalSubscriptionApi extends SubscriptionManager:
     /**
@@ -320,8 +320,9 @@ object SubscriptionManager extends SelfLogging:
         throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
       val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
       val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+      val tz = bestTimeZone(conn)
       val fullTemplate =
-        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, contents.head )
+        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, contents.head )
         val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
         compose( info ).text
       val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
@@ -331,8 +332,9 @@ object SubscriptionManager extends SelfLogging:
       if contents.nonEmpty then
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+        val tz = bestTimeZone(conn)
         val fullTemplate =
-          val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, contents )
+          val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, contents )
           val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
           compose( info ).text
         val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
@@ -554,3 +556,4 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def supportsExternalSubscriptionApi : Boolean = this.isInstanceOf[SubscriptionManager.SupportsExternalSubscriptionApi]
 
+  def bestTimeZone( conn : Connection ) : ZoneId = PgDatabase.Config.timeZone( conn ) // SubscriptionManagers that allow locally-specified time zones should override

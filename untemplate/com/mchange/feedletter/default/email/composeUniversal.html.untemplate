@@ -1,4 +1,3 @@
-import java.time.ZoneId
 import java.time.format.{DateTimeFormatter,FormatStyle}
 
 val htmlTitle =
@@ -9,8 +8,7 @@ val htmlTitle =
       s"""[${multiple.subscribableName}] New Post: ${multiple.contents.head.title.getOrElse("(untitled)")}"""
     case multiple : ComposeInfo.Multiple =>
       s"""[${multiple.subscribableName}] ${multiple.contents.size} new posts"""
-
-val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatStyle.LONG)
+end htmlTitle
 
 ( info : ComposeInfo.Universal )[]~()>
 

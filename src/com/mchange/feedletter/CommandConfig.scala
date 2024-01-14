@@ -319,12 +319,14 @@ object CommandConfig extends SelfLogging:
           dig      =  digest( fu )
           g        =  guid( dig )
           un       = untemplateNameCompose(overrideUntemplateName, sman, subscribableName)
+          tz       <- db.withConnectionTransactional(ds)( conn => sman.bestTimeZone( conn ) )
           _        <- styleComposeSingleUntemplate(
                         un,
                         subscribableName,
                         sman,
                         withinTypeId.getOrElse( sman.sampleWithinTypeId ),
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
+                        tz,
                         fu,
                         dig,
                         g,
@@ -368,13 +370,15 @@ object CommandConfig extends SelfLogging:
           _        <- if dig.fileOrderedGuids.isEmpty then ZIO.fail( new NoExampleItems( s"Feed currently contains no example items to render: ${fu}" ) ) else ZIO.unit
           gs       =  guids( dig )
           _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.fileOrderedGuids.size}" ) ) else ZIO.unit
-          un       = untemplateNameCompose(overrideUntemplateName, sman, subscribableName)
+          un       =  untemplateNameCompose(overrideUntemplateName, sman, subscribableName)
+          tz       <- db.withConnectionTransactional(ds)( conn => sman.bestTimeZone( conn ) )
           _        <- styleComposeMultipleUntemplate(
                         un,
                         subscribableName,
                         sman,
                         withinTypeId.getOrElse( sman.sampleWithinTypeId ),
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
+                        tz,
                         fu,
                         dig,
                         gs,

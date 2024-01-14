@@ -2,6 +2,8 @@ package com.mchange.feedletter.style
 
 import zio.*
 
+import java.time.ZoneId
+
 import com.mchange.feedletter.*
 import com.mchange.feedletter.api.ApiLinkGenerator
 
@@ -47,6 +49,7 @@ def styleComposeMultipleUntemplate(
   subscriptionManager : SubscriptionManager,
   withinTypeId        : String,
   destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
   feedUrl             : FeedUrl,
   digest              : FeedDigest,
   guids               : Set[Guid],
@@ -54,7 +57,7 @@ def styleComposeMultipleUntemplate(
   port                : Int
 ) : Task[Unit] =
   val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
-  val composeInfo = ComposeInfo.Multiple( feedUrl, subscribableName, subscriptionManager, withinTypeId, contents )
+  val composeInfo = ComposeInfo.Multiple( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone,  contents )
   val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text
@@ -69,6 +72,7 @@ def styleComposeSingleUntemplate(
   subscriptionManager : SubscriptionManager,
   withinTypeId        : String,
   destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
   feedUrl             : FeedUrl,
   digest              : FeedDigest,
   guid                : Guid,
@@ -76,7 +80,7 @@ def styleComposeSingleUntemplate(
   port                : Int
 ) : Task[Unit] =
   val contents = digest.guidToItemContent( guid )
-  val composeInfo = ComposeInfo.Single( feedUrl, subscribableName, subscriptionManager, withinTypeId, contents )
+  val composeInfo = ComposeInfo.Single( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone, contents )
   val untemplate = AllUntemplates.findComposeUntemplateSingle( untemplateName )
   val composed =
     val untemplateOutput = untemplate( composeInfo ).text

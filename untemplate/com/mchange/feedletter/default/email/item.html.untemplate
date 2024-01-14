@@ -53,7 +53,7 @@ end val
   contents.pubDate.foreach { pubDate =>
 ()>
       <div class="item-date">
-        Published <( formatter.format( pubDate.atZone(ZoneId.systemDefault()) ) )>
+        Published <( formatter.format( pubDate.atZone(info.timeZone) ) )>
       </div>
 <()
   }

@@ -2,6 +2,8 @@ package com.mchange.feedletter.style
 
 import com.mchange.feedletter.*
 
+import java.time.ZoneId
+
 import untemplate.Untemplate
 
 def untemplateInputType( template : Untemplate.AnyUntemplate ) : String =
@@ -13,12 +15,13 @@ object ComposeInfo:
     def subscribableName    : SubscribableName
     def subscriptionManager : SubscriptionManager
     def withinTypeId        : String
+    def timeZone            : ZoneId
     def contents            : ItemContent | Set[ItemContent]
     def contentsSet         : Set[ItemContent]
   end Universal
-  case class Single( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : ItemContent ) extends ComposeInfo.Universal:
+  case class Single( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, timeZone : ZoneId, contents : ItemContent ) extends ComposeInfo.Universal:
     override lazy val contentsSet : Set[ItemContent] = Set( contents )
-  case class Multiple( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, contents : Set[ItemContent] ) extends ComposeInfo.Universal:
+  case class Multiple( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, timeZone : ZoneId, contents : Set[ItemContent] ) extends ComposeInfo.Universal:
     override lazy val contentsSet : Set[ItemContent] = contents
 
 object ComposeSelection:
