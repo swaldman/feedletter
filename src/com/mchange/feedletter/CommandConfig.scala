@@ -145,9 +145,8 @@ object CommandConfig extends SelfLogging:
       for
         ds   <- ZIO.service[DataSource]
         _    <- PgDatabase.ensureDb( ds )
-        _    <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
-        tups <- PgDatabase.listSubscribables(ds)
-        _    <- printSubscribablesTable(tups)
+        tup  <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
+        _    <- printSubscribable(tup)
         _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
       yield ()
     end zcommand
@@ -161,9 +160,8 @@ object CommandConfig extends SelfLogging:
       for
         ds   <- ZIO.service[DataSource]
         _    <- PgDatabase.ensureDb( ds )
-        _    <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
-        tups <- PgDatabase.listSubscribables(ds)
-        _    <- printSubscribablesTable(tups)
+        tup  <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
+        _    <- printSubscribable(tup)
         _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
       yield ()
     end zcommand
@@ -231,7 +229,7 @@ object CommandConfig extends SelfLogging:
         ds   <- ZIO.service[DataSource]
         _    <- PgDatabase.ensureDb( ds )
         tups <- PgDatabase.listSubscribables(ds)
-        _    <- printSubscribablesTable(tups)
+        _    <- printSubscribables(tups)
       yield ()
     end zcommand
   case class SendTestEmail( from : String, to : String ) extends CommandConfig:

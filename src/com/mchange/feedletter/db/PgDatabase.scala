@@ -383,10 +383,11 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Item.selectExcluded(conn)
 
-  def addSubscribable( ds : DataSource, subscribableName : SubscribableName, feedId : FeedId, subscriptionManager : SubscriptionManager ) : Task[Unit] =
+  def addSubscribable( ds : DataSource, subscribableName : SubscribableName, feedId : FeedId, subscriptionManager : SubscriptionManager ) : Task[(SubscribableName,FeedId,SubscriptionManager,Option[String])] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscribable.insert( conn, subscribableName, feedId, subscriptionManager, None )
       INFO.log( s"New subscribable '${subscribableName}' defined on feed with ID ${feedId}." )
+      ( subscribableName, feedId, subscriptionManager, None )
 
   def addSubscription( ds : DataSource, fromExternalApi : Boolean, subscribableName : SubscribableName, destinationJson : Destination.Json, confirmed : Boolean, now : Instant ) : Task[(SubscriptionManager,SubscriptionId)] =
     withConnectionTransactional( ds )( conn => addSubscription( conn, fromExternalApi, subscribableName, destinationJson, confirmed, now ) )

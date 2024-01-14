@@ -13,7 +13,25 @@ import scala.util.Using
 import scala.collection.{immutable,mutable}
 
 import com.mchange.conveniences.www.*
+import com.mchange.codegenutil.*
+
 import trivialtemplate.TrivialTemplate
+
+private lazy val Dingbat = s"${LineSep}-*-*-*-${LineSep}" // lazy so LineSep surely initializes first
+
+def printSubscribable( subtup : (SubscribableName,FeedId,SubscriptionManager,Option[String]) ) : Task[Unit] =
+  ZIO.attempt:
+    val (sn, fi, sm, mbwti) = subtup
+    println( Dingbat )
+    println( s"Subscribable Name:    ${sn}" )
+    println( s"Feed ID:              ${fi}" )
+    mbwti.foreach: wti =>
+      println( s"Last Completed Group: " + wti )
+    println(   s"Subscription Manager: ${sm.jsonPretty.str}")
+
+def printSubscribables( tups : Set[(SubscribableName,FeedId,SubscriptionManager,Option[String])] ) : Task[Unit] =
+  val printOnes = tups.map( printSubscribable ).map( _ *> ZIO.attempt( println() ) )
+  ZIO.collectAllDiscard( printOnes )
 
 final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant )
 

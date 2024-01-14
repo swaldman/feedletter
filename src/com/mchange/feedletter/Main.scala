@@ -146,26 +146,26 @@ object Main extends AbstractMain, SelfLogging:
         Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
       name.map( n => CommandConfig.EditSubscribable(n) )
     Command("edit-subscribable",header=header)( opts )
-  val listComposeUntemplates =
-    val header = "List available templates for composing notifications."
-    val opts = Opts( CommandConfig.ListComposeUntemplates )
-    Command("list-compose-untemplates",header=header)( opts )
   val listConfig =
     val header = "List all configuration parameters."
     val opts = Opts( CommandConfig.ListConfig )
     Command("list-config",header=header)( opts )
-  val listExcludedItems =
-    val header = "List items excluded from generating notifications."
-    val opts = Opts( CommandConfig.ListExcludedItems )
-    Command("list-excluded-items",header=header)( opts )
   val listFeeds =
     val header = "List all feeds the application is watching."
     val opts = Opts( CommandConfig.ListFeeds )
     Command("list-feeds",header=header)( opts )
+  val listItemsExcluded =
+    val header = "List items excluded from generating notifications."
+    val opts = Opts( CommandConfig.ListExcludedItems )
+    Command("list-items-excluded",header=header)( opts )
   val listSubscribables =
     val header = "List all subscribables."
     val opts = Opts( CommandConfig.ListSubscribables )
     Command("list-subscribables",header=header)( opts )
+  val listUntemplatesCompose =
+    val header = "List available templates for composing notifications."
+    val opts = Opts( CommandConfig.ListComposeUntemplates )
+    Command("list-untemplates-compose",header=header)( opts )
   val setConfig =
     val header = "Set configuration parameters."
     def simpleConfigOpt[T]( key : ConfigKey )( name : String, help : String, metavar : String )(using Argument[T]) : Opts[Option[(ConfigKey,String)]] =
@@ -270,11 +270,11 @@ object Main extends AbstractMain, SelfLogging:
           defineEmailSubscribable,
           defineMastodonSubscribable,
           editSubscribable,
-          listComposeUntemplates,
           listConfig,
-          listExcludedItems,
           listFeeds,
+          listItemsExcluded,
           listSubscribables,
+          listUntemplatesCompose,
           sendTestEmail,
           setConfig,
           subscribe
