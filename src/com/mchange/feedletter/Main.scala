@@ -17,6 +17,7 @@ import javax.sql.DataSource
 import com.mchange.conveniences.javanio.*
 
 import com.mchange.feedletter.db.DbVersionStatus
+import com.mchange.feedletter.style.AllUntemplates
 
 object Main extends AbstractMain, SelfLogging:
 
@@ -162,10 +163,17 @@ object Main extends AbstractMain, SelfLogging:
     val header = "List all subscribables."
     val opts = Opts( CommandConfig.ListSubscribables )
     Command("list-subscribables",header=header)( opts )
-  val listUntemplatesCompose =
-    val header = "List available templates for composing notifications."
-    val opts = Opts( CommandConfig.ListComposeUntemplates )
-    Command("list-untemplates-compose",header=header)( opts )
+  val listUntemplates =
+    val header = "List available untemplates."
+    val kind =
+      val composeAny = Opts.flag("compose-any",help="Restrict to untemplates that compose notifications of items.").map( _ => CommandConfig.ListUntemplates( AllUntemplates.compose ) )
+      val composeSingle = Opts.flag("compose-single",help="Restrict to untemplates that can compose notifications of a single item.").map( _ => CommandConfig.ListUntemplates( AllUntemplates.composeSingle ) )
+      val composeMultiple = Opts.flag("compose-multiple",help="Restrict to untemplates that can compose notifications a collection of items.").map( _ => CommandConfig.ListUntemplates( AllUntemplates.composeMultiple ) )
+      val confirm = Opts.flag("confirm",help="Restrict to untemplates that ask subscribers to confirm subscriptions.").map( _ => CommandConfig.ListUntemplates( AllUntemplates.confirm ) )
+      val removalNotification = Opts.flag("removal-notification",help="Restrict to untemplates that compose final notifications after a subscription has been canceled.").map( _ => CommandConfig.ListUntemplates( AllUntemplates.removalNotification ) )
+      val statusChange = Opts.flag("status-change",help="Restrict to untemplates that respond to web request with HTML notifictions of a subscription status change.").map( _ => CommandConfig.ListUntemplates( AllUntemplates.statusChange ) )
+      ( composeAny orElse composeSingle orElse composeMultiple orElse confirm orElse removalNotification orElse statusChange).withDefault( CommandConfig.ListUntemplates( AllUntemplates.all ) )
+    Command("list-untemplates",header=header)( kind )
   val setConfig =
     val header = "Set configuration parameters."
     def simpleConfigOpt[T]( key : ConfigKey )( name : String, help : String, metavar : String )(using Argument[T]) : Opts[Option[(ConfigKey,String)]] =
@@ -274,7 +282,7 @@ object Main extends AbstractMain, SelfLogging:
           listFeeds,
           listItemsExcluded,
           listSubscribables,
-          listUntemplatesCompose,
+          listUntemplates,
           sendTestEmail,
           setConfig,
           subscribe

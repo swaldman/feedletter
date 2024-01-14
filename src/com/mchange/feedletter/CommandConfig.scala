@@ -14,6 +14,8 @@ import com.mchange.conveniences.throwable.*
 
 import com.mchange.mailutil.*
 
+import untemplate.Untemplate
+
 import MLevel.*
 
 object CommandConfig extends SelfLogging:
@@ -199,10 +201,10 @@ object CommandConfig extends SelfLogging:
         _    <- printConfigurationTuplesTable(tups)
       yield ()
     end zcommand
-  case object ListComposeUntemplates extends CommandConfig:
+  case class ListUntemplates( group : Map[String,Untemplate.AnyUntemplate] ) extends CommandConfig:
     override def zcommand : ZCommand =
       for
-        _ <- printUntemplatesTable( AllUntemplates.compose )
+        _ <- printUntemplatesTable( group )
       yield ()
     end zcommand
   case object ListExcludedItems extends CommandConfig:
