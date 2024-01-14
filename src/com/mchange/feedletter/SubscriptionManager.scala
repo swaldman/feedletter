@@ -37,8 +37,9 @@ object SubscriptionManager extends SelfLogging:
     def statusChangeUntemplateName : String
   sealed trait UntemplatedRemovalNotification extends SubscriptionManager:
     def removalNotificationUntemplateName : String
-  sealed trait PeriodBased:
+  sealed trait PeriodBased extends SubscriptionManager:
     def timeZone : Option[ZoneId]
+    def bestTimeZone( conn : Connection ) : ZoneId = timeZone.getOrElse( PgDatabase.Config.timeZone( conn ) )
 
   sealed trait SupportsExternalSubscriptionApi extends SubscriptionManager:
     /**
@@ -165,8 +166,7 @@ object SubscriptionManager extends SelfLogging:
         content          : ItemContent,
         status           : ItemStatus
       ) : Option[String] =
-        val tz = timeZone.getOrElse:
-          PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
+        val tz = bestTimeZone( conn )
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
 
       // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
@@ -179,7 +179,7 @@ object SubscriptionManager extends SelfLogging:
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
-        val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
+        val tz = bestTimeZone( conn )
         val laZoned = lastAssigned.atZone(tz)
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
@@ -224,8 +224,7 @@ object SubscriptionManager extends SelfLogging:
         content          : ItemContent,
         status           : ItemStatus
       ) : Option[String] =
-        val tz = timeZone.getOrElse:
-          PgDatabase.Config.timeZone( conn )
+        val tz = bestTimeZone( conn )
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
 
       // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
@@ -236,7 +235,7 @@ object SubscriptionManager extends SelfLogging:
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, lastAssigned : Instant ) : Boolean =
         val ( year, day ) = extractYearAndDay( withinTypeId )
-        val tz = PgDatabase.Config.timeZone( conn ) // do we really need to hit this every time?
+        val tz = bestTimeZone( conn )
         val laZoned = lastAssigned.atZone(tz)
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.DAY_OF_YEAR ) > day)
