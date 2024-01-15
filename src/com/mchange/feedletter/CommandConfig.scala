@@ -5,6 +5,7 @@ import com.mchange.feedletter.style.*
 import zio.*
 
 import com.mchange.feedletter.db.{DbVersionStatus,PgDatabase}
+import com.mchange.feedletter.style.AllUntemplates
 
 import java.nio.file.{Path as JPath}
 import javax.sql.DataSource
@@ -19,7 +20,6 @@ import untemplate.Untemplate
 import MLevel.*
 
 object CommandConfig extends SelfLogging:
-
   case class AddFeed( nf : NascentFeed ) extends CommandConfig:
     override def zcommand : ZCommand =
       for
@@ -251,6 +251,62 @@ object CommandConfig extends SelfLogging:
         _  <- PgDatabase.ensureDb( ds )
         ss <- PgDatabase.upsertConfigKeyMapAndReport( ds, settings )
         _  <- printConfigurationTuplesTable(ss)
+      yield ()
+    end zcommand
+  case class SetUntemplates(
+    subscribableName                  : SubscribableName,
+    composeUntemplateName             : Option[String],
+    confirmUntemplateName             : Option[String],
+    removalNotificationUntemplateName : Option[String],
+    statusChangeUntemplateName        : Option[String]
+  ) extends CommandConfig:
+    override def zcommand : ZCommand =
+      def updateSubscriptionManager( sman : SubscriptionManager ) : SubscriptionManager =
+        val composed = composeUntemplateName.fold(sman): cun =>
+          sman match
+            case uc : SubscriptionManager.UntemplatedCompose =>
+              // verify the named untemplate exists, throw if not found or inappropriate
+              if uc.isComposeMultiple then AllUntemplates.findComposeUntemplateMultiple(cun) else AllUntemplates.findComposeUntemplateSingle(cun)
+              uc.withComposeUntemplateName( cun )
+            case _ =>
+              val msg = s"Subscribable '${subscribableName}' does not make use of a compose untemplate, can't set its compose untemplate name to '${cun}'."
+              throw new UnsupportedUntemplateRole(msg)  
+        val confirmed = confirmUntemplateName.fold(composed): cun =>
+          composed match
+            case uc : SubscriptionManager.UntemplatedConfirm =>
+              // verify the named untemplate exists, throw if not found or inappropriate
+              AllUntemplates.findConfirmUntemplate( cun )
+              uc.withConfirmUntemplateName( cun )
+            case _ =>
+              val msg = s"Subscribable '${subscribableName}' does not make use of a confirm untemplate, can't set its confirm untemplate name to '${cun}'."
+              throw new UnsupportedUntemplateRole(msg)  
+        val rned = removalNotificationUntemplateName.fold(confirmed): rnun =>
+          confirmed match
+            case urn : SubscriptionManager.UntemplatedRemovalNotification =>
+              // verify the named untemplate exists, throw if not found or inappropriate
+              AllUntemplates.findRemovalNotificationUntemplate( rnun )
+              urn.withRemovalNotificationUntemplateName( rnun )
+            case _ =>
+              val msg = s"Subscribable '${subscribableName}' does not make use of a removal-notification untemplate, can't set its removal-notification untemplate name to '${rnun}'."
+              throw new UnsupportedUntemplateRole(msg)  
+        val sced = statusChangeUntemplateName.fold(rned): scun =>
+          rned match
+            case usc : SubscriptionManager.UntemplatedStatusChange =>
+              // verify the named untemplate exists, throw if not found or inappropriate
+              AllUntemplates.findStatusChangeUntemplate( scun )
+              usc.withStatusChangeUntemplateName( scun )
+            case _ =>
+              val msg = s"Subscribable '${subscribableName}' does not make use of a status-change untemplate, can't set its status-change untemplate name to '${scun}'."
+              throw new UnsupportedUntemplateRole(msg)
+        sced
+      end updateSubscriptionManager
+      for
+        ds      <- ZIO.service[DataSource]
+        _       <- PgDatabase.ensureDb( ds )
+        sman    <- PgDatabase.subscriptionManagerForSubscribableName(ds, subscribableName)
+        updated <- ZIO.attempt( updateSubscriptionManager( sman ) )
+        _       <- PgDatabase.updateSubscriptionManagerJson( ds, subscribableName, updated )
+        _       <- ZIO.attempt( println("Updated Subscription Manager: " + updated.jsonPretty) )
       yield ()
     end zcommand
   case class Subscribe( aso : AdminSubscribeOptions ) extends CommandConfig:

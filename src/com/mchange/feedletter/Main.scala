@@ -96,18 +96,10 @@ object Main extends AbstractMain, SelfLogging:
       val replyTo =
         val help = "E-mail address to which recipients should reply (if different from the 'from' address)."
         Opts.option[String]("reply-to",help=help,metavar="e-mail address").orNone
-      val composeUntemplateName =
-        val help = "Fully qualified name of untemplate that will render notifications."
-        Opts.option[String]("compose-untemplate",help=help,metavar="fully-qualified-name").orNone
-      val confirmUntemplateName =
-        val help = "Fully qualified name of untemplate that will ask for e-mail confirmations."
-        Opts.option[String]("confirm-untemplate",help=help,metavar="fully-qualified-name").orNone
-      val removalNotificationUntemplateName =
-        val help = "Fully qualified name of untemplate that be mailed to users upon unsubscription."
-        Opts.option[String]("removal-notification-untemplate",help=help,metavar="fully-qualified-name").orNone
-      val statusChangeUntemplateName =
-        val help = "Fully qualified name of untemplate that will render results of GET request to the API."
-        Opts.option[String]("status-change-untemplate",help=help,metavar="fully-qualified-name").orNone
+      val composeUntemplateName = CommonOpts.ComposeUntemplateName
+      val confirmUntemplateName = CommonOpts.ConfirmUntemplateName
+      val removalNotificationUntemplateName = CommonOpts.RemovalNotificationUntemplateName
+      val statusChangeUntemplateName = CommonOpts.StatusChangeUntemplateName
        // modified from decline's docs
       val kind = // we sometimes see type inference errors without the explicit type attributions, i'm not sure why
         type K = Tuple2[SubscriptionManager.Email.Companion,Option[ZoneId | Int]]
@@ -253,6 +245,19 @@ object Main extends AbstractMain, SelfLogging:
         Opts.option[String]("to",help=help,metavar="e-mail address")
       ( from, to ) mapN ( (f,t) => CommandConfig.SendTestEmail(f,t) )
     Command("send-test-email", header=header)( opts )
+  val setUntemplates =
+    val header = "Update the untemplates used to render subscriptions."
+    val opts =
+      val subscribableName =
+        val help = "The name of an already-defined subscribable."
+        Opts.option[String]("subscribable-name",help=help,metavar="name").map( SubscribableName.apply )
+      val composeUntemplateName = CommonOpts.ComposeUntemplateName
+      val confirmUntemplateName = CommonOpts.ConfirmUntemplateName
+      val removalNotificationUntemplateName = CommonOpts.RemovalNotificationUntemplateName
+      val statusChangeUntemplateName = CommonOpts.StatusChangeUntemplateName
+      ( subscribableName, composeUntemplateName, confirmUntemplateName, removalNotificationUntemplateName, statusChangeUntemplateName ) mapN: (sn, comun, conun, rnun, scun) =>
+        CommandConfig.SetUntemplates(sn, comun, conun, rnun, scun)
+    Command("set-untemplates", header=header)( opts )
   val subscribe =
     val header = "Subscribe to a subscribable."
     val opts =
@@ -285,6 +290,7 @@ object Main extends AbstractMain, SelfLogging:
           listUntemplates,
           sendTestEmail,
           setConfig,
+          setUntemplates,
           subscribe
         )
       ( secrets, subcommands ) mapN( (sec,sub) => (sec,sub) )

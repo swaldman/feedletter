@@ -33,15 +33,16 @@ object SubscriptionManager extends SelfLogging:
   sealed trait UntemplatedCompose extends SubscriptionManager:
     def composeUntemplateName : String
     def withComposeUntemplateName( name : String ) : UntemplatedCompose
+    def isComposeMultiple : Boolean
   sealed trait UntemplatedConfirm extends SubscriptionManager:
     def confirmUntemplateName : String
     def withConfirmUntemplateName( name : String ) : UntemplatedConfirm
   sealed trait UntemplatedStatusChange extends SubscriptionManager:
     def statusChangeUntemplateName : String
-    def withUntemplatedStatusChange( name : String ) : UntemplatedStatusChange
+    def withStatusChangeUntemplateName( name : String ) : UntemplatedStatusChange
   sealed trait UntemplatedRemovalNotification extends SubscriptionManager:
     def removalNotificationUntemplateName : String
-    def withUntemplatedRemovalNotification( name : String ) : UntemplatedRemovalNotification
+    def withRemovalNotificationUntemplateName( name : String ) : UntemplatedRemovalNotification
   sealed trait PeriodBased extends SubscriptionManager:
     def timeZone : Option[ZoneId]
     override def bestTimeZone( conn : Connection ) : ZoneId = timeZone.getOrElse( PgDatabase.Config.timeZone( conn ) )
@@ -137,8 +138,10 @@ object SubscriptionManager extends SelfLogging:
 
       override def withComposeUntemplateName( name : String )          : Each = this.copy( composeUntemplateName             = name )
       override def withConfirmUntemplateName( name : String )          : Each = this.copy( confirmUntemplateName             = name )
-      override def withUntemplatedStatusChange( name : String )        : Each = this.copy( statusChangeUntemplateName        = name )
-      override def withUntemplatedRemovalNotification( name : String ) : Each = this.copy( removalNotificationUntemplateName = name )
+      override def withStatusChangeUntemplateName( name : String )        : Each = this.copy( statusChangeUntemplateName        = name )
+      override def withRemovalNotificationUntemplateName( name : String ) : Each = this.copy( removalNotificationUntemplateName = name )
+
+      override def isComposeMultiple : Boolean = false
 
       override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
@@ -169,8 +172,10 @@ object SubscriptionManager extends SelfLogging:
 
       override def withComposeUntemplateName( name : String )          : Weekly = this.copy( composeUntemplateName             = name )
       override def withConfirmUntemplateName( name : String )          : Weekly = this.copy( confirmUntemplateName             = name )
-      override def withUntemplatedStatusChange( name : String )        : Weekly = this.copy( statusChangeUntemplateName        = name )
-      override def withUntemplatedRemovalNotification( name : String ) : Weekly = this.copy( removalNotificationUntemplateName = name )
+      override def withStatusChangeUntemplateName( name : String )        : Weekly = this.copy( statusChangeUntemplateName        = name )
+      override def withRemovalNotificationUntemplateName( name : String ) : Weekly = this.copy( removalNotificationUntemplateName = name )
+
+      override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -233,8 +238,10 @@ object SubscriptionManager extends SelfLogging:
 
       override def withComposeUntemplateName( name : String )          : Daily = this.copy( composeUntemplateName             = name )
       override def withConfirmUntemplateName( name : String )          : Daily = this.copy( confirmUntemplateName             = name )
-      override def withUntemplatedStatusChange( name : String )        : Daily = this.copy( statusChangeUntemplateName        = name )
-      override def withUntemplatedRemovalNotification( name : String ) : Daily = this.copy( removalNotificationUntemplateName = name )
+      override def withStatusChangeUntemplateName( name : String )        : Daily = this.copy( statusChangeUntemplateName        = name )
+      override def withRemovalNotificationUntemplateName( name : String ) : Daily = this.copy( removalNotificationUntemplateName = name )
+
+      override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -289,8 +296,10 @@ object SubscriptionManager extends SelfLogging:
 
       override def withComposeUntemplateName( name : String )          : Fixed = this.copy( composeUntemplateName             = name )
       override def withConfirmUntemplateName( name : String )          : Fixed = this.copy( confirmUntemplateName             = name )
-      override def withUntemplatedStatusChange( name : String )        : Fixed = this.copy( statusChangeUntemplateName        = name )
-      override def withUntemplatedRemovalNotification( name : String ) : Fixed = this.copy( removalNotificationUntemplateName = name )
+      override def withStatusChangeUntemplateName( name : String )        : Fixed = this.copy( statusChangeUntemplateName        = name )
+      override def withRemovalNotificationUntemplateName( name : String ) : Fixed = this.copy( removalNotificationUntemplateName = name )
+
+      override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(

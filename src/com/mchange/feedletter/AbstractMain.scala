@@ -44,6 +44,18 @@ trait AbstractMain extends SelfLogging:
         .withDefault(Nil)
         .mapValidated( validate )
         .map( Map.from )
+    val ComposeUntemplateName =
+      val help = "Fully qualified name of untemplate that will render notifications."
+      Opts.option[String]("compose-untemplate",help=help,metavar="fully-qualified-name").orNone
+    val ConfirmUntemplateName =
+      val help = "Fully qualified name of untemplate that will ask for e-mail confirmations."
+      Opts.option[String]("confirm-untemplate",help=help,metavar="fully-qualified-name").orNone
+    val RemovalNotificationUntemplateName =
+      val help = "Fully qualified name of untemplate that be mailed to users upon unsubscription."
+      Opts.option[String]("removal-notification-untemplate",help=help,metavar="fully-qualified-name").orNone
+    val StatusChangeUntemplateName =
+      val help = "Fully qualified name of untemplate that will render results of GET request to the API."
+      Opts.option[String]("status-change-untemplate",help=help,metavar="fully-qualified-name").orNone
     val Secrets = 
       val help = "Path to properties file containing SMTP, postgres, c3p0, and other configuration details."
       val opt  = Opts.option[JPath]("secrets",help=help,metavar="propsfile")
