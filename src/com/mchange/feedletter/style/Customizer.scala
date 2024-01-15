@@ -4,6 +4,8 @@ import com.mchange.feedletter.*
 
 import scala.collection.mutable
 
+import scala.annotation.targetName
+
 object Customizer:
   type Subject = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
   type MastoAnnouncement = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) => Option[String]
@@ -17,6 +19,9 @@ object Customizer:
   abstract class Registry[T]:
     //MT: Protected by this' lock
     private val _registry = mutable.Map.empty[SubscribableName, T]
+
+    @targetName("registerConveniently")
+    def register( subscribableName : String, customizer : T ) : Unit = register( SubscribableName(subscribableName), customizer )
 
     def register( subscribableName : SubscribableName, customizer : T ) : Unit = this.synchronized:
       _registry.put( subscribableName, customizer )
