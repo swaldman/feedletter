@@ -52,25 +52,13 @@ object AllUntemplates:
     findComposeUntemplate(fqn, single=false).asInstanceOf[untemplate.Untemplate[ComposeInfo.Multiple,Nothing]]
 
   def findConfirmUntemplate( fqn : String ) : untemplate.Untemplate[ConfirmInfo,Nothing] =
-    this.confirm
-      .get( fqn )
-      .getOrElse:
-        this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Confirm untemplate '$fqn' does not appear to be defined." ) ): ut =>
-          throw new UnsuitableUntemplate( s"'$fqn' appears not to be a confirm untemplate. (input type: ${untemplateInputType(ut)})" )
+    findXxxUntemplate( this.confirm, fqn, "confirm")
 
   def findStatusChangeUntemplate( fqn : String ) : untemplate.Untemplate[StatusChangeInfo,Nothing] =
-    this.statusChange
-      .get( fqn )
-      .getOrElse:
-        this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Status-change untemplate '$fqn' does not appear to be defined." ) ): ut =>
-          throw new UnsuitableUntemplate( s"'$fqn' appears not to be a status-change untemplate. (input type: ${untemplateInputType(ut)})" )
+    findXxxUntemplate( this.statusChange, fqn, "status-change")
 
   def findRemovalNotificationUntemplate( fqn : String ) : untemplate.Untemplate[RemovalNotificationInfo,Nothing] =
-    this.removalNotification
-      .get( fqn )
-      .getOrElse:
-        this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Removal notification untemplate '$fqn' does not appear to be defined." ) ): ut =>
-          throw new UnsuitableUntemplate( s"'$fqn' appears not to be a removal notification. (input type: ${untemplateInputType(ut)})" )
+    findXxxUntemplate( this.removalNotification, fqn, "removal notification")
 
   private def findComposeUntemplate( fqn : String, single : Boolean ) : Untemplate.AnyUntemplate =
     val snapshot = this.cache
@@ -86,6 +74,11 @@ object AllUntemplates:
       else
         this.all.get( fqn ).fold( throw new UntemplateNotFound( s"Compose untemplate '$fqn' does not appear to be defined." ) ): ut =>
           throw new UnsuitableUntemplate( s"'$fqn' appears not to be a compose untemplate. (input type: ${untemplateInputType(ut)})" )
+
+  private def findXxxUntemplate[T]( uts : Map[String,Untemplate[T,Nothing]], fqn : String, utypeLowerCased : String ) : Untemplate[T,Nothing] =
+    uts.get( fqn ).getOrElse:
+      this.all.get( fqn ).fold( throw new UntemplateNotFound( s"${utypeLowerCased.capitalize} untemplate '$fqn' does not appear to be defined." ) ): ut =>
+        throw new UnsuitableUntemplate( s"'$fqn' appears not to be a ${utypeLowerCased} untemplate. (input type: ${untemplateInputType(ut)})" )
 
   private def canComposeSingle( candidate : Untemplate.AnyUntemplate ) : Boolean = isComposeSingle( candidate ) || isComposeUniversal( candidate )
 
