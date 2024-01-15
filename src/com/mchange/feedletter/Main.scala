@@ -245,12 +245,19 @@ object Main extends AbstractMain, SelfLogging:
         Opts.option[String]("to",help=help,metavar="e-mail address")
       ( from, to ) mapN ( (f,t) => CommandConfig.SendTestEmail(f,t) )
     Command("send-test-email", header=header)( opts )
+  val setExtraParams =
+    val header = "Add, update, or remove extra params you may define to affect rendering of notifications and messages."
+    val opts =
+      val subscribableName = CommonOpts.SubscribableNameDefined
+      val extraParams = CommonOpts.ExtraParams
+      val remove = Opts.options[String]("remove",help="Remove an extra param.",metavar="key").map( _.toList ).withDefault(Nil)
+      ( subscribableName, extraParams, remove ) mapN: ( sn, ep, r ) =>
+        CommandConfig.SetExtraParams( sn, ep, r )
+    Command("set-extra-params", header=header)( opts )
   val setUntemplates =
     val header = "Update the untemplates used to render subscriptions."
     val opts =
-      val subscribableName =
-        val help = "The name of an already-defined subscribable."
-        Opts.option[String]("subscribable-name",help=help,metavar="name").map( SubscribableName.apply )
+      val subscribableName = CommonOpts.SubscribableNameDefined
       val composeUntemplateName = CommonOpts.ComposeUntemplateName
       val confirmUntemplateName = CommonOpts.ConfirmUntemplateName
       val removalNotificationUntemplateName = CommonOpts.RemovalNotificationUntemplateName
@@ -261,9 +268,7 @@ object Main extends AbstractMain, SelfLogging:
   val subscribe =
     val header = "Subscribe to a subscribable."
     val opts =
-      val subscribableName =
-        val help = "The name of an already-defined subscribable."
-        Opts.option[String]("subscribable-name",help=help,metavar="name").map( SubscribableName.apply )
+      val subscribableName = CommonOpts.SubscribableNameDefined
       val destination = CommonOpts.AnyDestination
       val unconfirmed = Opts.flag("unconfirmed", help="Mark the subscription unconfirmed.").orFalse
       ( subscribableName, destination, unconfirmed ) mapN: (sn, d, uc) =>
@@ -290,6 +295,7 @@ object Main extends AbstractMain, SelfLogging:
           listUntemplates,
           sendTestEmail,
           setConfig,
+          setExtraParams,
           setUntemplates,
           subscribe
         )

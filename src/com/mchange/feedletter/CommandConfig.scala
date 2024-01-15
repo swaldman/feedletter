@@ -253,6 +253,21 @@ object CommandConfig extends SelfLogging:
         _  <- printConfigurationTuplesTable(ss)
       yield ()
     end zcommand
+  case class SetExtraParams( subscribableName : SubscribableName, extraParams : Map[String,String], removals : List[String] ) extends CommandConfig:
+    def updateSubscriptionManager( sman : SubscriptionManager ) : SubscriptionManager =
+      val currentParams = sman.extraParams
+      val newParams = (currentParams -- removals) ++ extraParams
+      sman.withExtraParams(newParams)
+    override def zcommand : ZCommand =
+      for
+        ds      <- ZIO.service[DataSource]
+        _       <- PgDatabase.ensureDb( ds )
+        sman    <- PgDatabase.subscriptionManagerForSubscribableName(ds, subscribableName)
+        updated <- ZIO.attempt( updateSubscriptionManager( sman ) )
+        _       <- PgDatabase.updateSubscriptionManagerJson( ds, subscribableName, updated )
+        _       <- ZIO.attempt( println("Updated Subscription Manager: " + updated.jsonPretty) )
+      yield ()
+    end zcommand
   case class SetUntemplates(
     subscribableName                  : SubscribableName,
     composeUntemplateName             : Option[String],

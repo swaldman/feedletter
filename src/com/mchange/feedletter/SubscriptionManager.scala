@@ -73,6 +73,8 @@ object SubscriptionManager extends SelfLogging:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
 
+      override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
+
       override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
@@ -136,8 +138,10 @@ object SubscriptionManager extends SelfLogging:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
 
-      override def withComposeUntemplateName( name : String )          : Each = this.copy( composeUntemplateName             = name )
-      override def withConfirmUntemplateName( name : String )          : Each = this.copy( confirmUntemplateName             = name )
+      override def withExtraParams( extraParams : Map[String,String] ) : Each = this.copy( extraParams = extraParams )
+
+      override def withComposeUntemplateName( name : String )             : Each = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )             : Each = this.copy( confirmUntemplateName             = name )
       override def withStatusChangeUntemplateName( name : String )        : Each = this.copy( statusChangeUntemplateName        = name )
       override def withRemovalNotificationUntemplateName( name : String ) : Each = this.copy( removalNotificationUntemplateName = name )
 
@@ -170,8 +174,10 @@ object SubscriptionManager extends SelfLogging:
 
       override val sampleWithinTypeId = "2023-week50"
 
-      override def withComposeUntemplateName( name : String )          : Weekly = this.copy( composeUntemplateName             = name )
-      override def withConfirmUntemplateName( name : String )          : Weekly = this.copy( confirmUntemplateName             = name )
+      override def withExtraParams( extraParams : Map[String,String] ) : Weekly = this.copy( extraParams = extraParams )
+
+      override def withComposeUntemplateName( name : String )             : Weekly = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )             : Weekly = this.copy( confirmUntemplateName             = name )
       override def withStatusChangeUntemplateName( name : String )        : Weekly = this.copy( statusChangeUntemplateName        = name )
       override def withRemovalNotificationUntemplateName( name : String ) : Weekly = this.copy( removalNotificationUntemplateName = name )
 
@@ -236,8 +242,10 @@ object SubscriptionManager extends SelfLogging:
 
       override val sampleWithinTypeId = "2024-day4"
 
-      override def withComposeUntemplateName( name : String )          : Daily = this.copy( composeUntemplateName             = name )
-      override def withConfirmUntemplateName( name : String )          : Daily = this.copy( confirmUntemplateName             = name )
+      override def withExtraParams( extraParams : Map[String,String] ) : Daily = this.copy( extraParams = extraParams )
+
+      override def withComposeUntemplateName( name : String )             : Daily = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )             : Daily = this.copy( confirmUntemplateName             = name )
       override def withStatusChangeUntemplateName( name : String )        : Daily = this.copy( statusChangeUntemplateName        = name )
       override def withRemovalNotificationUntemplateName( name : String ) : Daily = this.copy( removalNotificationUntemplateName = name )
 
@@ -294,8 +302,10 @@ object SubscriptionManager extends SelfLogging:
 
       override val sampleWithinTypeId = "1"
 
-      override def withComposeUntemplateName( name : String )          : Fixed = this.copy( composeUntemplateName             = name )
-      override def withConfirmUntemplateName( name : String )          : Fixed = this.copy( confirmUntemplateName             = name )
+      override def withExtraParams( extraParams : Map[String,String] ) : Fixed = this.copy( extraParams = extraParams )
+
+      override def withComposeUntemplateName( name : String )             : Fixed = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )             : Fixed = this.copy( confirmUntemplateName             = name )
       override def withStatusChangeUntemplateName( name : String )        : Fixed = this.copy( statusChangeUntemplateName        = name )
       override def withRemovalNotificationUntemplateName( name : String ) : Fixed = this.copy( removalNotificationUntemplateName = name )
 
@@ -532,6 +542,7 @@ sealed trait SubscriptionManager extends Jsonable:
   type D  <: Destination
 
   def extraParams : Map[String,String]
+  def withExtraParams( extraParams : Map[String,String] ) : SubscriptionManager
 
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below

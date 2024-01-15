@@ -39,7 +39,7 @@ trait AbstractMain extends SelfLogging:
             case Array(key, value) => Validated.valid(Tuple2(key, value))
             case _ => Validated.invalidNel(s"Invalid key:value pair: ${s}")
         }.sequence
-      Opts.options[String]("extra-param", "An extra params your notification renderers might use.", metavar = "key:value")
+      Opts.options[String]("extra-param", "An extra parameter your notification renderers might use.", metavar = "key:value")
         .map( _.toList)
         .withDefault(Nil)
         .mapValidated( validate )
@@ -61,6 +61,9 @@ trait AbstractMain extends SelfLogging:
       val opt  = Opts.option[JPath]("secrets",help=help,metavar="propsfile")
       val env  = Opts.env[JPath]("FEEDLETTER_SECRETS", help=help)
       (opt orElse env).orNone
+    val SubscribableNameDefined =
+        val help = "The name of an already-defined subscribable."
+        Opts.option[String]("subscribable-name",help=help,metavar="name").map( SubscribableName.apply )
     val TimeZone = Opts.option[String]("time-zone",help="ID of a time zone for determining the beginning and end of the period.",metavar="id").map( ZoneId.of ) 
   end CommonOpts
 
