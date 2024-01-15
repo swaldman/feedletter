@@ -77,8 +77,6 @@ final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked
 
 val LineSep = System.lineSeparator()
 
-type MastoAnnouncementCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) => Option[String]
-
 final case class MastoPostable( id : MastoPostableId, finalContent : String, instanceUrl : MastoInstanceUrl, name : MastoName, retried : Int, media : Seq[ItemContent.Media] )
 
 object NascentFeed:
@@ -93,15 +91,10 @@ object SecretsKey:
   val FeedletterJdbcPassword = "feedletter.jdbc.password"
   val FeedletterSecretSalt   = "feedletter.secret.salt"
 
-type SubjectCustomizer = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) => String
-
 final case class SubscriptionInfo( id : SubscriptionId, name : SubscribableName, manager : SubscriptionManager, destination : Destination, confirmed : Boolean )
 
 enum SubscriptionStatusChange:
   case Created, Confirmed, Removed
-
-type TemplateParamCustomizer =
-  ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
 
 object TemplateParams:
   def apply( s : String ) : TemplateParams = TemplateParams( wwwFormDecodeUTF8( s ).toMap )

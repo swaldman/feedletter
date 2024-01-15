@@ -12,7 +12,13 @@ import com.mchange.conveniences.javautil.*
 
 object AppSetup:
 
-  val DefaultSecretsSearch = ("/etc/feedletter/feedletter-secrets.properties" :: "/usr/local/etc/feedletter/feedletter-secrets.properties" :: Nil).map( os.Path.apply )
+  val AcceptableSecretsPermStrings = Set("r--------","rw-------")
+  val AcceptableSecretsPerms = AcceptableSecretsPermStrings.map( os.PermSet.fromString )
+
+  val DefaultSecretsFileName = "feedletter-secrets.properties"
+
+  val DefaultSecretsSearch =
+    ((os.pwd / DefaultSecretsFileName).toString :: s"/etc/feedletter/${DefaultSecretsFileName}" :: s"/usr/local/etc/feedletter/${DefaultSecretsFileName}" :: Nil).map( os.Path.apply )
 
   private val julAppSetup : Task[Unit] = ZIO.attemptBlocking:
     Using.resource( new BufferedInputStream( os.read.inputStream( os.resource / "logging.properties" ) ) ): is =>
@@ -27,6 +33,11 @@ object AppSetup:
           case Some( jpath ) => ( Some(os.Path(jpath)), loadProperties( jpath ) )
           case None =>
             DefaultSecretsSearch.find( os.exists ).fold( (None, new Properties()) )( path => (Some(path), loadProperties(path.toIO)) )
+      loc.foreach: p =>
+        val perms : os.PermSet = os.perms(p)
+        if (!AcceptableSecretsPerms(perms))
+          val ap = AcceptableSecretsPermStrings.mkString(", ")
+          throw new LeakySecrets(s"Secrets file '${p}' is not secret enough. Permission '${perms}'. Acceptable permissions: [$ap]")
       val propsMap = props.toMap
       AppSetup( loc, propsMap )
 

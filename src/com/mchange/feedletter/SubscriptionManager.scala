@@ -12,6 +12,7 @@ import DateTimeFormatter.ISO_LOCAL_DATE
 import scala.collection.immutable
 
 import com.mchange.feedletter.api.ApiLinkGenerator
+import com.mchange.feedletter.style.Customizer
 
 import scala.collection.immutable
 
@@ -31,12 +32,16 @@ object SubscriptionManager extends SelfLogging:
 
   sealed trait UntemplatedCompose extends SubscriptionManager:
     def composeUntemplateName : String
+    def withComposeUntemplateName( name : String ) : UntemplatedCompose
   sealed trait UntemplatedConfirm extends SubscriptionManager:
     def confirmUntemplateName : String
+    def withConfirmUntemplateName( name : String ) : UntemplatedConfirm
   sealed trait UntemplatedStatusChange extends SubscriptionManager:
     def statusChangeUntemplateName : String
+    def withUntemplatedStatusChange( name : String ) : UntemplatedStatusChange
   sealed trait UntemplatedRemovalNotification extends SubscriptionManager:
     def removalNotificationUntemplateName : String
+    def withUntemplatedRemovalNotification( name : String ) : UntemplatedRemovalNotification
   sealed trait PeriodBased extends SubscriptionManager:
     def timeZone : Option[ZoneId]
     override def bestTimeZone( conn : Connection ) : ZoneId = timeZone.getOrElse( PgDatabase.Config.timeZone( conn ) )
@@ -73,7 +78,7 @@ object SubscriptionManager extends SelfLogging:
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
 
       def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) : Option[String] =
-        extend.MastoAnnouncementCustomizers.get( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content ) ): customizer =>
+        Customizer.MastoAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content ) ): customizer =>
           customizer( subscribableName, this, withinTypeId, feedUrl, content )
 
       def defaultFormatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent ) : Option[String] = // ADD EXTRA-PARAMS AND GUIDs
@@ -130,6 +135,11 @@ object SubscriptionManager extends SelfLogging:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
 
+      override def withComposeUntemplateName( name : String )          : Each = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )          : Each = this.copy( confirmUntemplateName             = name )
+      override def withUntemplatedStatusChange( name : String )        : Each = this.copy( statusChangeUntemplateName        = name )
+      override def withUntemplatedRemovalNotification( name : String ) : Each = this.copy( removalNotificationUntemplateName = name )
+
       override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
@@ -156,6 +166,11 @@ object SubscriptionManager extends SelfLogging:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
       override val sampleWithinTypeId = "2023-week50"
+
+      override def withComposeUntemplateName( name : String )          : Weekly = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )          : Weekly = this.copy( confirmUntemplateName             = name )
+      override def withUntemplatedStatusChange( name : String )        : Weekly = this.copy( statusChangeUntemplateName        = name )
+      override def withUntemplatedRemovalNotification( name : String ) : Weekly = this.copy( removalNotificationUntemplateName = name )
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -211,9 +226,15 @@ object SubscriptionManager extends SelfLogging:
       timeZone                          : Option[ZoneId],
       extraParams                       : Map[String,String]
     ) extends Email, PeriodBased:
+
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
 
       override val sampleWithinTypeId = "2024-day4"
+
+      override def withComposeUntemplateName( name : String )          : Daily = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )          : Daily = this.copy( confirmUntemplateName             = name )
+      override def withUntemplatedStatusChange( name : String )        : Daily = this.copy( statusChangeUntemplateName        = name )
+      override def withUntemplatedRemovalNotification( name : String ) : Daily = this.copy( removalNotificationUntemplateName = name )
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -265,6 +286,11 @@ object SubscriptionManager extends SelfLogging:
       private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
 
       override val sampleWithinTypeId = "1"
+
+      override def withComposeUntemplateName( name : String )          : Fixed = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )          : Fixed = this.copy( confirmUntemplateName             = name )
+      override def withUntemplatedStatusChange( name : String )        : Fixed = this.copy( statusChangeUntemplateName        = name )
+      override def withUntemplatedRemovalNotification( name : String ) : Fixed = this.copy( removalNotificationUntemplateName = name )
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
       override def withinTypeId(
@@ -341,7 +367,7 @@ object SubscriptionManager extends SelfLogging:
         PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
-      extend.SubjectCustomizers.get( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents ) ): customizer =>
+      Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents ) ): customizer =>
         customizer( subscribableName, this, withinTypeId, feedUrl, contents )
 
     def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String
@@ -515,7 +541,7 @@ sealed trait SubscriptionManager extends Jsonable:
   def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams =
     TemplateParams(
       defaultComposeTemplateParams(subscribableName, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) ++
-      extend.ComposeTemplateParamCustomizers.get( subscribableName ).fold(Nil)( customizer => customizer( subscribableName, this, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) )
+      Customizer.TemplateParams.retrieve( subscribableName ).fold(Nil)( customizer => customizer( subscribableName, this, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) )
     )
 
   def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
