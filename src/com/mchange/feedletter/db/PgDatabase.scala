@@ -177,7 +177,7 @@ object PgDatabase extends Migratory, SelfLogging:
 
   def reportAllConfigKeysStringified( conn : Connection ): immutable.SortedSet[Tuple2[ConfigKey,String]] =
     val stringifyThrowable : PartialFunction[Throwable,String] = {
-      case NonFatal(t) => t.getClass().getName()
+      case NonFatal(t) => "throws " + t.getClass().getName()
     }
     val tups = ConfigKey.values.map: ck =>
       val v = try PgDatabase.Config.fetchByKey( conn, ck ).toString() catch stringifyThrowable
