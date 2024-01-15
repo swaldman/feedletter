@@ -167,27 +167,25 @@ object PgDatabase extends Migratory, SelfLogging:
 
   private def upsertConfigKeyMapAndReport( conn : Connection, map : Map[ConfigKey,String] ) : immutable.SortedSet[Tuple2[ConfigKey,String]] =
     upsertConfigKeys( conn, map.toList* )
-    sort( LatestSchema.Table.Config.selectTuples(conn) )
+    reportAllConfigKeysStringified( conn )
 
   def upsertConfigKeyMapAndReport( ds : DataSource, map : Map[ConfigKey,String] ) : Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
     withConnectionTransactional( ds )( conn => upsertConfigKeyMapAndReport( conn, map ) )
 
-  def reportConfigKeys( ds : DataSource ): Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
+  def reportNondefaultConfigKeys( ds : DataSource ): Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
     withConnectionTransactional( ds )( conn => sort( LatestSchema.Table.Config.selectTuples( conn ) ) )
 
-  /*
-  private def lastCompletedAssignableWithinTypeStatus( conn : Connection, feedId : FeedId, subscribableName : SubscribableName ) : Option[AssignableWithinTypeStatus] =
-    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdLastCompleted( conn, subscribableName )
-    withinTypeId.map: wti =>
-      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, subscribableName, wti )
-      AssignableWithinTypeStatus( wti, count )
+  def reportAllConfigKeysStringified( conn : Connection ): immutable.SortedSet[Tuple2[ConfigKey,String]] =
+    val stringifyThrowable : PartialFunction[Throwable,String] = {
+      case NonFatal(t) => t.getClass().getName()
+    }
+    val tups = ConfigKey.values.map: ck =>
+      val v = try PgDatabase.Config.fetchByKey( conn, ck ).toString() catch stringifyThrowable
+      ( ck, v )
+    sort( tups.toSet )
 
-  private def mostRecentOpenAssignableWithinTypeStatus( conn : Connection, feedId : FeedId, subscribableName : SubscribableName ) : Option[AssignableWithinTypeStatus] =
-    val withinTypeId = LatestSchema.Table.Assignable.selectWithinTypeIdMostRecentOpen( conn, subscribableName )
-    withinTypeId.map: wti =>
-      val count = LatestSchema.Table.Assignment.selectCountWithinAssignable( conn, subscribableName, wti )
-      AssignableWithinTypeStatus( wti, count )
-  */
+  def reportAllConfigKeysStringified( ds : DataSource ): Task[immutable.SortedSet[Tuple2[ConfigKey,String]]] =
+    withConnectionTransactional( ds )( reportAllConfigKeysStringified )
 
   private def ensureOpenAssignable( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, forGuid : Option[Guid]) : Unit =
     LatestSchema.Table.Assignable.selectOpened( conn, subscribableName, withinTypeId ) match
@@ -435,6 +433,24 @@ object PgDatabase extends Migratory, SelfLogging:
     def webApiHostName( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebApiHostName ).getOrElse( Default.Config.WebApiHostName )
     def webApiBasePath( conn : Connection ) : String = fetchValue( conn, ConfigKey.WebApiBasePath ).getOrElse( Default.Config.WebApiBasePath )
     def webApiPort( conn : Connection ) : Option[Int] = fetchValue( conn, ConfigKey.WebApiPort ).map( _.toInt ) orElse Default.Config.WebApiPort
+
+    // may throw, if there's nothing set and no default! catch and handle accordingly!
+    def fetchByKey( conn : Connection, key : ConfigKey ) : Any =
+      key match
+        case ConfigKey.ConfirmHours          => confirmHours(conn)
+        case ConfigKey.DumpDbDir             => dumpDbDir(conn)
+        case ConfigKey.MailBatchSize         => mailBatchSize(conn)
+        case ConfigKey.MailBatchDelaySeconds => mailBatchDelaySeconds(conn)
+        case ConfigKey.MailMaxRetries        => mailMaxRetries(conn)
+        case ConfigKey.MastodonMaxRetries    => mastodonMaxRetries(conn)
+        case ConfigKey.TimeZone              => timeZone(conn)
+        case ConfigKey.WebDaemonPort         => webDaemonPort(conn)
+        case ConfigKey.WebDaemonInterface    => webDaemonInterface(conn)
+        case ConfigKey.WebApiProtocol        => webApiProtocol(conn)
+        case ConfigKey.WebApiHostName        => webApiHostName(conn)
+        case ConfigKey.WebApiBasePath        => webApiBasePath(conn)
+        case ConfigKey.WebApiPort            => webApiPort(conn)
+        //no default! as we add keys, pay attention to the compiler and add an item here!
 
   def webApiUrlBasePath( conn : Connection ) : (String, List[String]) =
     lazy val wdi = Config.webDaemonInterface(conn)

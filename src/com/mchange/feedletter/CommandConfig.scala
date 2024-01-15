@@ -197,7 +197,7 @@ object CommandConfig extends SelfLogging:
       for
         ds   <- ZIO.service[DataSource]
         _    <- PgDatabase.ensureDb( ds )
-        tups <- PgDatabase.reportConfigKeys(ds)
+        tups <- PgDatabase.reportAllConfigKeysStringified( ds )
         _    <- printConfigurationTuplesTable(tups)
       yield ()
     end zcommand
