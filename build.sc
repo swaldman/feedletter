@@ -1,6 +1,6 @@
 import $meta._
 
-import mill._, scalalib._
+import mill._, scalalib._, publish._
 
 import $ivy.`com.lihaoyi::mill-contrib-bloop:$MILL_VERSION`
 
@@ -14,12 +14,11 @@ import de.tobiasroeser.mill.vcs.version.VcsVersion
 import $ivy.`com.mchange::untemplate-mill:0.1.2`
 import untemplate.mill._
 
-object feedletter extends RootModule with UntemplateModule with BuildInfo {
+object feedletter extends RootModule with UntemplateModule with PublishModule with BuildInfo {
   def scalaVersion = "3.3.1"
 
   override def scalacOptions = T{ Seq("-deprecation") }
 
-  //val UnstaticVersion = "0.2.1-SNAPSHOT"
   val TapirVersion = "1.9.5"
 
   def ivyDeps = Agg(
@@ -28,12 +27,12 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     ivy"org.postgresql:postgresql:42.6.0",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
     ivy"com.mchange:c3p0:0.9.5.5",
-    ivy"com.mchange::audiofluidity-rss:0.0.6-SNAPSHOT",
+    ivy"com.mchange::audiofluidity-rss:0.0.6",
     ivy"com.mchange::mlog-scala:0.3.15",
     ivy"com.mchange::texttable:0.0.3",
-    ivy"com.mchange::mailutil:0.0.3-SNAPSHOT",
+    ivy"com.mchange::mailutil:0.0.3",
     ivy"com.mchange::cryptoutil:0.0.2",
-    ivy"com.mchange::conveniences:0.0.3-SNAPSHOT",
+    ivy"com.mchange::conveniences:0.0.3",
     ivy"com.lihaoyi::os-lib:0.9.1",
     ivy"com.lihaoyi::requests:0.8.0",
     ivy"com.lihaoyi::upickle:3.1.3",
@@ -41,13 +40,6 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     ivy"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
     ivy"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
     ivy"com.mchange::untemplate:0.1.2",
-    //ivy"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:2.25.0"
-    //ivy"com.mchange::unstatic:${UnstaticVersion}",
-    //ivy"com.mchange::unstatic-ztapir:${UnstaticVersion}",
-  )
-
-  def compileIvyDeps = Agg(
-    ivy"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:2.25.0"
   )
 
   def buildInfoMembers = Seq(
@@ -82,6 +74,22 @@ object feedletter extends RootModule with UntemplateModule with BuildInfo {
     os.copy.over(target.path, millw)
     os.perms.set(millw, os.perms(millw) + OWNER_EXECUTE + GROUP_EXECUTE + OTHERS_EXECUTE)
     target
+  }
+
+  override def artifactName = "feedletter"
+  override def publishVersion =  T{ VcsVersion.vcsState().format() }
+  //override def publishVersion =  T{ "0.0.1-SNAPSHOT" }
+  override def pomSettings    = T{
+    PomSettings(
+      description = "A service that carefully watches RSS feeds and mails newsletters or sends notifications based on items that stablely appear.",
+      organization = "com.mchange",
+      url = "https://github.com/swaldman/feedletter",
+      licenses = Seq(License.`AGPL-3.0-only`),
+      versionControl = VersionControl.github("swaldman", "feedletter"),
+      developers = Seq(
+	Developer("swaldman", "Steve Waldman", "https://github.com/swaldman")
+      )
+    )
   }
 }
 
