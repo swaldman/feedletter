@@ -16,13 +16,13 @@ extension[R,E,A] ( effect : ZIO[R,E,A] )( using MLogger )
     effect
       .tapError { e =>
         e match
-          case t : Throwable => ml.zlog("${what} failed within error channel, on Throwable.", t)
-          case other         => ml.zlog("${what} failed within error channel. Failure: " + other)
+          case t : Throwable => ml.zlog(s"${what} failed within error channel, on Throwable.", t)
+          case other         => ml.zlog(s"${what} failed within error channel. Failure: " + other)
       }
   def zlogDefect( ml : MLevel, what : => String = "Effect" ) : ZIO[R,E,A] =
     effect
       .tapDefect { cause =>
-        ml.zlog("${what} failed outside of error channel with cause: " + cause)
+        ml.zlog(s"${what} failed outside of error channel with cause: " + cause)
       }
   def zlogErrorDefect( ml : MLevel, what : => String = "Effect" ) : ZIO[R,E,A] =
     effect
