@@ -91,8 +91,8 @@ object Daemon extends SelfLogging:
     for
       tup0         <- PgDatabase.webApiUrlBasePath( ds )
       (server, bp) =  tup0
-    yield
-      api.V0.TapirApi( server, bp, as.secretSalt )
+      out          <- ZIO.attempt( api.V0.TapirApi( server, bp, as.secretSalt ) )
+    yield out
 
   private def webDaemon( ds : DataSource, as : AppSetup, tapirApi : api.V0.TapirApi ) : Task[Unit] =
     import zio.http.Server
@@ -140,6 +140,6 @@ object Daemon extends SelfLogging:
         _        <- fwd.interrupt
         _        <- DEBUG.zlog("All daemon fibers interrupted.")
       yield ()
-    singleLoad.resurrect.retry( RetrySchedule.mainDaemon ) // if we have database problems, keep trying to reconnect
+    singleLoad.zlogErrorDefect(WARNING).resurrect.retry( RetrySchedule.mainDaemon ) // if we have database problems, keep trying to reconnect
       .schedule( Schedule.forever ) // a successful completion signals a reload request. so we restart
       .unit 
