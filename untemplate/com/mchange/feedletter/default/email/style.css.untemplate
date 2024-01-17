@@ -27,8 +27,8 @@
    margin-right: 10%;
    padding-top: 1rem;
    padding-bottom: 1rem;
-   padding-left: 10%;
-   padding-right: 10%;
+   padding-left: 2rem;
+   padding-right: 2rem;
    border: 1px solid #aaaaaa;
    line-height: 150%;
  }
@@ -92,13 +92,17 @@
    color: #008800;
  }
  @media screen and (max-width: 600px) {
-   .body {
+   body {
      line-height: 120%;
+     padding-left:  0.2rem;
+     padding-right: 0.2rem;
    }
    .item {
-     margin-left: 2%;
-     margin-right: 2%;
-     margin-top: 1rem;
+     margin-top:    1rem;
+     margin-left:   0;
+     margin-right:  0;
+     padding-left:  4%;
+     padding-right: 4%;
    }
    .confirm-main {
      margin-left: 2%;
