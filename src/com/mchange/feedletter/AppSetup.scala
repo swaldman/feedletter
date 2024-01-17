@@ -20,8 +20,16 @@ object AppSetup:
   val DefaultSecretsSearch =
     ((os.pwd / DefaultSecretsFileName).toString :: s"/etc/feedletter/${DefaultSecretsFileName}" :: s"/usr/local/etc/feedletter/${DefaultSecretsFileName}" :: Nil).map( os.Path.apply )
 
+  def julConfigRawInputStream() =
+    try
+      os.read.inputStream( os.resource / "logging.properties" )
+    catch
+      case rnfe : os.ResourceNotFoundException =>
+        os.read.inputStream( os.resource / "feedletter-default-logging.properties" )
+    end try
+
   private val julAppSetup : Task[Unit] = ZIO.attemptBlocking:
-    Using.resource( new BufferedInputStream( os.read.inputStream( os.resource / "logging.properties" ) ) ): is =>
+    Using.resource( new BufferedInputStream( julConfigRawInputStream() ) ): is =>
       java.util.logging.LogManager.getLogManager().readConfiguration( is )
 
   def live( secrets : Option[JPath] ) : ZLayer[Any, Throwable, AppSetup] = ZLayer.fromZIO:
