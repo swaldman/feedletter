@@ -25,6 +25,7 @@ import MLevel.*
 
 import upickle.default.*
 import java.time.ZoneId
+import com.mchange.feedletter.Destination.Key
 
 object SubscriptionManager extends SelfLogging:
   val  Json = SubscriptionManagerJson
@@ -122,6 +123,9 @@ object SubscriptionManager extends SelfLogging:
 
     override val sampleDestination = Destination.Mastodon( name = "mothership", instanceUrl = "https://mastodon.social/" )
 
+    override def destinationRowHeaders : Seq[String] = Destination.rowHeaders[D]
+  end Mastodon
+  
   object Email:
     type Companion = Each.type | Daily.type | Weekly.type | Fixed.type
     type Instance  = Each      | Daily      | Weekly      | Fixed
@@ -434,6 +438,8 @@ object SubscriptionManager extends SelfLogging:
 
     override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
 
+    override def destinationRowHeaders : Seq[String] = Destination.rowHeaders[D]
+
   end Email
 
   def materialize( json : Json ) : SubscriptionManager = read[SubscriptionManager]( json.toString() )
@@ -597,8 +603,16 @@ sealed trait SubscriptionManager extends Jsonable:
     else
       Left( idestination )
 
+  final def descShort( destination : D ) : String = destination.shortDesc
+  final def descFull( destination : D ) : String  = destination.fullDesc
+
+  // these we override as convenient
   def displayShort( destination : D ) : String = destination.shortDesc
   def displayFull( destination : D ) : String  = destination.fullDesc
+
+  // this we defer until D is concrete
+  def destinationRowHeaders : Seq[String]
+  final def destinationRow( destination : D ) : Seq[String] = destination.toRow
 
   def supportsExternalSubscriptionApi : Boolean = this.isInstanceOf[SubscriptionManager.SupportsExternalSubscriptionApi]
 

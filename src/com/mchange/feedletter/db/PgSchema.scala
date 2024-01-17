@@ -465,26 +465,17 @@ object PgSchema:
                |  PRIMARY KEY( subscription_id ),
                |  FOREIGN KEY( subscribable_name ) REFERENCES subscribable( subscribable_name )
                |)""".stripMargin
-          /*
-          private val SelectDestinationJsonsForSubscribable =
-            """|SELECT destination_json
-               |FROM subscription
-               |WHERE subscribable_name = ? AND confirmed = TRUE""".stripMargin
-          */
           private val SelectConfirmedIdentifiedDestinationsForSubscribable =
             """|SELECT subscription_id, destination_json
                |FROM subscription
                |WHERE subscribable_name = ? AND confirmed = TRUE""".stripMargin
+          private val SelectForSubscribable =
+            """|SELECT subscription_id, destination_json, confirmed, added
+               |FROM subscription
+               |WHERE subscribable_name = ?""".stripMargin
           private val Insert =
             """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed, added)
                |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ?, ? )""".stripMargin
-          /*
-          private val Upsert =
-            """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed)
-               |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ? )
-               |ON CONFLICT(destination_unique, subscribable_name) DO UPDATE
-               |SET destination_json = ?, destination_unique = ?""".stripMargin
-          */
           private val UpdateConfirmed =
             """|UPDATE subscription
                |SET confirmed = ?
@@ -495,6 +486,11 @@ object PgSchema:
           private val ExpireUnconfirmedAddedBefore =
             """|DELETE FROM subscription
                |WHERE confirmed = FALSE AND added < ?""".stripMargin
+          def selectForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[( SubscriptionId, Destination, Boolean, Instant )] =
+            Using.resource( conn.prepareStatement( SelectForSubscribable ) ): ps =>
+              ps.setString(1, subscribableName.str )
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet(rs)( rs => ( SubscriptionId(rs.getLong(1)), Destination.materialize( Destination.Json( rs.getString(2) ) ), rs.getBoolean(3), rs.getTimestamp(4).toInstant ) )
           def expireUnconfirmedAddedBefore( conn : Connection, before : Instant ) : Int =
             Using.resource( conn.prepareStatement( ExpireUnconfirmedAddedBefore ) ): ps =>
               ps.setTimestamp( 1, Timestamp.from(before) )
@@ -503,13 +499,6 @@ object PgSchema:
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setLong(1, subscriptionId.toLong)
               ps.executeUpdate()
-          /*
-          def selectDestinationJsonsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[Destination.Json] =
-            Using.resource( conn.prepareStatement( this.SelectDestinationJsonsForSubscribable ) ): ps =>
-              ps.setString(1, subscribableName.str)
-              Using.resource( ps.executeQuery() ): rs =>
-                toSet(rs)( rs => Destination.Json( rs.getString(1) ) )
-          */
           def selectConfirmedIdentifiedDestinationsForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[IdentifiedDestination[Destination]] =
             Using.resource( conn.prepareStatement( SelectConfirmedIdentifiedDestinationsForSubscribable ) ): ps =>
               ps.setString(1, subscribableName.str)

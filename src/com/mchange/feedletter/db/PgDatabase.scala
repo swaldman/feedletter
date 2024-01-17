@@ -671,3 +671,6 @@ object PgDatabase extends Migratory, SelfLogging:
   def notifyAllMastoPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
     withConnectionTransactional( ds )( conn => notifyAllMastoPosts( conn, appSetup ) )
 
+  def subscriptionsForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[Set[( SubscriptionId, Destination, Boolean, Instant )]] =
+    withConnectionTransactional( ds ): conn =>
+      LatestSchema.Table.Subscription.selectForSubscribable( conn, subscribableName )

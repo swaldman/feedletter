@@ -9,6 +9,7 @@ import untemplate.Untemplate
 
 import scala.collection.immutable
 
+import java.time.Instant
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 
 val FeedInfoColumns = Seq(
@@ -52,4 +53,15 @@ val UntemplatesColumns = Seq(
 def printUntemplatesTable( tups : Iterable[(String,Untemplate.AnyUntemplate)] ) : Task[Unit] =
   val sorted = immutable.SortedMap.from( tups ).toList
   ZIO.attempt( texttable.printProductTable( UntemplatesColumns )( sorted.map((k,v)=>(k,untemplateInputType(v))).map( texttable.Row.apply ) ) )
+
+val SubscriptionColumns = Seq(
+  texttable.Column("Subscription ID"),
+  texttable.Column("Subscriber"),
+  texttable.Column("Confirmed"),
+  texttable.Column("Added")
+)
+
+def printSubscriptions( tups : Iterable[(SubscriptionId,String,Boolean,Instant)] ) =
+  ZIO.attempt( texttable.printProductTable( SubscriptionColumns )( tups.map( texttable.Row.apply ) ) )
+
 

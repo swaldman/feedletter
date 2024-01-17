@@ -192,6 +192,16 @@ object CommandConfig extends SelfLogging:
         _           <- Console.printLine(s"Subscription definition '$name' successfully updated.")
       yield ()
     end zcommand
+  case class ExportSubscribers(subscribableName : SubscribableName) extends CommandConfig:
+    override def zcommand : ZCommand =
+      for
+        ds   <- ZIO.service[DataSource]
+        _    <- PgDatabase.ensureDb( ds )
+        sman <- PgDatabase.subscriptionManagerForSubscribableName( ds, subscribableName )
+        tups <- PgDatabase.subscriptionsForSubscribableName(ds, subscribableName)
+        _    <- printSubscriptionsCsv( sman, tups.map( _(1) ) )
+      yield ()
+    end zcommand
   case object ListConfig extends CommandConfig:
     override def zcommand : ZCommand =
       for
@@ -223,6 +233,16 @@ object CommandConfig extends SelfLogging:
         _   <- PgDatabase.ensureDb( ds )
         fis <- PgDatabase.listFeeds( ds )
         _   <- printFeedInfoTable(fis)
+      yield ()
+    end zcommand
+  case class ListSubscribers(subscribableName : SubscribableName, fullDesc : Option[Boolean]) extends CommandConfig:
+    def s( d : Destination ) = fullDesc.fold(d.defaultDesc)( fd => if fd then d.fullDesc else d.shortDesc )
+    override def zcommand : ZCommand =
+      for
+        ds   <- ZIO.service[DataSource]
+        _    <- PgDatabase.ensureDb( ds )
+        tups <- PgDatabase.subscriptionsForSubscribableName(ds, subscribableName)
+        _    <- printSubscriptions( tups.map( ( sid, d, c, a ) => ( sid, s(d), c, a ) ) ) 
       yield ()
     end zcommand
   case object ListSubscribables extends CommandConfig:

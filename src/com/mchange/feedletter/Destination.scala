@@ -9,6 +9,22 @@ object Destination:
   val  Json = DestinationJson
   type Json = DestinationJson
 
+  trait TypeMetaInfo[T <: Destination]:
+    def rowHeaders : Seq[String]
+
+  private def q(s : String) = s""""$s""""
+
+  object RowHeaders:
+    val Email    = Seq(q("E-Mail"), q("Display Name"))
+    val Mastodon = Seq(q("Instance URL"), q("Name"))
+    val Sms      = Seq(q("Phone Number"))
+  given TypeMetaInfo[Email] = new TypeMetaInfo[Email] { def rowHeaders : Seq[String] = RowHeaders.Email }
+  given TypeMetaInfo[Mastodon] = new TypeMetaInfo[Mastodon] { def rowHeaders : Seq[String] = RowHeaders.Mastodon }
+  given TypeMetaInfo[Sms] = new TypeMetaInfo[Sms] { def rowHeaders : Seq[String] = RowHeaders.Sms }
+
+  def rowHeaders[T <: Destination](using TypeMetaInfo[T]) =
+    summon[TypeMetaInfo[T]].rowHeaders
+
   private object Tag:
     def valueOfIgnoreCaseOption( s : String ) : Option[Tag] = Tag.values.find( _.toString.equalsIgnoreCase(s) )
   private enum Tag:
@@ -30,18 +46,24 @@ object Destination:
     override def toFields = Seq( destinationType.s -> Tag.Email.toString, Key.addressPart.s -> this.addressPart) ++ this.displayNamePart.map( dnp => Key.displayNamePart.s -> dnp )
     override def shortDesc : String = this.addressPart 
     override def fullDesc : String = this.rendered
+    override def defaultDesc : String = fullDesc
+    override def toRow : Seq[String] = Seq( addressPart, q(displayNamePart.getOrElse("")) )
 
   case class Mastodon( name : String, instanceUrl : String ) extends Destination:
     override def unique = s"mastodon:${instanceUrl}"
     override def toFields = Seq( destinationType.s -> Tag.Mastodon.toString, Key.name.s -> this.name, Key.instanceUrl.s -> this.instanceUrl )
     override def shortDesc : String = this.instanceUrl
     override def fullDesc : String = s"Mastodon nicknamed '${name}' instance at ${instanceUrl}"
+    override def defaultDesc : String = shortDesc
+    override def toRow : Seq[String] = Seq( instanceUrl, q(name) )
 
   case class Sms( number : String ) extends Destination:
     override def unique = s"sms:${number}"
     override def toFields = Seq( destinationType.s -> Tag.Sms.toString, Key.number.s -> this.number )
     override def shortDesc : String = this.number
     override def fullDesc : String = s"SMS destination '${number}'"
+    override def defaultDesc : String = shortDesc
+    override def toRow : Seq[String] = Seq( q(number) )
 
   def materialize( json : Destination.Json ) : Destination = read[Destination]( json.toString )
 
@@ -138,9 +160,11 @@ sealed trait Destination extends Jsonable:
     *  multiply subscribed.
     */
   def unique : String
-  def json       : Destination.Json = Destination.Json( write[Destination]( this ) )
-  def jsonPretty : Destination.Json = Destination.Json( write[Destination]( this, indent = 4 ) )
-  def toFields   : Seq[(String,String)]
-  def shortDesc  : String
-  def fullDesc   : String
+  def json        : Destination.Json = Destination.Json( write[Destination]( this ) )
+  def jsonPretty  : Destination.Json = Destination.Json( write[Destination]( this, indent = 4 ) )
+  def toFields    : Seq[(String,String)]
+  def shortDesc   : String
+  def fullDesc    : String
+  def defaultDesc : String
+  def toRow       : Seq[String]
 

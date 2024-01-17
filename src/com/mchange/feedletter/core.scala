@@ -33,6 +33,13 @@ def printSubscribables( tups : Set[(SubscribableName,FeedId,SubscriptionManager,
   val printOnes = tups.map( printSubscribable ).map( _ *> ZIO.attempt( println() ) )
   ZIO.collectAllDiscard( printOnes )
 
+def printSubscriptionsCsv( subscriptionManager : SubscriptionManager, destinations : Set[Destination] ) : Task[Unit] =
+  def printRow( d : subscriptionManager.D ) = println( subscriptionManager.destinationRow(d).mkString(",") )
+  ZIO.attempt:
+    val narrowed = destinations.map( subscriptionManager.narrowDestinationOrThrow )
+    println( subscriptionManager.destinationRowHeaders.mkString(",") )
+    narrowed.foreach( printRow )
+
 final case class AdminSubscribeOptions( subscribableName : SubscribableName, destination : Destination, confirmed : Boolean, now : Instant )
 
 final case class AssignableKey( subscribableName : SubscribableName, withinTypeId : String )

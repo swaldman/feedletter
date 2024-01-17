@@ -139,6 +139,12 @@ object Main extends AbstractMain, SelfLogging:
         Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
       name.map( n => CommandConfig.EditSubscribable(n) )
     Command("edit-subscribable",header=header)( opts )
+  val exportSubscribers =
+    val header = "Dump subscriber information for a subscribable in CSV format."
+    val opts =
+      val subscribableName = CommonOpts.SubscribableNameDefined
+      subscribableName.map( sn => CommandConfig.ExportSubscribers( sn ) )
+    Command("export-subscribers",header=header)( opts )
   val listConfig =
     val header = "List all configuration parameters."
     val opts = Opts( CommandConfig.ListConfig )
@@ -155,6 +161,17 @@ object Main extends AbstractMain, SelfLogging:
     val header = "List all subscribables."
     val opts = Opts( CommandConfig.ListSubscribables )
     Command("list-subscribables",header=header)( opts )
+  val listSubscribers =
+    val header = "List all subscribers to a subscribable."
+    val opts =
+      val subscribableName = CommonOpts.SubscribableNameDefined
+      val fullDesc =
+        val f = Opts.flag("full",help="Display a long, full description of each subscriber.").map( _ => Some(true) )
+        val s = Opts.flag("short",help="Display a short description of each subscriber.").map( _ => Some(false) )
+        (f orElse s).withDefault(None)
+      ( subscribableName, fullDesc ) mapN: (sn, fd) =>
+        CommandConfig.ListSubscribers( sn, fd )
+    Command("list-subscribers",header=header)( opts )
   val listUntemplates =
     val header = "List available untemplates."
     val kind =
@@ -288,10 +305,12 @@ object Main extends AbstractMain, SelfLogging:
           defineEmailSubscribable,
           defineMastodonSubscribable,
           editSubscribable,
+          exportSubscribers,
           listConfig,
           listFeeds,
           listItemsExcluded,
           listSubscribables,
+          listSubscribers,
           listUntemplates,
           sendTestEmail,
           setConfig,
