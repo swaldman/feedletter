@@ -282,7 +282,7 @@ object V0 extends SelfLogging:
             sman match
               case vsman : SubscriptionManager.SupportsExternalSubscriptionApi =>
                 val cgl = confirmGetLink( sid )
-                val confirming = vsman.maybePromptConfirmation( conn, sid, sname, vsman.narrowDestinationOrThrow(destination), cgl )
+                val confirming = vsman.maybePromptConfirmation( conn, as, sid, sname, vsman.narrowDestinationOrThrow(destination), cgl )
                 val confirmedMessage =
                   if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
                 val sinfo = SubscriptionInfo( sid, sname, vsman, destination, !confirming )
@@ -345,7 +345,7 @@ object V0 extends SelfLogging:
                   sinfo.manager match
                     case vsman : SubscriptionManager.SupportsExternalSubscriptionApi =>
                       val d = vsman.narrowDestinationOrThrow(sinfo.destination)
-                      vsman.maybeSendRemovalNotification(conn,sid,sinfo.name,d,createGetLink(sinfo.name,d))
+                      vsman.maybeSendRemovalNotification(conn,as,sid,sinfo.name,d,createGetLink(sinfo.name,d))
                       s"Unsubscribed. Subscription ${sid} of '${sinfo.destination.unique}' successfully removed."
                     case _ =>  
                       // aborts the transaction, rolls back the unsubscribe

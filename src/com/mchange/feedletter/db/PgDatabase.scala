@@ -316,6 +316,26 @@ object PgDatabase extends Migratory, SelfLogging:
   def queueForMailing( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], to : AddressHeader[To], templateParams : TemplateParams, subject : String ) : Unit =
     queueForMailing( conn, contents, from, replyTo, Set(Tuple2(to,templateParams)), subject )
 
+  def mailImmediately(
+    conn           : Connection,
+    as             : AppSetup,
+    contents       : String,
+    from           : AddressHeader[From],
+    replyTo        : Option[AddressHeader[ReplyTo]],
+    to             : AddressHeader[To],
+    templateParams : TemplateParams,
+    subject        : String
+  ) : Unit =
+    try
+      val filledContents = templateParams.fill( contents )
+      given Smtp.Context = as.smtpContext
+      Smtp.sendSimpleHtmlOnly( contents, subject = subject, from = from.str, to = to.str, replyTo = replyTo.map(_.str).toSeq )
+      INFO.log(s"Mail sent from '${from}' to '${to}' with subject '${subject}'")
+    catch
+      case NonFatal(t) =>
+        WARNING.log("Attempt to mail immediately from '${from}' to '${to}' with subject '${subject}' failed. Queuing to reattempt later.", t)
+        queueForMailing(conn, contents, from, replyTo, to, templateParams, subject)
+
   def queueForMailing( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], tosWithParams : Set[(AddressHeader[To],TemplateParams)], subject : String ) : Unit = 
     val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
     LatestSchema.Table.MailableTemplate.ensure( conn, hash, contents )

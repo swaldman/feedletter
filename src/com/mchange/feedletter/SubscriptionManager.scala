@@ -64,8 +64,8 @@ object SubscriptionManager extends SelfLogging:
       *
       * @return whether a subscriber has been prompted for a future confirmation
       */
-    def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, confirmGetLink : String ) : Boolean
-    def maybeSendRemovalNotification( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean
+    def maybePromptConfirmation( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, confirmGetLink : String ) : Boolean
+    def maybeSendRemovalNotification( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean
     def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String
 
   object Mastodon:
@@ -409,23 +409,23 @@ object SubscriptionManager extends SelfLogging:
 
     // the destination should already be validated before we get to this point.
     // we won't revalidate
-    override def maybePromptConfirmation( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String ) : Boolean =
+    override def maybePromptConfirmation( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String ) : Boolean =
       val subject = s"[${subscribableName}] Please confirm your new subscription" // XXX: Hardcoded subject, revisit someday
       val confirmHours = PgDatabase.Config.confirmHours( conn )
       val mailText =
         val confirmUntemplate = AllUntemplates.findConfirmUntemplate( confirmUntemplateName )
         val confirmInfo = ConfirmInfo( destination, subscribableName, this, confirmGetLink, confirmHours )
         confirmUntemplate( confirmInfo ).text
-      PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
+      PgDatabase.mailImmediately( conn, as, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
       true
 
-    override def maybeSendRemovalNotification( conn : Connection, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean =
+    override def maybeSendRemovalNotification( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean =
       val subject = s"[${subscribableName}] Unsubscribed! We are sorry to see you go." // XXX: Hardcoded subject, revisit someday
       val mailText =
         val removalNotificationUntemplate = AllUntemplates.findRemovalNotificationUntemplate( removalNotificationUntemplateName )
         val removalNotificationInfo = RemovalNotificationInfo( subscribableName, this, destination, createGetLink )
         removalNotificationUntemplate( removalNotificationInfo ).text
-      PgDatabase.queueForMailing( conn, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
+      PgDatabase.mailImmediately( conn, as, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
       true
 
     override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String =
