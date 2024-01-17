@@ -5,7 +5,7 @@
    padding-left: 1rem;
    padding-right: 1rem;
    color: black;
-   background-color: #eeeeee;
+   background-color: #eff3f5;
    font-family: Garamond, serif;
    line-height: 150%;
  }

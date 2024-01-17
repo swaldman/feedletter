@@ -46,7 +46,7 @@ end htmlTitle
 
     <div class="unsubscribe">
       <p>
-        You are subscribed as <code>%ToEmail%</code> to the mailing list <( info.subscribableName )>.
+        You are subscribed as <code>%ToEmail%</code> to the mailing list <b><( info.subscribableName )></b>.
         We'd miss you, but you can click <a href="%RemoveLink%">here</a> to unsubscribe.
       </p>
     </div>
