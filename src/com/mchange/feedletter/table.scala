@@ -50,5 +50,6 @@ val UntemplatesColumns = Seq(
 )
 
 def printUntemplatesTable( tups : Iterable[(String,Untemplate.AnyUntemplate)] ) : Task[Unit] =
-  ZIO.attempt( texttable.printProductTable( UntemplatesColumns )( tups.map((k,v)=>(k,untemplateInputType(v))).map( texttable.Row.apply ) ) )
+  val sorted = immutable.SortedMap.from( tups ).toList
+  ZIO.attempt( texttable.printProductTable( UntemplatesColumns )( sorted.map((k,v)=>(k,untemplateInputType(v))).map( texttable.Row.apply ) ) )
 
