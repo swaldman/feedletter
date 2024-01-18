@@ -182,13 +182,21 @@ object CommandConfig extends SelfLogging:
         _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
       yield ()
     end zcommand
+  case class DropFeedAndSubscribables( feedId : FeedId, removeSubscriptions : Boolean ) extends CommandConfig:
+    override def zcommand : ZCommand =
+      for
+        ds   <- ZIO.service[DataSource]
+        _    <- PgDatabase.ensureDb( ds )
+        _    <- PgDatabase.removeFeedAndSubscribables(ds, feedId, removeSubscriptions)
+        _    <- Console.printLine(s"Feed with ID '${feedId.toInt}' and any subscribables perhaps defined upon it have been permanently removed.")
+      yield ()
   case class DropSubscribable( name : SubscribableName, removeSubscriptions : Boolean ) extends CommandConfig:
     override def zcommand : ZCommand =
       for
         ds   <- ZIO.service[DataSource]
         _    <- PgDatabase.ensureDb( ds )
         _    <- if removeSubscriptions then PgDatabase.removeSubscribable( ds, name, true ) else PgDatabase.cautiousRemoveSubscribable(ds, name)
-        _    <- Console.printLine(s"Subscribable '$name' has been successfully removed.")
+        _    <- Console.printLine(s"Subscribable '$name' has been permanently removed.")
       yield ()
   case class EditSubscribable( name : SubscribableName ) extends CommandConfig:
     def prettifyJson( jsonStr : String ) : String =

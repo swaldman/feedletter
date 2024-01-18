@@ -131,14 +131,21 @@ object PgSchema:
             """|SELECT last_assigned
                |FROM feed
                |WHERE id = ?""".stripMargin
-          private def UpdateLastAssigned =
+          private val UpdateLastAssigned =
             """|UPDATE feed
                |SET last_assigned = ?
                |WHERE id = ?""".stripMargin
-          private def UpdateFeedTimings =
+          private val UpdateFeedTimings =
             """|UPDATE feed
                |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ?, assign_every_minutes = ?
                |WHERE id = ?""".stripMargin
+          private val Delete =
+            """|DELETE FROM feed
+               |WHERE id = ?""".stripMargin
+          def delete( conn : Connection, feedId : FeedId ) =
+            Using.resource( conn.prepareStatement(Delete) ): ps =>
+              ps.setInt(1, feedId.toInt)
+              ps.executeUpdate()
           def updateFeedTimings( conn : Connection, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) =
             Using.resource( conn.prepareStatement(UpdateFeedTimings) ): ps =>
               ps.setInt( 1, minDelayMinutes )
@@ -244,6 +251,13 @@ object PgSchema:
           private val DeleteDisappearedUnassignedForFeed =
             """|DELETE FROM item
                |WHERE assignability = 'Unassigned' AND feed_id = ? AND NOT (guid = ANY( ? ))""".stripMargin
+          private val DeleteByFeed =
+            """|DELETE FROM item
+               |WHERE feed_id = ?""".stripMargin
+          def deleteByFeed( conn : Connection, feedId : FeedId ) =
+            Using.resource( conn.prepareStatement( DeleteByFeed ) ): ps =>
+              ps.setInt   (1, feedId.toInt)
+              ps.executeUpdate()
           def deleteDisappearedUnassignedForFeed( conn : Connection, feedId : FeedId, current : Set[Guid] ) : Int =
             Using.resource( conn.prepareStatement( DeleteDisappearedUnassignedForFeed ) ): ps =>
               val sqlArray = conn.createArrayOf("VARCHAR", current.map(_.str).toArray)
@@ -324,6 +338,10 @@ object PgSchema:
             """|SELECT last_completed_wti
                |FROM subscribable
                |WHERE subscribable_name = ?""".stripMargin
+          private val SelectByFeed =
+            """|SELECT subscribable_name
+               |FROM subscribable
+               |WHERE feed_id = ?""".stripMargin
           private val UpdateManagerJson =
             """|UPDATE subscribable
                |SET subscription_manager_json = CAST( ? AS JSONB )
@@ -337,6 +355,11 @@ object PgSchema:
             """|UPDATE subscribable
                |SET last_completed_wti = ?
                |WHERE subscribable_name = ?""".stripMargin
+          def selectByFeed( conn : Connection, feedId : FeedId ) : Set[SubscribableName] =
+            Using.resource( conn.prepareStatement(SelectByFeed) ): ps =>
+              ps.setInt(1, feedId.toInt)
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet(rs)( rs => SubscribableName( rs.getString(1) ) )
           def delete( conn : Connection, subscribableName : SubscribableName ) =
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setString(1, subscribableName.str)

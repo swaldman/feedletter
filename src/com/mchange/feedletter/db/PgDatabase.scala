@@ -696,13 +696,26 @@ object PgDatabase extends Migratory, SelfLogging:
   def cautiousRemoveSubscribable( conn : Connection, subscribableName : SubscribableName ) : Unit =
     val theyExist = PgDatabase.subscribersExist( conn, subscribableName )
     if theyExist then
-      throw new WouldDropSubscriptions(s"Removing subscribable '${subscribableName.str}' would delete active subscriptions! Set remove-subscriptions flag if you wish to force deletion anyway.")
+      throw new WouldDropSubscriptions(s"Removing subscribable '${subscribableName.str}' would delete active subscriptions! Set remove-active-subscriptions flag if you wish to force deletion anyway.")
     else
       removeSubscribable(conn, subscribableName, false)
 
   def cautiousRemoveSubscribable( ds : DataSource, subscribableName : SubscribableName ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       cautiousRemoveSubscribable( conn, subscribableName )
+
+  def removeFeedAndSubscribables( conn : Connection, feedId : FeedId, removeSubscriptionsIfNecessary : Boolean ) : Unit =
+    val subscribables = LatestSchema.Table.Subscribable.selectByFeed( conn, feedId )
+    if removeSubscriptionsIfNecessary then
+      subscribables.foreach( subscribableName => removeSubscribable( conn, subscribableName, true ) )
+    else
+      subscribables.foreach( subscribableName => cautiousRemoveSubscribable(conn, subscribableName) )
+    LatestSchema.Table.Item.deleteByFeed( conn, feedId )
+    LatestSchema.Table.Feed.delete( conn, feedId )
+
+  def removeFeedAndSubscribables( ds : DataSource, feedId : FeedId, removeSubscriptionsIfNecessary : Boolean ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      removeFeedAndSubscribables(conn,feedId,removeSubscriptionsIfNecessary)
 
   def updateFeedTimings( conn : Connection, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) : Unit =
     LatestSchema.Table.Feed.updateFeedTimings(conn, feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes)

@@ -136,6 +136,18 @@ object Main extends AbstractMain, SelfLogging:
       ( feedId, name, extraParams ) mapN: ( fi, n, ep ) =>
         CommandConfig.DefineMastodonSubscribable( fi, n, ep )
     Command("define-mastodon-subscribable",header=header)( opts )
+  val dropFeedAndSubscribables =
+    val header = "Removes a feed, along with any subscribables defined upon it, from the service."
+    val opts =
+      val feedId =
+        val help = "ID of the existing feed to remove."
+        Opts.option[Int]("feed-id",help=help,metavar="id").map( FeedId.apply )
+      val removeAciveSubscriptions =
+        val help = "Force removal of feed and subscribables even if active subscriptions must also be removed."
+        Opts.flag("remove-active-subscriptions", help).orFalse
+      ( feedId, removeAciveSubscriptions ) mapN: (fid, ras) =>
+        CommandConfig.DropFeedAndSubscribables( fid, ras )
+    Command("drop-feed-and-subscribables", header)( opts )
   val dropSubscribable =
     val header = "Removes a subscribable from the service."
     val opts =
@@ -322,6 +334,7 @@ object Main extends AbstractMain, SelfLogging:
           dbMigrate,
           defineEmailSubscribable,
           defineMastodonSubscribable,
+          dropFeedAndSubscribables,
           dropSubscribable,
           editSubscribable,
           exportSubscribers,
