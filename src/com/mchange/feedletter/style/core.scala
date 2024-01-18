@@ -16,13 +16,13 @@ object ComposeInfo:
     def subscriptionManager : SubscriptionManager
     def withinTypeId        : String
     def timeZone            : ZoneId
-    def contents            : ItemContent | Set[ItemContent]
-    def contentsSet         : Set[ItemContent]
+    def contents            : ItemContent | Seq[ItemContent]
+    def contentsSeq         : Seq[ItemContent]
   end Universal
   case class Single( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, timeZone : ZoneId, contents : ItemContent ) extends ComposeInfo.Universal:
-    override lazy val contentsSet : Set[ItemContent] = Set( contents )
-  case class Multiple( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, timeZone : ZoneId, contents : Set[ItemContent] ) extends ComposeInfo.Universal:
-    override lazy val contentsSet : Set[ItemContent] = contents
+    override lazy val contentsSeq : Seq[ItemContent] = Seq( contents )
+  case class Multiple( feedUrl : FeedUrl, subscribableName : SubscribableName, subscriptionManager: SubscriptionManager, withinTypeId : String, timeZone : ZoneId, contents : Seq[ItemContent] ) extends ComposeInfo.Universal:
+    override lazy val contentsSeq : Seq[ItemContent] = contents
 
 object ComposeSelection:
   object Single:
@@ -33,7 +33,7 @@ object ComposeSelection:
   object Multiple:
     case class First( n : Int ) extends Multiple
     case class Random( n : Int ) extends Multiple
-    case class Guids( values : Set[Guid] ) extends Multiple
+    case class Guids( values : Seq[Guid] ) extends Multiple
   sealed trait Multiple
 
 case class ConfirmInfo( destination : Destination, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, confirmGetLink : String, confirmHours : Int )

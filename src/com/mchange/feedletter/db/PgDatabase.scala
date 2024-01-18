@@ -290,7 +290,9 @@ object PgDatabase extends Migratory, SelfLogging:
 
   // it's probably fine to use cached values, because we recache them continually, even after assignment
   // so they should never be very stale.
-  private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Set[ItemContent] =
+  //
+  // reverse chronological by first-seen time
+  private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Seq[ItemContent] =
     LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.subscribableName, assignableKey.withinTypeId )
 
   private def route( conn : Connection, assignableKey : AssignableKey, apiLinkGenerator : ApiLinkGenerator ) : Unit =

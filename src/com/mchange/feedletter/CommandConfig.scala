@@ -473,12 +473,13 @@ object CommandConfig extends SelfLogging:
         if digest.isEmpty then
           throw new NoExampleItems(s"We can't compose against feed '$feedUrl', because it has no example items to render.")
         digest
-      def guids( digest : FeedDigest ) : Set[Guid] = 
+      def guids( digest : FeedDigest ) : Seq[Guid] = 
         selection match
           case ComposeSelection.Multiple.First(n)  =>
-            digest.fileOrderedGuids.take(n).toSet
+            digest.fileOrderedGuids.take(n).toSeq
           case ComposeSelection.Multiple.Random(n) =>
-            scala.util.Random.shuffle( digest.fileOrderedGuids ).take(n).toSet
+            val keepers = scala.util.Random.shuffle( digest.fileOrderedGuids ).take(n).toSet
+            digest.fileOrderedGuids.filter( keepers )
           case ComposeSelection.Multiple.Guids( values ) =>
             values
       override def zcommand : ZCommand =

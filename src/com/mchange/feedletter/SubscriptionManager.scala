@@ -96,7 +96,7 @@ object SubscriptionManager extends SelfLogging:
             WARNING.log( s"No link found. withinTypeId: ${withinTypeId}" ) 
             None
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         val uniqueContent = contents.uniqueOr: (c, nu) =>
           throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
@@ -156,10 +156,10 @@ object SubscriptionManager extends SelfLogging:
 
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         routeSingle( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
-      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
@@ -214,7 +214,7 @@ object SubscriptionManager extends SelfLogging:
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       def weekStartWeekEndLocalDate( withinTypeId : String ) : (LocalDate,LocalDate) =
@@ -227,7 +227,7 @@ object SubscriptionManager extends SelfLogging:
         val (weekStart, weekEnd) = weekStartWeekEndLocalDate(withinTypeId)
         (ISO_LOCAL_DATE.format(weekStart),ISO_LOCAL_DATE.format(weekEnd))
 
-      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String =
         val (weekStart, weekEnd) = weekStartWeekEndFormattedIsoLocal(withinTypeId)
         s"[${subscribableName}] All posts, ${weekStart} to ${weekEnd}"
 
@@ -280,7 +280,7 @@ object SubscriptionManager extends SelfLogging:
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.DAY_OF_YEAR ) > day)
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       def dayLocalDate( withinTypeId : String ) : LocalDate =
@@ -289,7 +289,7 @@ object SubscriptionManager extends SelfLogging:
 
       def dayFormattedIsoLocal( withinTypeId : String ) : String = ISO_LOCAL_DATE.format( dayLocalDate( withinTypeId ) )
 
-      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String =
         s"[${subscribableName}] All posts, ${dayFormattedIsoLocal(withinTypeId)}"
 
     final case class Fixed(
@@ -337,10 +337,10 @@ object SubscriptionManager extends SelfLogging:
       override def isComplete( conn : Connection, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
         currentCount == numItemsPerLetter
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
-      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String =
         s"[${subscribableName}] ${numItemsPerLetter} new items"
 
 
@@ -364,7 +364,7 @@ object SubscriptionManager extends SelfLogging:
         val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, idestination.destination, sid, apiLinkGenerator.removeGetLink(sid) )
         ( AddressHeader[To](to), templateParams )
 
-    protected def routeSingle( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+    protected def routeSingle( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
       val uniqueContent = contents.uniqueOr: (c, nu) =>
         throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
       val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
@@ -377,7 +377,7 @@ object SubscriptionManager extends SelfLogging:
       val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
       PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
-    protected def routeMultiple( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+    protected def routeMultiple( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
       if contents.nonEmpty then
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
@@ -389,11 +389,11 @@ object SubscriptionManager extends SelfLogging:
         val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
         PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
-    def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String =
+    def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String =
       Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents ) ): customizer =>
         customizer( subscribableName, this, withinTypeId, feedUrl, contents )
 
-    def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Set[ItemContent] ) : String
+    def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String
 
     override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
       val toAddress = destination.toAddress
@@ -572,7 +572,7 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
 
-  def route( conn : Connection, assignableKey : AssignableKey, contents : Set[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
+  def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
 
   def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )
   def jsonPretty : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this, indent=4) )

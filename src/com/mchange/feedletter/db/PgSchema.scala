@@ -861,13 +861,14 @@ object PgSchema:
                |FROM item
                |INNER JOIN assignment
                |ON item.guid = assignment.guid
-               |WHERE assignment.subscribable_name = ? AND assignment.within_type_id = ?""".stripMargin
-          def selectItemContentsForAssignable( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Set[ItemContent] =
+               |WHERE assignment.subscribable_name = ? AND assignment.within_type_id = ?
+               |ORDER BY item.first_seen DESC""".stripMargin
+          def selectItemContentsForAssignable( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Seq[ItemContent] =
             Using.resource( conn.prepareStatement( SelectItemContentsForAssignable ) ): ps =>
               ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
-                toSet( rs )( rs => ItemContent.fromPrenormalizedSingleItemRss( rs.getString(1), rs.getString(2) ) )
+                toSeq( rs )( rs => ItemContent.fromPrenormalizedSingleItemRss( rs.getString(1), rs.getString(2) ) )
         end ItemAssignment
         object ItemAssignableAssignment:
           private val SelectLiveAssignedGuids =

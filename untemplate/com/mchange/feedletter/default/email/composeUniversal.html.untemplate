@@ -41,7 +41,7 @@ end htmlTitle
 <()    
     }
     
-    info.contentsSet.foreach( ic => writer.write( item_html( info, ic ).text ) )
+    info.contentsSeq.foreach( ic => writer.write( item_html( info, ic ).text ) )
 ()>
 
     <div class="unsubscribe">

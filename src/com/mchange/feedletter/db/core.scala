@@ -93,6 +93,12 @@ def toSet[T]( rs : ResultSet )( extract : ResultSet => T ) : Set[T] =
     builder += extract(rs)
   builder.result()
 
+def toSeq[T]( rs : ResultSet )( extract : ResultSet => T ) : Seq[T] =
+  val builder = Seq.newBuilder[T]
+  while rs.next() do
+    builder += extract(rs)
+  builder.result()
+
 def uniqueResult[T]( queryDesc : String, rs : ResultSet )( materialize : ResultSet => T ) : T =
   if !rs.next() then
     throw new UnexpectedlyEmptyResultSet(s"Expected a value for ${queryDesc}, none found.")

@@ -51,7 +51,7 @@ object StyleMain extends AbstractMain:
       val selection =
         val first  = Opts.option[Int]("first",help="Display first n items in feed.",metavar="n").map( n => ComposeSelection.Multiple.First(n) )
         val random = Opts.option[Int]("random",help="Choose n random items from feed to display", metavar="n").map( n => ComposeSelection.Multiple.Random(n) )
-        val guids   = Opts.options[String]("guid",help="Explicitly choose guids of items to display.").map( _.toList.toSet.map(Guid.apply) ).map( v => ComposeSelection.Multiple.Guids(v) )
+        val guids   = Opts.options[String]("guid",help="Explicitly choose guids of items to display.").map( _.toList.map(Guid.apply) ).map( v => ComposeSelection.Multiple.Guids(v) )
         ( first orElse random orElse guids ).withDefault( ComposeSelection.Multiple.First(Int.MaxValue) ) // just render everything
       val destination = CommonStyleOpts.DestinationOrDefault
       val withinTypeId =

@@ -52,7 +52,7 @@ def styleComposeMultipleUntemplate(
   timeZone            : ZoneId,
   feedUrl             : FeedUrl,
   digest              : FeedDigest,
-  guids               : Set[Guid],
+  guids               : Seq[Guid],
   interface           : String,
   port                : Int
 ) : Task[Unit] =
