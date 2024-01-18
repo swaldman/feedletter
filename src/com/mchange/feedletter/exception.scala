@@ -16,3 +16,4 @@ class NoSecretSalt( msg : String, cause : Throwable = null ) extends FeedletterE
 class NoAccessToken( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class DuplicateKey( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class LeakySecrets( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+class WouldDropSubscriptions( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )

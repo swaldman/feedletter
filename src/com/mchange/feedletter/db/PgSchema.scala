@@ -290,6 +290,9 @@ object PgSchema:
                |  FOREIGN KEY (feed_id) REFERENCES feed(id)
                |)""".stripMargin
           private val Select = "SELECT subscribable_name, feed_id, subscription_manager_json, last_completed_wti FROM subscribable"
+          private val Delete =
+            """|DELETE FROM subscribable
+               |WHERE subscribable_name = ?""".stripMargin
           private val SelectFeedIdAndManager =
             """|SELECT feed_id, subscription_manager_json
                |FROM subscribable
@@ -315,6 +318,10 @@ object PgSchema:
             """|UPDATE subscribable
                |SET last_completed_wti = ?
                |WHERE subscribable_name = ?""".stripMargin
+          def delete( conn : Connection, subscribableName : SubscribableName ) =
+            Using.resource( conn.prepareStatement( Delete ) ): ps =>
+              ps.setString(1, subscribableName.str)
+              ps.executeUpdate()
           def updateLastCompletedWti( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) =
             Using.resource( conn.prepareStatement( UpdateLastCompletedWti ) ): ps =>
               ps.setString(1, withinTypeId)
@@ -390,6 +397,9 @@ object PgSchema:
           private val Delete =
             """|DELETE FROM assignable
                |WHERE subscribable_name = ? AND within_type_id = ?""".stripMargin
+          private val DeleteAllForSubscribable =
+            """|DELETE FROM assignable
+               |WHERE subscribable_name = ?""".stripMargin
           def selectOpened( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Option[Instant] =
             Using.resource( conn.prepareStatement( SelectOpened ) ): ps =>
               ps.setString(1, subscribableName.str)
@@ -416,6 +426,10 @@ object PgSchema:
               ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
               ps.executeUpdate()
+          def deleteAllForSubscribable( conn : Connection, subscribableName : SubscribableName ) =
+            Using.resource( conn.prepareStatement( DeleteAllForSubscribable ) ): ps =>
+              ps.setString(1, subscribableName.str)
+              ps.executeUpdate()
         object Assignment extends Creatable:
           protected val Create = // an assignment represents a membership of a post in a collection
             """|CREATE TABLE assignment(
@@ -435,6 +449,9 @@ object PgSchema:
           private val CleanAwayAssignable =
             """|DELETE FROM assignment
                |WHERE subscribable_name = ? AND within_type_id = ?""".stripMargin
+          private val CleanAwayAllAssignablesForSubscribable =
+            """|DELETE FROM assignment
+               |WHERE subscribable_name = ?""".stripMargin
           def selectCountWithinAssignable( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Int =
             Using.resource( conn.prepareStatement( this.SelectCountWithinAssignable ) ): ps =>
               ps.setString(1, subscribableName.str)
@@ -451,6 +468,10 @@ object PgSchema:
             Using.resource( conn.prepareStatement( CleanAwayAssignable ) ): ps =>
               ps.setString(1, subscribableName.str)
               ps.setString(2, withinTypeId)
+              ps.executeUpdate()
+          def cleanAwayAssignableAllAssignablesForSubscribable( conn : Connection, subscribableName : SubscribableName ) =
+            Using.resource( conn.prepareStatement( CleanAwayAllAssignablesForSubscribable ) ): ps =>
+              ps.setString(1, subscribableName.str)
               ps.executeUpdate()
 
         object Subscription extends Creatable:
@@ -473,6 +494,9 @@ object PgSchema:
             """|SELECT subscription_id, destination_json, confirmed, added
                |FROM subscription
                |WHERE subscribable_name = ?""".stripMargin
+          private val DeleteAllForSubscribable =
+            """|DELETE FROM subscription
+               |WHERE subscribable_name = ?""".stripMargin
           private val Insert =
             """|INSERT INTO subscription(subscription_id, destination_json, destination_unique, subscribable_name, confirmed, added)
                |VALUES ( ?, CAST( ? AS JSONB ), ?, ?, ?, ? )""".stripMargin
@@ -486,6 +510,16 @@ object PgSchema:
           private val ExpireUnconfirmedAddedBefore =
             """|DELETE FROM subscription
                |WHERE confirmed = FALSE AND added < ?""".stripMargin
+          private val SubscribersExistForSubscribable =  """SELECT EXISTS(SELECT 1 FROM subscription WHERE subscribable_name = ?)"""
+          def subscribersExist( conn : Connection, subscribableName : SubscribableName ) : Boolean =
+            Using.resource( conn.prepareStatement(SubscribersExistForSubscribable) ): ps =>
+              ps.setString(1, subscribableName.str)
+              Using.resource( ps.executeQuery() ): rs =>
+                uniqueResult("subscribers-exist-for-subscribable", rs)( _.getBoolean(1) )
+          def deleteAllForSubscribable( conn : Connection, subscribableName : SubscribableName ) =
+            Using.resource( conn.prepareStatement( DeleteAllForSubscribable ) ): ps =>
+              ps.setString(1, subscribableName.str )
+              ps.executeUpdate()
           def selectForSubscribable( conn : Connection, subscribableName : SubscribableName ) : Set[( SubscriptionId, Destination, Boolean, Instant )] =
             Using.resource( conn.prepareStatement( SelectForSubscribable ) ): ps =>
               ps.setString(1, subscribableName.str )

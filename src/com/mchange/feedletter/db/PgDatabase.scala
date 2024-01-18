@@ -674,3 +674,35 @@ object PgDatabase extends Migratory, SelfLogging:
   def subscriptionsForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[Set[( SubscriptionId, Destination, Boolean, Instant )]] =
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscription.selectForSubscribable( conn, subscribableName )
+
+  def removeSubscribable( conn : Connection, subscribableName : SubscribableName, removeSubscriptionsIfNecessary : Boolean ) =
+    if removeSubscriptionsIfNecessary then
+      LatestSchema.Table.Subscription.deleteAllForSubscribable( conn, subscribableName )
+    LatestSchema.Table.Assignment.cleanAwayAssignableAllAssignablesForSubscribable(conn, subscribableName)
+    LatestSchema.Table.Assignable.deleteAllForSubscribable(conn, subscribableName)
+    LatestSchema.Table.Subscribable.delete( conn, subscribableName )
+
+  def removeSubscribable( ds : DataSource, subscribableName : SubscribableName, removeSubscriptionsIfNecessary : Boolean ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      removeSubscribable( conn, subscribableName, removeSubscriptionsIfNecessary )
+
+  def subscribersExist( conn : Connection, subscribableName : SubscribableName ) : Boolean =
+    LatestSchema.Table.Subscription.subscribersExist( conn, subscribableName )
+
+  def subscribersExist( ds : DataSource, subscribableName : SubscribableName ) : Task[Boolean] =
+    withConnectionTransactional( ds ): conn =>
+      subscribersExist( conn, subscribableName )
+
+  def cautiousRemoveSubscribable( conn : Connection, subscribableName : SubscribableName ) : Unit =
+    val theyExist = PgDatabase.subscribersExist( conn, subscribableName )
+    if theyExist then
+      throw new WouldDropSubscriptions(s"Removing subscribable '${subscribableName.str}' would delete active subscriptions! Set remove-subscriptions flag if you wish to force deletion anyway.")
+    else
+      removeSubscribable(conn, subscribableName, false)
+
+  def cautiousRemoveSubscribable( ds : DataSource, subscribableName : SubscribableName ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      cautiousRemoveSubscribable( conn, subscribableName )
+
+
+
