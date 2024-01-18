@@ -32,6 +32,9 @@ trait AbstractMain extends SelfLogging:
         ( instanceName, instanceUrl ) mapN: (in, iu) =>
           Destination.Mastodon( name = in, instanceUrl = iu )
       email orElse sms orElse mastodon
+    val AwaitStabilizationMinutes =
+      val help = "Period (in minutes) over which an item should not have changed before it is considered stable and can be notified."
+      Opts.option[Int]("await-stabilization-minutes", help=help, metavar="minutes")
     val ExtraParams : Opts[Map[String,String]] =
       def validate( strings : List[String] ) : ValidatedNel[String,List[Tuple2[String,String]]] =
         strings.map{ s =>
@@ -50,6 +53,15 @@ trait AbstractMain extends SelfLogging:
     val ConfirmUntemplateName =
       val help = "Fully qualified name of untemplate that will ask for e-mail confirmations."
       Opts.option[String]("confirm-untemplate",help=help,metavar="fully-qualified-name").orNone
+    val MaxDelayMinutes =
+      val help = "Notwithstanding other settings, maximum period past which an item should be notified, regardless of its stability."
+      Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes")
+    val MinDelayMinutes =
+      val help = "Minimum wait (in miunutes) before a newly encountered item can be notified."
+      Opts.option[Int]("min-delay-minutes", help=help, metavar="minutes")
+    val RecheckEveryMinutes =
+      val help = "Delay between refreshes of feeds, and redetermining items' availability for notification."
+      Opts.option[Int]("recheck-every-minutes", help=help, metavar="minutes")
     val RemovalNotificationUntemplateName =
       val help = "Fully qualified name of untemplate that be mailed to users upon unsubscription."
       Opts.option[String]("removal-notification-untemplate",help=help,metavar="fully-qualified-name").orNone

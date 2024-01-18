@@ -12,6 +12,7 @@ import javax.sql.DataSource
 import java.time.ZoneId
 
 import com.mchange.conveniences.throwable.*
+import com.mchange.conveniences.collection.*
 
 import com.mchange.mailutil.*
 
@@ -27,6 +28,20 @@ object CommandConfig extends SelfLogging:
         _   <- PgDatabase.ensureDb( ds )
         fis <- PgDatabase.addFeed( ds, nf )
         _   <- printFeedInfoTable(fis)
+      yield ()
+    end zcommand
+  case class AlterFeed( fts : FeedTimings ) extends CommandConfig:
+    def ifSomethingToDo( ds : DataSource ) =
+      val timings = fts._2 :: fts._3 :: fts._4 :: fts._5 :: Nil
+      if timings.actuals.isEmpty then
+        ZIO.attempt( println( s"Nothing to do, feed ${fts.feedId} is unchanged." ) )
+      else
+        PgDatabase.mergeFeedTimings( ds, fts ) *> ZIO.attempt( println( s"Feed ${fts.feedId} has been updated." ) )
+    override def zcommand : ZCommand =
+      for
+        ds  <- ZIO.service[DataSource]
+        _   <- PgDatabase.ensureDb( ds )
+        _   <- ifSomethingToDo(ds)
       yield ()
     end zcommand
   case object Daemon extends CommandConfig:

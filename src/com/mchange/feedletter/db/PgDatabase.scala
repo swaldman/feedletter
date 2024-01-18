@@ -704,5 +704,23 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       cautiousRemoveSubscribable( conn, subscribableName )
 
+  def updateFeedTimings( conn : Connection, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) : Unit =
+    LatestSchema.Table.Feed.updateFeedTimings(conn, feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes)
+
+  def updateFeedTimings( ds : DataSource, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      updateFeedTimings( conn, feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes )
+
+  def mergeFeedTimings( conn : Connection, fts : FeedTimings ) : Unit =
+    val fi = LatestSchema.Table.Feed.selectById( conn, fts.feedId )
+    val nextMinDelayMinutes = fts.minDelayMinutes.getOrElse( fi.minDelayMinutes )
+    val nextAwaitStabilizationMinutes = fts.awaitStabilizationMinutes.getOrElse( fi.awaitStabilizationMinutes )
+    val nextMaxDelayMinutes = fts.maxDelayMinutes.getOrElse( fi.maxDelayMinutes )
+    val nextAssignEveryMinutes = fts.assignEveryMinutes.getOrElse( fi.assignEveryMinutes )
+    updateFeedTimings( conn, fts.feedId, nextMinDelayMinutes, nextAwaitStabilizationMinutes, nextMaxDelayMinutes, nextAssignEveryMinutes )
+
+  def mergeFeedTimings( ds : DataSource, fts : FeedTimings ) : Task[Unit] =
+    withConnectionTransactional( ds ): conn =>
+      mergeFeedTimings( conn, fts )
 
 

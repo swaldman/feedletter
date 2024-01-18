@@ -122,6 +122,7 @@ object PgSchema:
                |VALUES( ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
           private val SelectAll =
             "SELECT id, url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, assign_every_minutes, added, last_assigned FROM feed"
+          private val SelectById = SelectAll + " WHERE id = ?"  
           private val SelectUrl =
             """|SELECT url
                |FROM feed
@@ -134,6 +135,18 @@ object PgSchema:
             """|UPDATE feed
                |SET last_assigned = ?
                |WHERE id = ?""".stripMargin
+          private def UpdateFeedTimings =
+            """|UPDATE feed
+               |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ?, assign_every_minutes = ?
+               |WHERE id = ?""".stripMargin
+          def updateFeedTimings( conn : Connection, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) =
+            Using.resource( conn.prepareStatement(UpdateFeedTimings) ): ps =>
+              ps.setInt( 1, minDelayMinutes )
+              ps.setInt( 2, awaitStabilizationMinutes )
+              ps.setInt( 3, maxDelayMinutes )
+              ps.setInt( 4, assignEveryMinutes )
+              ps.setInt( 5, feedId.toInt )
+              ps.executeUpdate()
           def insert( conn : Connection, newFeedId : FeedId, nf : NascentFeed ) : Int =
             insert(conn, newFeedId, nf.feedUrl, nf.minDelayMinutes, nf.awaitStabilizationMinutes, nf.maxDelayMinutes, nf.assignEveryMinutes, nf.added, nf.lastAssigned)
           def insert( conn : Connection, feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant ) : Int =
@@ -151,6 +164,12 @@ object PgSchema:
             Using.resource( conn.prepareStatement( this.SelectAll ) ): ps =>
               Using.resource( ps.executeQuery() ): rs =>
                 toSet(rs)( rs => FeedInfo(FeedId(rs.getInt(1)), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6), rs.getTimestamp(7).toInstant, rs.getTimestamp(8).toInstant) )
+          def selectById( conn : Connection, id : FeedId ) : FeedInfo =
+            Using.resource( conn.prepareStatement( this.SelectById ) ): ps =>
+              ps.setInt(1, id.toInt)
+              Using.resource( ps.executeQuery() ): rs =>
+                uniqueResult("feed-select-by-id", rs): rs =>
+                  FeedInfo(FeedId(rs.getInt(1)), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6), rs.getTimestamp(7).toInstant, rs.getTimestamp(8).toInstant)
           def selectUrl( conn : Connection, feedId : FeedId ) : Option[FeedUrl] =
             Using.resource(conn.prepareStatement(this.SelectUrl)): ps =>
               ps.setInt(1, feedId.toInt)

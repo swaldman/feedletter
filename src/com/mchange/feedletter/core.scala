@@ -65,6 +65,8 @@ final case class ExcludedItem( feedId : FeedId, guid : Guid, link : Option[Strin
 
 final case class FeedInfo( feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant )
 
+final case class FeedTimings( feedId : FeedId, minDelayMinutes : Option[Int], awaitStabilizationMinutes : Option[Int], maxDelayMinutes : Option[Int], assignEveryMinutes : Option[Int] )
+
 enum Flag:
   case MustReloadDaemon
 

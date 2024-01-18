@@ -40,18 +40,10 @@ object Main extends AbstractMain, SelfLogging:
   val addFeed =
     val header = "Add a new feed from which mail or notifications may be generated."
     val opts =
-      val minDelayMinutes =
-        val help = "Minimum wait (in miunutes) before a newly encountered item can be notified."
-        Opts.option[Int]("min-delay-minutes", help=help, metavar="minutes").withDefault(Default.Feed.MinDelayMinutes)
-      val awaitStabilizationMinutes =
-        val help = "Period (in minutes) over which an item should not have changed before it is considered stable and can be notified."
-        Opts.option[Int]("await-stabilization-minutes", help=help, metavar="minutes").withDefault(Default.Feed.AwaitStabilizationMinutes)
-      val maxDelayMinutes =
-        val help = "Notwithstanding other settings, maximum period past which an item should be notified, regardless of its stability."
-        Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes").withDefault(Default.Feed.MaxDelayMinutes)
-      val recheckEveryMinutes =
-        val help = "Delay between refreshes of feeds, and redetermining items' availability for notification."
-        Opts.option[Int]("recheck-every-minutes", help=help, metavar="minutes").withDefault(Default.Feed.RecheckEveryMinutes)
+      val minDelayMinutes = CommonOpts.MinDelayMinutes.withDefault(Default.Feed.MinDelayMinutes)
+      val awaitStabilizationMinutes = CommonOpts.AwaitStabilizationMinutes.withDefault(Default.Feed.AwaitStabilizationMinutes)
+      val maxDelayMinutes = CommonOpts.MaxDelayMinutes.withDefault(Default.Feed.MaxDelayMinutes)
+      val recheckEveryMinutes = CommonOpts.RecheckEveryMinutes.withDefault(Default.Feed.RecheckEveryMinutes)
       val setTimings =
         (minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, recheckEveryMinutes).mapN( (mindm, asm, maxdm, rem) => (mindm, asm, maxdm, rem) )
       val ping =
@@ -63,6 +55,19 @@ object Main extends AbstractMain, SelfLogging:
         val nf = NascentFeed(FeedUrl(fu), t(0), t(1), t(2), t(3) )
         CommandConfig.AddFeed( nf )
     Command("add-feed",header=header)( opts )
+  val alterFeed =
+    val header = "Alter the timings of an already-defined feed."
+    val opts =
+      val feedId =
+        val help = "The ID of the RSS feed to be watched."
+        Opts.option[Int]("feed-id", help=help, metavar="feed-id").map( FeedId.apply )
+      val minDelayMinutes = CommonOpts.MinDelayMinutes.orNone
+      val awaitStabilizationMinutes = CommonOpts.AwaitStabilizationMinutes.orNone
+      val maxDelayMinutes = CommonOpts.MaxDelayMinutes.orNone
+      val recheckEveryMinutes = CommonOpts.RecheckEveryMinutes.orNone
+      ( feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, recheckEveryMinutes ) mapN: (fi, mindm, asm, maxdm, rem) =>
+        CommandConfig.AlterFeed( FeedTimings( fi, mindm, asm, maxdm, rem ) )
+    Command("alter-feed",header=header)( opts )    
   val daemon =
     val header = "Run daemon that watches feeds and sends notifications."
     val opts = Opts( CommandConfig.Daemon )
@@ -310,6 +315,7 @@ object Main extends AbstractMain, SelfLogging:
       val subcommands =
         Opts.subcommands(
           addFeed,
+          alterFeed,
           daemon,
           dbDump,
           dbInit,
