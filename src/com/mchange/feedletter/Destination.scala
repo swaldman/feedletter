@@ -2,6 +2,7 @@ package com.mchange.feedletter
 
 import upickle.default._
 
+import com.mchange.conveniences.www.*
 import com.mchange.mailutil.Smtp
 import scala.collection.StringOps
 
@@ -50,7 +51,7 @@ object Destination:
     override def toRow : Seq[String] = Seq( addressPart, q(displayNamePart.getOrElse("")) )
 
   case class Mastodon( name : String, instanceUrl : String ) extends Destination:
-    override def unique = s"mastodon:${instanceUrl}"
+    override def unique = "mastodon:" + wwwFormEncodeUTF8(("name",name),("instanceUrl",instanceUrl))
     override def toFields = Seq( destinationType.s -> Tag.Mastodon.toString, Key.name.s -> this.name, Key.instanceUrl.s -> this.instanceUrl )
     override def shortDesc : String = this.instanceUrl
     override def fullDesc : String = s"Mastodon nicknamed '${name}' instance at ${instanceUrl}"
