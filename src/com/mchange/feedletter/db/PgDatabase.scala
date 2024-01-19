@@ -126,6 +126,8 @@ object PgDatabase extends Migratory, SelfLogging:
           PgSchema.V1.Table.MailableTemplate.create( stmt )
           PgSchema.V1.Table.Mailable.create( stmt )
           PgSchema.V1.Table.Mailable.Sequence.MailableSeq.create( stmt )
+          PgSchema.V1.Table.ImmediatelyMailable.create( stmt )
+          PgSchema.V1.Table.ImmediatelyMailable.Sequence.ImmediatelyMailableSeq.create( stmt )
           PgSchema.V1.Table.MastoPostable.create( stmt )
           PgSchema.V1.Table.MastoPostable.Sequence.MastoPostableSeq.create( stmt )
           PgSchema.V1.Table.MastoPostableMedia.create( stmt )
@@ -152,15 +154,15 @@ object PgDatabase extends Migratory, SelfLogging:
 
   private def insertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.insert(conn, cfgkey, value) )
-    setMustReloadDaemon(conn)
+    setFlag(conn, Flag.MustReloadDaemon)
 
   private def updateConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.update(conn, cfgkey, value) )
-    setMustReloadDaemon(conn)
+    setFlag(conn, Flag.MustReloadDaemon)
 
   private def upsertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
     pairs.foreach( ( cfgkey, value ) => LatestSchema.Table.Config.upsert(conn, cfgkey, value) )
-    setMustReloadDaemon(conn)
+    setFlag(conn, Flag.MustReloadDaemon)
 
   private def sort( tups : Set[Tuple2[ConfigKey,String]] ) : immutable.SortedSet[Tuple2[ConfigKey,String]] =
     immutable.SortedSet.from( tups )( using Ordering.by( tup => (tup(0).toString().toUpperCase, tup(1) ) ) )
@@ -328,15 +330,8 @@ object PgDatabase extends Migratory, SelfLogging:
     templateParams : TemplateParams,
     subject        : String
   ) : Unit =
-    try
-      val filledContents = templateParams.fill( contents )
-      given Smtp.Context = as.smtpContext
-      Smtp.sendSimpleHtmlOnly( contents, subject = subject, from = from.str, to = to.str, replyTo = replyTo.map(_.str).toSeq )
-      INFO.log(s"Mail sent from '${from}' to '${to}' with subject '${subject}'")
-    catch
-      case NonFatal(t) =>
-        WARNING.log("Attempt to mail immediately from '${from}' to '${to}' with subject '${subject}' failed. Queuing to reattempt later.", t)
-        queueForMailing(conn, contents, from, replyTo, to, templateParams, subject)
+    LatestSchema.Table.ImmediatelyMailable.insert(conn, contents, from, replyTo, to, templateParams, subject )
+    setFlag(conn, Flag.ImmediateMailQueued)
 
   def queueForMailing( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], tosWithParams : Set[(AddressHeader[To],TemplateParams)], subject : String ) : Unit = 
     val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
@@ -623,12 +618,12 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscribable.selectUninterpretedManagerJson( conn, subscribableName )
 
-  def checkMustReloadDaemon( conn : Connection ) : Boolean = LatestSchema.Table.Flags.isSet( conn, Flag.MustReloadDaemon )
-  def clearMustReloadDaemon( conn : Connection ) : Unit    = LatestSchema.Table.Flags.unset( conn, Flag.MustReloadDaemon )
-  def setMustReloadDaemon  ( conn : Connection ) : Unit    = LatestSchema.Table.Flags.set  ( conn, Flag.MustReloadDaemon )
+  def checkFlag( conn : Connection, flag : Flag ) : Boolean = LatestSchema.Table.Flags.isSet( conn, flag )
+  def clearFlag( conn : Connection, flag : Flag ) : Unit    = LatestSchema.Table.Flags.unset( conn, flag )
+  def setFlag  ( conn : Connection, flag : Flag ) : Unit    = LatestSchema.Table.Flags.set  ( conn, flag )
 
-  def checkMustReloadDaemon( ds : DataSource ) : Task[Boolean] = withConnectionTransactional(ds)( checkMustReloadDaemon )
-  def clearMustReloadDaemon( ds : DataSource ) : Task[Unit]    = withConnectionTransactional(ds)( clearMustReloadDaemon )
+  def checkFlag( ds : DataSource, flag : Flag ) : Task[Boolean] = withConnectionTransactional(ds)( conn => checkFlag(conn,flag) )
+  def clearFlag( ds : DataSource, flag : Flag ) : Task[Unit]    = withConnectionTransactional(ds)( conn => clearFlag(conn,flag) )
 
   def expireUnconfirmed( conn : Connection ) : Unit =
     val confirmHours = math.max(Config.confirmHours( conn ), 0)
@@ -737,5 +732,27 @@ object PgDatabase extends Migratory, SelfLogging:
   def mergeFeedTimings( ds : DataSource, fts : FeedTimings ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       mergeFeedTimings( conn, fts )
+
+  def sendNextImmediatelyMailable( conn : Connection, as : AppSetup ) : Boolean =
+    val mbim = LatestSchema.Table.ImmediatelyMailable.selectNext( conn )
+    mbim match
+      case Some( im ) =>
+        LatestSchema.Table.ImmediatelyMailable.delete(conn, im) // if the transaction fails (as opposed to just the sending) we'll come back
+        try
+          val filledContents = im.templateParams.fill( im.contents )
+          given Smtp.Context = as.smtpContext
+          Smtp.sendSimpleHtmlOnly( im.contents, subject = im.subject, from = im.from.str, to = im.to.str, replyTo = im.replyTo.map(_.str).toSeq )
+          INFO.log(s"Expedited mail sent from '${im.from}' to '${im.to}' with subject '${im.subject}'")
+        catch
+          case NonFatal(t) =>
+            WARNING.log("Attempt to mail immediately from '${from}' to '${to}' with subject '${subject}' failed. Queuing to reattempt later.", t)
+            queueForMailing(conn, im.contents, im.from, im.replyTo, im.to, im.templateParams, im.subject)
+        true
+      case None =>
+        false
+
+  def sendNextImmediatelyMailable( ds : DataSource, as : AppSetup ) : Task[Boolean] =
+    withConnectionTransactional( ds ): conn =>
+      sendNextImmediatelyMailable( conn, as )
 
 

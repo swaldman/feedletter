@@ -36,11 +36,16 @@ end confirmHoursWarning
       <ul>
         <li>
           <p>
-            If you did intend to subscribe, please <a href="<( info.confirmGetLink )>">click here to confirm your subscription</a>.
+            If you did intend to subscribe, please <a href="<( info.confirmLink )>">click here to confirm your subscription</a>.
             <( confirmHoursWarning )>
           </p>
         </li>
-        <li><p>If you did not intend to subscribe, please do nothing but accept our apologies. You will receive no further mailings.</p></li>
+        <li>
+          <p>
+            If you did not intend to subscribe, please do nothing but accept our apologies. You will receive no further mailings.
+            Or you can explicitly <a href="<( info.unsubscribeLink )>">unsubscribe</a>.
+          </p>
+        </li>
       </ul>
 
       <p>Love,<br>

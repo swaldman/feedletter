@@ -100,7 +100,7 @@ def styleConfirmUntemplate(
   port                : Int
 ) : Task[Unit] =
   val sid = SubscriptionId(0)
-  val confirmInfo = ConfirmInfo( destination, subscribableName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), confirmHours )
+  val confirmInfo = ConfirmInfo( destination, subscribableName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), DummyApiLinkGenerator.removeGetLink(sid), confirmHours )
   val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
   val filled = untemplate( confirmInfo ).text
   serveOneHtmlPage( filled, interface, port )

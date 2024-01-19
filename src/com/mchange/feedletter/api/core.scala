@@ -282,7 +282,8 @@ object V0 extends SelfLogging:
             sman match
               case vsman : SubscriptionManager.SupportsExternalSubscriptionApi =>
                 val cgl = confirmGetLink( sid )
-                val confirming = vsman.maybePromptConfirmation( conn, as, sid, sname, vsman.narrowDestinationOrThrow(destination), cgl )
+                val rgl = removeGetLink( sid )
+                val confirming = vsman.maybePromptConfirmation( conn, as, sid, sname, vsman.narrowDestinationOrThrow(destination), cgl, rgl )
                 val confirmedMessage =
                   if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
                 val sinfo = SubscriptionInfo( sid, sname, vsman, destination, !confirming )

@@ -36,7 +36,7 @@ object ComposeSelection:
     case class Guids( values : Seq[Guid] ) extends Multiple
   sealed trait Multiple
 
-case class ConfirmInfo( destination : Destination, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, confirmGetLink : String, confirmHours : Int )
+case class ConfirmInfo( destination : Destination, subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, confirmLink : String, unsubscribeLink : String, confirmHours : Int )
 
 case class RemovalNotificationInfo(
   subscribableName     : SubscribableName,
