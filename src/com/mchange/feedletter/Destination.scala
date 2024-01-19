@@ -6,25 +6,28 @@ import com.mchange.conveniences.www.*
 import com.mchange.mailutil.Smtp
 import scala.collection.StringOps
 
+// Note: CSV headers and fields that need to be quoted
+//       are quoted already when generated via `csvRowHeaders` and `toCsvRow`.
+//       Just put commas between 'em and newlines at their end
 object Destination:
   val  Json = DestinationJson
   type Json = DestinationJson
 
   trait TypeMetaInfo[T <: Destination]:
-    def rowHeaders : Seq[String]
+    def csvRowHeaders : Seq[String]
 
   private def q(s : String) = s""""$s""""
 
-  object RowHeaders:
+  object CsvRowHeaders:
     val Email    = Seq(q("E-Mail"), q("Display Name"))
     val Mastodon = Seq(q("Instance URL"), q("Name"))
     val Sms      = Seq(q("Phone Number"))
-  given TypeMetaInfo[Email] = new TypeMetaInfo[Email] { def rowHeaders : Seq[String] = RowHeaders.Email }
-  given TypeMetaInfo[Mastodon] = new TypeMetaInfo[Mastodon] { def rowHeaders : Seq[String] = RowHeaders.Mastodon }
-  given TypeMetaInfo[Sms] = new TypeMetaInfo[Sms] { def rowHeaders : Seq[String] = RowHeaders.Sms }
+  given TypeMetaInfo[Email] = new TypeMetaInfo[Email] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Email }
+  given TypeMetaInfo[Mastodon] = new TypeMetaInfo[Mastodon] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Mastodon }
+  given TypeMetaInfo[Sms] = new TypeMetaInfo[Sms] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Sms }
 
-  def rowHeaders[T <: Destination](using TypeMetaInfo[T]) =
-    summon[TypeMetaInfo[T]].rowHeaders
+  def csvRowHeaders[T <: Destination](using TypeMetaInfo[T]) =
+    summon[TypeMetaInfo[T]].csvRowHeaders
 
   private object Tag:
     def valueOfIgnoreCaseOption( s : String ) : Option[Tag] = Tag.values.find( _.toString.equalsIgnoreCase(s) )
@@ -48,7 +51,7 @@ object Destination:
     override def shortDesc : String = this.addressPart 
     override def fullDesc : String = this.rendered
     override def defaultDesc : String = fullDesc
-    override def toRow : Seq[String] = Seq( addressPart, q(displayNamePart.getOrElse("")) )
+    override def toCsvRow : Seq[String] = Seq( addressPart, q(displayNamePart.getOrElse("")) )
 
   case class Mastodon( name : String, instanceUrl : String ) extends Destination:
     override def unique = "mastodon:" + wwwFormEncodeUTF8(("name",name),("instanceUrl",instanceUrl))
@@ -56,7 +59,7 @@ object Destination:
     override def shortDesc : String = this.instanceUrl
     override def fullDesc : String = s"Mastodon nicknamed '${name}' instance at ${instanceUrl}"
     override def defaultDesc : String = shortDesc
-    override def toRow : Seq[String] = Seq( instanceUrl, q(name) )
+    override def toCsvRow : Seq[String] = Seq( instanceUrl, q(name) )
 
   case class Sms( number : String ) extends Destination:
     override def unique = s"sms:${number}"
@@ -64,7 +67,7 @@ object Destination:
     override def shortDesc : String = this.number
     override def fullDesc : String = s"SMS destination '${number}'"
     override def defaultDesc : String = shortDesc
-    override def toRow : Seq[String] = Seq( q(number) )
+    override def toCsvRow : Seq[String] = Seq( q(number) )
 
   def materialize( json : Destination.Json ) : Destination = read[Destination]( json.toString )
 
@@ -167,5 +170,5 @@ sealed trait Destination extends Jsonable:
   def shortDesc   : String
   def fullDesc    : String
   def defaultDesc : String
-  def toRow       : Seq[String]
+  def toCsvRow    : Seq[String]
 

@@ -123,7 +123,7 @@ object SubscriptionManager extends SelfLogging:
 
     override val sampleDestination = Destination.Mastodon( name = "mothership", instanceUrl = "https://mastodon.social/" )
 
-    override def destinationRowHeaders : Seq[String] = Destination.rowHeaders[D]
+    override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
   end Mastodon
   
   object Email:
@@ -438,7 +438,7 @@ object SubscriptionManager extends SelfLogging:
 
     override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
 
-    override def destinationRowHeaders : Seq[String] = Destination.rowHeaders[D]
+    override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
 
   end Email
 
@@ -611,8 +611,8 @@ sealed trait SubscriptionManager extends Jsonable:
   def displayFull( destination : D ) : String  = destination.fullDesc
 
   // this we defer until D is concrete
-  def destinationRowHeaders : Seq[String]
-  final def destinationRow( destination : D ) : Seq[String] = destination.toRow
+  def destinationCsvRowHeaders : Seq[String]
+  final def destinationCsvRow( destination : D ) : Seq[String] = destination.toCsvRow
 
   def supportsExternalSubscriptionApi : Boolean = this.isInstanceOf[SubscriptionManager.SupportsExternalSubscriptionApi]
 
