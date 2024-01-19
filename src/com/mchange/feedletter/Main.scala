@@ -70,7 +70,10 @@ object Main extends AbstractMain, SelfLogging:
     Command("alter-feed",header=header)( opts )    
   val daemon =
     val header = "Run daemon that watches feeds and sends notifications."
-    val opts = Opts( CommandConfig.Daemon )
+    val opts =
+      val help = "Run as background process (if supported by wrapper script) and generate a PID file."
+      val fork = Opts.flag("fork",help=help).orFalse
+      fork.map( f => CommandConfig.Daemon( f ) )
     Command("daemon", header=header )( opts )
   val dbDump =
     val header = "Dump a backup of the database into a configured directory."

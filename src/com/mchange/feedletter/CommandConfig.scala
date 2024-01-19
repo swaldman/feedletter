@@ -44,14 +44,23 @@ object CommandConfig extends SelfLogging:
         _   <- ifSomethingToDo(ds)
       yield ()
     end zcommand
-  case object Daemon extends CommandConfig:
-      override def zcommand : ZCommand =
-        for
-          as <- ZIO.service[AppSetup]
-          ds <- ZIO.service[DataSource]
-          _  <- com.mchange.feedletter.Daemon.startup( ds, as )
-        yield ()  
-      end zcommand
+  case class Daemon( fork : Boolean ) extends CommandConfig:
+    def writePidFile( pidf : os.Path ) =
+      val contents = s"${ProcessHandle.current().pid()}${LineSep}"
+      os.write(pidf, contents)
+      val onShutdown =
+        new Thread:
+          override def run() : Unit = os.remove( pidf )
+      java.lang.Runtime.getRuntime().addShutdownHook(onShutdown)
+    override def zcommand : ZCommand =
+      for
+        as <- ZIO.service[AppSetup]
+        ds <- ZIO.service[DataSource]
+        _  <- PgDatabase.ensureDb( ds )
+        _  <- if fork then ZIO.attempt( writePidFile(as.pidFile) ) else ZIO.unit
+        _  <- com.mchange.feedletter.Daemon.startup( ds, as )
+      yield ()  
+    end zcommand
   case object DbDump extends CommandConfig:
     override def zcommand : ZCommand =
       for

@@ -15,14 +15,16 @@ MAINCMD=$0
 
 if [[ "$1" == "--secrets" ]]; then
     SUBCMD="$3"
+    FIRSTARG="$4"
 else
     SUBCMD="$1"
+    FIRSTARG="$2"
 fi
 
 if [[ "$MAINCMD" == "./feedletter" || "$MAINCMD" == "feedletter" ]]; then
     if [[ "$SUBCMD" == "edit-subscribable" ]]; then  # we need native streams...
         ./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
-    elif [[  "$SUBCMD" == "daemon" ]]; then
+    elif [[  "$SUBCMD" == "daemon" && "$FIRSTARG" == "--fork" ]]; then
         ./millw --no-server runMainBackground com.mchange.feedletter.Main "$@"
     else
         ./millw --no-server runMain com.mchange.feedletter.Main "$@"
