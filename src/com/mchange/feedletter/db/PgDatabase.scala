@@ -755,4 +755,6 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       sendNextImmediatelyMailable( conn, as )
 
+  def destinationAlreadySubscribed( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean =
+    LatestSchema.Table.Subscription.destinationAlreadySubscribed( conn, destination, subscribableName )
 

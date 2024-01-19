@@ -552,7 +552,14 @@ object PgSchema:
           private val ExpireUnconfirmedAddedBefore =
             """|DELETE FROM subscription
                |WHERE confirmed = FALSE AND added < ?""".stripMargin
-          private val SubscribersExistForSubscribable =  """SELECT EXISTS(SELECT 1 FROM subscription WHERE subscribable_name = ?)"""
+          private val SubscribersExistForSubscribable = "SELECT EXISTS(SELECT 1 FROM subscription WHERE subscribable_name = ?)"
+          private val DestinationAlreadySubscribed    = "SELECT EXISTS(SELECT 1 FROM subscription WHERE destination_unique = ? AND subscribable_name = ?)"
+          def destinationAlreadySubscribed( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean =
+            Using.resource( conn.prepareStatement(DestinationAlreadySubscribed) ): ps =>
+              ps.setString(1, destination.unique)
+              ps.setString(2, subscribableName.str)
+              Using.resource( ps.executeQuery() ): rs =>
+                uniqueResult("destination-already-subscribed", rs)( _.getBoolean(1) )
           def subscribersExist( conn : Connection, subscribableName : SubscribableName ) : Boolean =
             Using.resource( conn.prepareStatement(SubscribersExistForSubscribable) ): ps =>
               ps.setString(1, subscribableName.str)
