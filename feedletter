@@ -3,6 +3,7 @@
 # Choose between
 
 #./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
+#./millw --no-server runMainBackground com.mchange.feedletter.Main "$@"
 #./millw --no-server runMain com.mchange.feedletter.Main "$@"
 
 # Style commands need to be run with the -w flag, but are managed
@@ -21,6 +22,8 @@ fi
 if [[ "$MAINCMD" == "./feedletter" || "$MAINCMD" == "feedletter" ]]; then
     if [[ "$SUBCMD" == "edit-subscribable" ]]; then  # we need native streams...
         ./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
+    elif [[  "$SUBCMD" == "daemon" ]]; then
+        ./millw --no-server runMainBackground com.mchange.feedletter.Main "$@"
     else
         ./millw --no-server runMain com.mchange.feedletter.Main "$@"
     fi
