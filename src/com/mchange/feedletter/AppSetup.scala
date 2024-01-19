@@ -1,7 +1,7 @@
 package com.mchange.feedletter
 
 import zio.*
-import java.io.BufferedInputStream
+import java.io.{BufferedInputStream,InputStream}
 import java.nio.file.{Path as JPath}
 import java.util.Properties
 import scala.util.Using
@@ -20,21 +20,23 @@ object AppSetup:
   val DefaultSecretsSearch =
     ((os.pwd / DefaultSecretsFileName).toString :: s"/etc/feedletter/${DefaultSecretsFileName}" :: s"/usr/local/etc/feedletter/${DefaultSecretsFileName}" :: Nil).map( os.Path.apply )
 
-  def julConfigRawInputStream() =
+  def julConfigRawInputStreamAndSource() : (InputStream, LoggingConfig) =
     try
-      os.read.inputStream( os.resource / "logging.properties" )
+      (os.read.inputStream( os.resource / "logging.properties" ), LoggingConfig.User)
     catch
       case rnfe : os.ResourceNotFoundException =>
-        os.read.inputStream( os.resource / "feedletter-default-logging.properties" )
+        (os.read.inputStream( os.resource / "feedletter-default-logging.properties" ), LoggingConfig.Default)
     end try
 
-  private val julAppSetup : Task[Unit] = ZIO.attemptBlocking:
-    Using.resource( new BufferedInputStream( julConfigRawInputStream() ) ): is =>
+  private val julAppSetup : Task[LoggingConfig] = ZIO.attemptBlocking:
+    val ( ris, source ) = julConfigRawInputStreamAndSource()
+    Using.resource( new BufferedInputStream( ris ) ): is =>
       java.util.logging.LogManager.getLogManager().readConfiguration( is )
+    source
 
   def live( secrets : Option[JPath] ) : ZLayer[Any, Throwable, AppSetup] = ZLayer.fromZIO:
     for
-      _ <- julAppSetup
+      lcfg <- julAppSetup
     yield
       val (loc : Option[os.Path], props : Properties) =
         secrets match
@@ -47,9 +49,9 @@ object AppSetup:
           val ap = AcceptableSecretsPermStrings.mkString(", ")
           throw new LeakySecrets(s"Secrets file '${p}' is not secret enough. Permission '${perms}'. Acceptable permissions: [$ap]")
       val propsMap = props.toMap
-      AppSetup( loc, propsMap )
+      AppSetup( loc, propsMap, lcfg )
 
-case class AppSetup( secretsLoc : Option[os.Path], secrets : Map[String,String] ):
+case class AppSetup( secretsLoc : Option[os.Path], secrets : Map[String,String], loggingConfig : LoggingConfig ):
   lazy val smtpContext : Smtp.Context = Smtp.Context( (Smtp.Context.defaultProperties().asScala.toMap ++ secrets).toProperties, sys.env )
   lazy val secretSalt : String = secrets.get("feedletter.secret.salt").getOrElse:
     throw new NoSecretSalt("Please set 'feedletter.secret.salt' to an arbitrary but consistent String in the feedletter-secrets file.")

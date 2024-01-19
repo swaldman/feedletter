@@ -45,6 +45,13 @@ object CommandConfig extends SelfLogging:
       yield ()
     end zcommand
   case class Daemon( fork : Boolean ) extends CommandConfig:
+    def logMore() =
+      import java.util.logging.{Level,LogManager,Logger}
+      val FeedletterLevel = Level.FINER // XXX: Someday, bring this up to Level.INFO
+      val rootLogger = LogManager.getLogManager().getLogger("")
+      val packageLogger = Logger.getLogger( "com.mchange.feedletter" )
+      rootLogger.getHandlers().foreach( _.setLevel(Level.FINEST) )
+      packageLogger.setLevel(FeedletterLevel)
     def writePidFile( pidf : os.Path ) =
       val contents = s"${ProcessHandle.current().pid()}${LineSep}"
       os.write(pidf, contents)
@@ -58,6 +65,7 @@ object CommandConfig extends SelfLogging:
         ds <- ZIO.service[DataSource]
         _  <- PgDatabase.ensureDb( ds )
         _  <- if fork then ZIO.attempt( writePidFile(as.pidFile) ) else ZIO.unit
+        _  <- if as.loggingConfig == LoggingConfig.Default then ZIO.attempt( logMore() ) else ZIO.unit
         _  <- com.mchange.feedletter.Daemon.startup( ds, as )
       yield ()  
     end zcommand

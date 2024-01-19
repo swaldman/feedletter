@@ -97,6 +97,9 @@ final case class ItemStatus( contentHash : Int, firstSeen : Instant, lastChecked
 
 val LineSep = System.lineSeparator()
 
+enum LoggingConfig:
+  case User, Default
+
 final case class MastoPostable( id : MastoPostableId, finalContent : String, instanceUrl : MastoInstanceUrl, name : MastoName, retried : Int, media : Seq[ItemContent.Media] )
 
 object NascentFeed:
