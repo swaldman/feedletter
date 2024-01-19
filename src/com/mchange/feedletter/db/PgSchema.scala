@@ -827,6 +827,52 @@ object PgSchema:
             Using.resource( conn.prepareStatement( DeleteById ) ): ps =>
               ps.setLong(1, id.toLong )
               ps.executeUpdate()
+        object ImmediatelyMailable extends Creatable:
+          protected val Create =
+            """|CREATE TABLE immediately_mailable (
+               |  seqnum          BIGINT,
+               |  contents        TEXT         NOT NULL,
+               |  from            VARCHAR(256) NOT NULL,
+               |  reply_to        VARCHAR(256),
+               |  to              VARCHAR(256) NOT NULL,
+               |  template_params TEXT         NOT NULL,
+               |  subject         VARCHAR(256) NOT NULL,
+               |  PRIMARY KEY(seqnum)
+               |)""".stripMargin
+           private val SelectNext =
+             """|SELECT seqnum, contents, from, reply_to, to, template_params, subject
+                |FROM immediately_mailable
+                |ORDER BY seqnum ASC
+                |LIMIT 1""".stripMargin
+           private val Insert =
+             """|INSERT INTO immediately_mailable( contents, from, reply_to, to, template_params, subject )
+                |VALUES( nextval('mailable_seq'), ?, ?, ?, ?, ?, ? )""".stripMargin
+           private val DeleteByKey = "DELETE FROM immediately_mailable WHERE seqnum = ?"
+           def insert( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], to : AddressHeader[To], templateParams : TemplateParams, subject : String ) =
+             Using.resource( conn.prepareStatement(Insert) ): ps =>
+               ps.setString        (1, contents)
+               ps.setString        (2, from.str)
+               ps.setStringOptional(3, Types.VARCHAR, replyTo.map( _.str ))
+               ps.setString        (4, to.str)
+               ps.setString        (5, templateParams.str)
+               ps.setString        (6, subject)
+               ps.executeUpdate()
+           def selectNext( conn : Connection ) : Option[ImmediatelyMailable] =
+             Using.resource( conn.prepareStatement(SELECT) ): ps =>
+               Using.resource( ps.executQuery() ): rs =>
+                 zeroOrOneResult("immediately-mailable-select-next", rs): rs =>
+                   ImmediateMail(
+                     rs.getLong(1),
+                     rs.getString(2),
+                     AddressHeader[From](rs.getString(3)),
+                     Option(rs.getString(4)).map(AddressHeader.apply[ReplyTo]),
+                     AddressHeader[To](rs.getString(5)),
+                     TemplateParams(rs.getString(6)),
+                     rs.getString(7)
+                   )
+          object Sequence:
+            object ImmediatelyMailableSeq extends Creatable:
+              protected val Create = "CREATE SEQUENCE immediately_mailable_seq AS BIGINT"
       end Table
       object Join:
         object ItemSubscribable:

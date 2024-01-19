@@ -68,9 +68,20 @@ final case class FeedInfo( feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes :
 final case class FeedTimings( feedId : FeedId, minDelayMinutes : Option[Int], awaitStabilizationMinutes : Option[Int], maxDelayMinutes : Option[Int], assignEveryMinutes : Option[Int] )
 
 enum Flag:
+  case ImmediateMailQueued
   case MustReloadDaemon
 
 final case class IdentifiedDestination[T <: Destination]( subscriptionId : SubscriptionId, destination : T )
+
+final case class ImmediateMail(
+  seqnum         : Long,
+  contents       : String,
+  from           : AddressHeader[From],
+  replyTo        : Option[AddressHeader[ReplyTo]],
+  to             : AddressHeader[To],
+  templateParams : TemplateParams,
+  subject        : String
+)
 
 /*
  * Maps directly to a postgres enum,
