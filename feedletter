@@ -11,7 +11,11 @@
 
 # A bit (well, very) fragile...
 
-MAINCMD=$0
+MAINCMD="$0"
+FEEDLETTER_DIR="$(dirname $MAINCMD)"
+EXECNAME="$(basename $MAINCMD)"
+
+cd "$FEEDLETTER_DIR"
 
 if [[ "$1" == "--secrets" ]]; then
     SUBCMD="$3"
@@ -21,7 +25,7 @@ else
     FIRSTARG="$2"
 fi
 
-if [[ "$MAINCMD" == "./feedletter" || "$MAINCMD" == "feedletter" ]]; then
+if [[ "$EXECNAME" == "feedletter" ]]; then
     if [[ "$SUBCMD" == "edit-subscribable" ]]; then  # we need native streams...
         ./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
     elif [[  "$SUBCMD" == "daemon" && "$FIRSTARG" == "--fork" ]]; then
@@ -30,7 +34,7 @@ if [[ "$MAINCMD" == "./feedletter" || "$MAINCMD" == "feedletter" ]]; then
         ./millw --no-server runMain com.mchange.feedletter.Main "$@"
     fi
 else
-    echo "Expected this command to be 'feedletter' or './feedletter'"
+    echo "Expected this command to be 'feedletter'."
 fi
 
 
