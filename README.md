@@ -13,8 +13,8 @@
 - lets you **define a wide variety of subscriptions** to those feeds
    * Over different media
      - e-mail
+     - Post to Mastodon
      - SMS (coming soon!)
-     - Post to Mastodon (coming soon!)
      - etc
    * In different arrangements
      - each item as newsletter
@@ -24,14 +24,15 @@
 - which are **formatted via rich, customizable [`untemplates`](https://github.com/swaldman/untemplate-doc#readme)**
 - which are **managed via a web API** for easy subscription, confirmation, and unsubscription by users
 
-For people accustomed to managing server-side applications, it is pretty easy to set up,
-depending only on a Postgres database and a few config files.
+### Prerequisites
 
-It runs nicely as a `systemd` service proxied by `nginx`, although it should work fine under any infrastructure you choose.
+The application requres a Java 17+ JVM and a Postgres database.
+
+Typical installations will proxy the web API behind e.g. `nginx`, and run the daemon as a `systemd` service.
 
 ### Getting Started
 
-(more soon!)
+A tutorial is coming soon!
 
 ### Developer Notes
 
