@@ -33,19 +33,37 @@ object ItemContent:
 
   final case class Media( url : String, mimeType : Option[String], length : Option[Long], alt : Option[String] )
 
-case class ItemContent private ( val guid : String, val rssElem : Elem ):
-  import ItemContent.{Media,logger}
+import ItemContent.Media
+
+case class ItemContent private (
+  val guid        : String,
+  val rssElem     : Elem,
+  overrideTitle   : Option[String]     = None,
+  overrideAuthor  : Option[String]     = None,
+  overrideArticle : Option[String]     = None,
+  overridePubDate : Option[Instant]    = None,
+  overrideLink    : Option[String]     = None,
+  overrideMedia   : Option[Seq[Media]] = None
+):
+  import ItemContent.logger
+
+  def withTitle( title : String )      : ItemContent = this.copy( overrideTitle = Some( title ) )
+  def withAuthor( author : String )    : ItemContent = this.copy( overrideAuthor = Some( author ) )
+  def withArticle( article : String )  : ItemContent = this.copy( overrideArticle = Some( article ) )
+  def withPubDate( pubDate : Instant ) : ItemContent = this.copy( overridePubDate = Some( pubDate ) )
+  def withLink( link : String )        : ItemContent = this.copy( overrideLink = Some( link ) )
+  def withMedia( media : Seq[Media] )  : ItemContent = this.copy( overrideMedia = Some( media ) )
 
   val itemElem : Elem = (rssElem \ "channel" \ "item").uniqueOr { (ns : NodeSeq, nu : NotUnique) =>
     throw new AssertionError( s"ItemContent should only be initialized with single-item RSS, we found ${nu}." )
   }.asInstanceOf[Elem]
 
-  lazy val title   : Option[String]  = extractTitle
-  lazy val author  : Option[String]  = extractCreatorAuthor
-  lazy val article : Option[String]  = extractContent
-  lazy val pubDate : Option[Instant] = extractPubDate
-  lazy val link    : Option[String]  = extractLink
-  lazy val media   : Seq[Media]      = extractMedia
+  lazy val title   : Option[String]  = overrideTitle   orElse extractTitle
+  lazy val author  : Option[String]  = overrideAuthor  orElse extractCreatorAuthor
+  lazy val article : Option[String]  = overrideArticle orElse extractContent
+  lazy val pubDate : Option[Instant] = overridePubDate orElse extractPubDate
+  lazy val link    : Option[String]  = overrideLink    orElse extractLink
+  lazy val media   : Seq[Media]      = overrideMedia.getOrElse( extractMedia )
 
   def contentHash : Int = this.## // XXX: should I use a better, more guaranteed-stable hash?
 
