@@ -60,14 +60,18 @@ object CommandConfig extends SelfLogging:
           override def run() : Unit = os.remove( pidf )
       java.lang.Runtime.getRuntime().addShutdownHook(onShutdown)
     override def zcommand : ZCommand =
-      for
-        as <- ZIO.service[AppSetup]
-        ds <- ZIO.service[DataSource]
-        _  <- PgDatabase.ensureDb( ds )
-        _  <- if fork then ZIO.attempt( writePidFile(as.pidFile) ) else ZIO.unit
-        _  <- if as.loggingConfig == LoggingConfig.Default then ZIO.attempt( logMore() ) else ZIO.unit
-        _  <- com.mchange.feedletter.Daemon.startup( ds, as )
-      yield ()  
+      val task =
+        for
+          as <- ZIO.service[AppSetup]
+          ds <- ZIO.service[DataSource]
+          _  <- PgDatabase.ensureDb( ds )
+          _  <- if fork then ZIO.attempt( writePidFile(as.pidFile) ) else ZIO.unit
+          _  <- if as.loggingConfig == LoggingConfig.Default then ZIO.attempt( logMore() ) else ZIO.unit
+          _  <- com.mchange.feedletter.Daemon.startup( ds, as )
+          _  <- SEVERE.zlog( "Unexpected successful completion of perpetual daemon!" )
+          _  <- ZIO.fail( new UnexpectedDaemonTermination( "Perpetual daemon task appears to have succeddfully terminated!" ) )
+        yield ()
+      task.zlogErrorDefect(WARNING, what = "Main daemon")
     end zcommand
   case object DbDump extends CommandConfig:
     override def zcommand : ZCommand =

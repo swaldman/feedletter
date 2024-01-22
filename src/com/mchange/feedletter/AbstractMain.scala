@@ -112,14 +112,19 @@ trait AbstractMain extends SelfLogging:
   def baseCommand : Command[(Option[JPath],CommandConfig)]
 
   def main( args : Array[String] ) : Unit =
-    baseCommand.parse(args.toIndexedSeq, sys.env) match
-      case Left(help) =>
-        println(help)
-        System.exit(1)
-      case Right( ( mbSecrets : Option[JPath], cc : CommandConfig ) ) =>
-        val task =
-          cc.zcommand.provide( AppSetup.live(mbSecrets), LayerDataSource )
-            .tapError( t => SEVERE.zlog( "Application failed with an Exception.", t ) )
-            .tapDefect( cause => SEVERE.zlog( "Application failed with cause: " + cause ) )
-        Unsafe.unsafely:
-          Runtime.default.unsafe.run(task).getOrThrow()
+    try
+      baseCommand.parse(args.toIndexedSeq, sys.env) match
+        case Left(help) =>
+          println(help)
+          System.exit(1)
+        case Right( ( mbSecrets : Option[JPath], cc : CommandConfig ) ) =>
+          val task =
+            cc.zcommand.provide( AppSetup.live(mbSecrets), LayerDataSource )
+              .tapError( t => SEVERE.zlog( "Application failed with an Exception.", t ) )
+              .tapDefect( cause => SEVERE.zlog( "Application failed with cause: " + cause ) )
+          Unsafe.unsafely:
+            Runtime.default.unsafe.run(task).getOrThrow()
+    catch
+      case t : Throwable =>
+        System.err.println("Function main(...) is terminating with an Exception:")
+        t.printStackTrace()

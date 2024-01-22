@@ -17,3 +17,4 @@ class NoAccessToken( msg : String, cause : Throwable = null ) extends Feedletter
 class DuplicateKey( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class LeakySecrets( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class WouldDropSubscriptions( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+class UnexpectedDaemonTermination( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )

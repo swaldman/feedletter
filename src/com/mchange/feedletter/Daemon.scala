@@ -189,4 +189,5 @@ object Daemon extends SelfLogging:
       yield ()
     singleLoad.zlogErrorDefect(WARNING).resurrect.retry( RetrySchedule.mainDaemon ) // if we have database problems, keep trying to reconnect
       .schedule( Schedule.forever ) // a successful completion signals a reload request. so we restart
+      .zlogErrorDefect(SEVERE, what="Main daemon loop")
       .unit 
