@@ -3,10 +3,6 @@ import java.time.format.{DateTimeFormatter,FormatStyle}
 
 val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatStyle.LONG)
 
-def ifLink( link : Option[String], text : String ) : String =
-  link.fold(text)(l => s"""<a href="$l">$text</a>""")
-end ifLink
-
 val (info, contents) = tup
 
 val images = contents.media.filter( _.mimeType.map( _.startsWith("image") ).getOrElse(false) )
