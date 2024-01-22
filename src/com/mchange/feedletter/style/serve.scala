@@ -24,7 +24,10 @@ def serveOneHtmlPage( html : String, interface : String, port : Int ) : Task[Uni
   val indexEndpoint = endpoint.in("index.html").get.out( htmlBodyUtf8 )
   val logic : Unit => UIO[String] = _ => ZIO.succeed( html )
   val httpApp = ZioHttpInterpreter().toHttp( List(rootEndpoint.zServerLogic(logic), indexEndpoint.zServerLogic(logic) ) )
-  Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.binding(interface,port)), Server.live)
+  for
+    _ <- Console.printLine( "Starting single-page webserver on interface ${interface}, port ${port}..." )
+    _ <- Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.binding(interface,port)), Server.live)
+  yield ()
 
 def styleStatusChangeUntemplate(
   untemplateName       : String,
