@@ -222,6 +222,11 @@ object Main extends AbstractMain, SelfLogging:
         .map( v => (key, v.toString()) )
         .orNone
     val opts =
+      val confirmHours = simpleConfigOpt[Int]( ConfigKey.ConfirmHours )(
+        name    = "confirm-hours",
+        help    = "Number of hours to await a user confiration before automatically unsubscribing.",
+        metavar = "hours"
+      )
       val dumpDbDir =
         val help = "Directory in which to create dump files prior to db migrations."
         Opts.option[JPath]("dump-db-dir", help=help, metavar="directory")
@@ -279,8 +284,8 @@ object Main extends AbstractMain, SelfLogging:
         help    = "The port from which the web api is served (usually blank, protocol determined).",
         metavar = "port"
       )
-      ( dumpDbDir, mailBatchSize, mailBatchDelaySecs, mailMaxRetries, timeZone, webDaemonInterface, webDaemonPort, webApiProtocol, webApiHostName, webApiBasePath, webApiPort ) mapN: (ddr, mbs, mbds, mmr, tz, wdi, wdp, wapro, wahn, wabp, wapo) =>
-        val settings : Map[ConfigKey,String] = (Vector.empty ++ ddr ++ mbs ++ mbds ++ mmr ++ tz ++ wdi ++ wdp ++ wapro ++ wahn ++ wabp ++ wapo).toMap
+      ( confirmHours, dumpDbDir, mailBatchSize, mailBatchDelaySecs, mailMaxRetries, timeZone, webDaemonInterface, webDaemonPort, webApiProtocol, webApiHostName, webApiBasePath, webApiPort ) mapN: ( ch, ddr, mbs, mbds, mmr, tz, wdi, wdp, wapro, wahn, wabp, wapo) =>
+        val settings : Map[ConfigKey,String] = (Vector.empty ++ ch ++ ddr ++ mbs ++ mbds ++ mmr ++ tz ++ wdi ++ wdp ++ wapro ++ wahn ++ wabp ++ wapo).toMap
         CommandConfig.SetConfig( settings )
     Command("set-config", header=header)( opts )
   val sendTestEmail =
