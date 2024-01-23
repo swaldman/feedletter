@@ -122,9 +122,18 @@ trait AbstractMain extends SelfLogging:
             cc.zcommand.provide( AppSetup.live(mbSecrets), LayerDataSource )
               .tapError( t => SEVERE.zlog( "Application failed with an Exception.", t ) )
               .tapDefect( cause => SEVERE.zlog( "Application failed with cause: " + cause ) )
-          Unsafe.unsafely:
-            Runtime.default.unsafe.run(task).getOrThrow()
+          val completionValue =
+            Unsafe.unsafely:
+              Runtime.default.unsafe.run(task).getOrThrow()
+          if args.contains("daemon") then
+            SEVERE.log(s"Feedletter process terminating unexpectedly with completion value: ${completionValue}")
+          else
+            TRACE.log(s"Feedletter process ended with completion value: ${completionValue}")
     catch
       case t : Throwable =>
+        // yes this is superfluous, should happen anyway, but we are seeing daemon
+        // processes that should run until killed exit unexpectedly, and I want to be
+        // triply sure we see every way these processes can end
         System.err.println("Function main(...) is terminating with an Exception:")
         t.printStackTrace()
+        throw t

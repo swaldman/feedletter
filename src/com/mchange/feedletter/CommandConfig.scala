@@ -68,8 +68,8 @@ object CommandConfig extends SelfLogging:
           _  <- if fork then ZIO.attempt( writePidFile(as.pidFile) ) else ZIO.unit
           _  <- if as.loggingConfig == LoggingConfig.Default then ZIO.attempt( logMore() ) else ZIO.unit
           _  <- com.mchange.feedletter.Daemon.startup( ds, as )
-          _  <- SEVERE.zlog( "Unexpected successful completion of perpetual daemon!" )
-          _  <- ZIO.fail( new UnexpectedDaemonTermination( "Perpetual daemon task appears to have succeddfully terminated!" ) )
+          _  <- SEVERE.zlog( "Unexpected successful completion of perpetual daemon!" ) // this is a bit ridiculous, but we're seeing unexpected daemon process exits
+          _  <- ZIO.fail( new UnexpectedDaemonTermination( "Perpetual daemon task appears to have succeddfully terminated!" ) ) // this too!
         yield ()
       task.zlogErrorDefect(WARNING, what = "Main daemon")
     end zcommand
