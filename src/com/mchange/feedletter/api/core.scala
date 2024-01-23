@@ -67,22 +67,25 @@ object V0 extends SelfLogging:
 
   object RequestPayload:
     extension ( queryParams : QueryParams )
-      def assertParam( key : String ) : String =
-        queryParams.get(key).getOrElse:
+      def assertParamTrimmed( key : String ) : String =
+        queryParams.get(key).map( _.trim ).getOrElse:
           throw new InvalidRequest( s"Expected query param '$key' required, not found." )
+      def toSeqTrimmedValues : Seq[(String,String)] =
+        queryParams.toSeq.map( (k,v) => (k,v.trim) )
+
     object Subscription:
       object Create:
         def fromQueryParams( queryParams : QueryParams ) : Create =
-          val subscribableName : String = queryParams.assertParam( "subscribableName" )
-          val destination : Destination = Destination.fromFields( queryParams.toSeq ).getOrElse:
+          val subscribableName : String = queryParams.assertParamTrimmed( "subscribableName" )
+          val destination : Destination = Destination.fromFields( queryParams.toSeqTrimmedValues ).getOrElse:
             throw new InvalidRequest( "Could not decode a Destination for subscription create request. Fields: " + queryParams.toSeq.mkString(", ") )
           Create( subscribableName, destination )
       case class Create( subscribableName : String, destination : Destination ) extends RequestPayload:
         override lazy val toMap : Map[String,String] = Map( "subscribableName" -> subscribableName ) ++ destination.toFields
       object Confirm extends Bouncer[Confirm]("ConfirmSuffix"):
         def fromQueryParams( queryParams : QueryParams ) : Confirm =
-          val subscriptionId : Long   = queryParams.assertParam( "subscriptionId" ).toLong
-          val invitation     : String = queryParams.assertParam( "invitation" )
+          val subscriptionId : Long   = queryParams.assertParamTrimmed( "subscriptionId" ).toLong
+          val invitation     : String = queryParams.assertParamTrimmed( "invitation" )
           Confirm( subscriptionId, invitation )
         def noninvitationContentsBytes( req : Confirm ) = req.subscriptionId.toByteSeqBigEndian
         def invite( subscriptionId : Long, secretSalt : String ) : Confirm =
@@ -91,8 +94,8 @@ object V0 extends SelfLogging:
       case class Confirm( subscriptionId : Long, invitation : String ) extends RequestPayload.Invited
       object Remove extends Bouncer[Remove]("RemoveSuffix"):
         def fromQueryParams( queryParams : QueryParams ) : Remove =
-          val subscriptionId : Long   = queryParams.assertParam( "subscriptionId" ).toLong
-          val invitation     : String = queryParams.assertParam( "invitation" )
+          val subscriptionId : Long   = queryParams.assertParamTrimmed( "subscriptionId" ).toLong
+          val invitation     : String = queryParams.assertParamTrimmed( "invitation" )
           Remove( subscriptionId, invitation )
         def noninvitationContentsBytes( req : Remove ) = req.subscriptionId.toByteSeqBigEndian
         def invite( subscriptionId : Long, secretSalt : String ) : Remove =
