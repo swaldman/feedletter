@@ -57,7 +57,9 @@ object CommandConfig extends SelfLogging:
       os.write(pidf, contents)
       val onShutdown =
         new Thread:
-          override def run() : Unit = os.remove( pidf )
+          override def run() : Unit =
+            INFO.log(s"Shutdown Hook: Removing PID file '${pidf}'")
+            os.remove( pidf )
       java.lang.Runtime.getRuntime().addShutdownHook(onShutdown)
     override def zcommand : ZCommand =
       val task =
