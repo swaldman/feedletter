@@ -36,11 +36,11 @@ end htmlTitle
 <()
     }
     case multiple : ComposeInfo.Multiple => {
-()>    
+()>
     <p>The following <( multiple.contents.size )> posts have been published to <b><( info.subscribableName )></b>:</p>
-<()    
+<()
     }
-    
+
     info.contentsSeq.foreach( ic => writer.write( item_html( info, ic ).text ) )
 ()>
 
