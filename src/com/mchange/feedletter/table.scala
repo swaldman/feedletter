@@ -65,3 +65,9 @@ def printSubscriptions( tups : Iterable[(SubscriptionId,String,Boolean,Instant)]
   ZIO.attempt( texttable.printProductTable( SubscriptionColumns )( tups.map( texttable.Row.apply ) ) )
 
 
+def printSubscribableNamesTable( tups : Iterable[String] ) =
+  ZIO.attempt:
+    texttable.printTable( texttable.Column("Subscribable Name") :: Nil, (s : String) => List(s) )( tups.toList.sorted.map( texttable.Row.apply ) )
+    println()
+    println("For more details, try \"feedletter list-subscribables -v\"" )
+

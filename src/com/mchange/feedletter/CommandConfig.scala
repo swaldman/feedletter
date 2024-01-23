@@ -299,13 +299,13 @@ object CommandConfig extends SelfLogging:
         _    <- printSubscriptions( tups.map( ( sid, d, c, a ) => ( sid, s(d), c, a ) ) ) 
       yield ()
     end zcommand
-  case object ListSubscribables extends CommandConfig:
+  case class ListSubscribables( verbose : Boolean ) extends CommandConfig:
     override def zcommand : ZCommand =
       for
         ds   <- ZIO.service[DataSource]
         _    <- PgDatabase.ensureDb( ds )
         tups <- PgDatabase.listSubscribables(ds)
-        _    <- printSubscribables(tups)
+        _    <- if verbose then printSubscribables(tups) else printSubscribableNamesTable( tups.map( _(0).str ) )
       yield ()
     end zcommand
   case class SendTestEmail( from : String, to : String ) extends CommandConfig:

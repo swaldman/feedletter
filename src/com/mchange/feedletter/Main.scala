@@ -191,7 +191,9 @@ object Main extends AbstractMain, SelfLogging:
     Command("list-items-excluded",header=header)( opts )
   val listSubscribables =
     val header = "List all subscribables."
-    val opts = Opts( CommandConfig.ListSubscribables )
+    val opts =
+      val verbose = Opts.flag("verbose", "Display detailed description of each subscribable", "v").orFalse
+      verbose.map( v => CommandConfig.ListSubscribables( v ) )
     Command("list-subscribables",header=header)( opts )
   val listSubscribers =
     val header = "List all subscribers to a subscribable."
