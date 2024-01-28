@@ -50,7 +50,7 @@ end val
   contents.pubDate.foreach { pubDate =>
 ()>
       <div class="item-date">
-        Published <( formatter.format( pubDate.atZone(info.timeZone) ) )>
+        Published <( ifLink( contents.link, formatter.format( pubDate.atZone(info.timeZone) ) ) )>
       </div>
 <()
   }

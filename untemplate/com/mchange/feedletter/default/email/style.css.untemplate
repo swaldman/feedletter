@@ -62,6 +62,17 @@
    font-style: italic;
    font-size: 60%;
  }
+ .item-date a {
+   color: black;
+   text-decoration: none;
+ }
+ .item-date a:visited {
+   color: black;
+   text-decoration: none;
+ }
+ .item-date a:hover {
+   text-decoration: underline;
+ }
  .item-contents {
  }
  .item-contents blockquote {
