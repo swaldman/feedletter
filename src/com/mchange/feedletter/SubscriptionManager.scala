@@ -98,21 +98,21 @@ object SubscriptionManager extends SelfLogging:
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-        val customizedContents = customizeContents( assignableKey.subscribableName, this, assignableKey.withinTypeId, feedUrl, contents )
-        val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
-          // for the error message, we use uncustomized contents, so it's easier to match the raw sources
-          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
-        val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent )
-        mbTemplate.foreach: template =>
-          val mastoDestinationsWithTemplateParams =
-            idestinations.map: idestination =>
-              val destination = idestination.destination
-              val sid = idestination.subscriptionId
-              val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
-              ( destination, templateParams )
-          mastoDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
-            val fullContent = templateParams.fill( template )
-            PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
+        val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+        if customizedContents.nonEmpty then
+          val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
+            throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + customizedContents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+          val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent )
+          mbTemplate.foreach: template =>
+            val mastoDestinationsWithTemplateParams =
+              idestinations.map: idestination =>
+                val destination = idestination.destination
+                val sid = idestination.subscriptionId
+                val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
+                ( destination, templateParams )
+            mastoDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
+              val fullContent = templateParams.fill( template )
+              PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
 
       override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
         Map(
@@ -368,23 +368,23 @@ object SubscriptionManager extends SelfLogging:
 
     protected def routeSingle( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
       val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-      val customizedContents = customizeContents( assignableKey.subscribableName, this, assignableKey.withinTypeId, feedUrl, contents )
-      val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
-        // for the error message, we use uncustomized contents, so it's easier to match the raw sources
-        throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
-      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, customizedContents )
-      val tz = bestTimeZone(conn)
-      val fullTemplate =
-        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, uniqueContent )
-        val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
-        compose( info ).text
-      val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
-      PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
+      val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+      if customizedContents.nonEmpty then
+        val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
+          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + customizedContents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, customizedContents )
+        val tz = bestTimeZone(conn)
+        val fullTemplate =
+          val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, uniqueContent )
+          val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
+          compose( info ).text
+        val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
+        PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
     protected def routeMultiple( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-      if contents.nonEmpty then
-        val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-        val customizedContents = customizeContents( assignableKey.subscribableName, this, assignableKey.withinTypeId, feedUrl, contents )
+      val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
+      val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+      if customizedContents.nonEmpty then
         val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, customizedContents )
         val tz = bestTimeZone(conn)
         val fullTemplate =
@@ -395,7 +395,7 @@ object SubscriptionManager extends SelfLogging:
         PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String =
-      val customizedContents = customizeContents( subscribableName, this, withinTypeId, feedUrl, contents )
+      val customizedContents = customizeContents( subscribableName, withinTypeId, feedUrl, contents )
       Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, customizedContents ) ): customizer =>
         customizer( subscribableName, this, withinTypeId, feedUrl, customizedContents )
 
@@ -578,10 +578,10 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
 
-  def customizeContents( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : Seq[ItemContent] =
+  def customizeContents( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : Seq[ItemContent] =
     val customizer = Customizer.Contents.retrieve(subscribableName)
     customizer match
-      case Some( c ) => c( subscribableName, subscriptionManager, withinTypeId, feedUrl, contents )
+      case Some( c ) => c( subscribableName, this, withinTypeId, feedUrl, contents )
       case None => contents
 
   def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit

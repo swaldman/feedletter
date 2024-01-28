@@ -7,6 +7,8 @@ import java.time.ZoneId
 import com.mchange.feedletter.*
 import com.mchange.feedletter.api.ApiLinkGenerator
 
+import com.mchange.conveniences.collection.*
+
 object DummyApiLinkGenerator extends ApiLinkGenerator:
   def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String =
     s"http://localhost:8024/v0/subscription/create?subscribableName=${subscribableName}&destinationType=Email&addressPart=fakeuser%40example.com"
@@ -60,14 +62,18 @@ def styleComposeMultipleUntemplate(
   port                : Int
 ) : Task[Unit] =
   val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
-  val composeInfo = ComposeInfo.Multiple( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone,  contents )
-  val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
-  val composed =
-    val untemplateOutput = untemplate( composeInfo ).text
-    val sid = SubscriptionId(0)
-    val templateParams = subscriptionManager.composeTemplateParams( subscribableName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
-    templateParams.fill( untemplateOutput )
-  serveOneHtmlPage( composed, interface, port )
+  val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, contents )
+  if customizedContents.nonEmpty then
+    val composeInfo = ComposeInfo.Multiple( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone, customizedContents )
+    val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
+    val composed =
+      val untemplateOutput = untemplate( composeInfo ).text
+      val sid = SubscriptionId(0)
+      val templateParams = subscriptionManager.composeTemplateParams( subscribableName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
+      templateParams.fill( untemplateOutput )
+    serveOneHtmlPage( composed, interface, port )
+  else
+    Console.printLine(s"""After customization, perhaps also before, there were no contents to display. Original guids: ${digest.fileOrderedGuids.mkString(", ")}""")
 
 def styleComposeSingleUntemplate(
   untemplateName      : String,
@@ -83,14 +89,20 @@ def styleComposeSingleUntemplate(
   port                : Int
 ) : Task[Unit] =
   val contents = digest.guidToItemContent( guid )
-  val composeInfo = ComposeInfo.Single( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone, contents )
-  val untemplate = AllUntemplates.findComposeUntemplateSingle( untemplateName )
-  val composed =
-    val untemplateOutput = untemplate( composeInfo ).text
-    val sid = SubscriptionId(0)
-    val templateParams = subscriptionManager.composeTemplateParams( subscribableName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
-    templateParams.fill( untemplateOutput )
-  serveOneHtmlPage( composed, interface, port )
+  val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, Seq(contents) )
+  if customizedContents.nonEmpty then
+    val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
+      throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + customizedContents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+    val composeInfo = ComposeInfo.Single( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone, uniqueContent )
+    val untemplate = AllUntemplates.findComposeUntemplateSingle( untemplateName )
+    val composed =
+      val untemplateOutput = untemplate( composeInfo ).text
+      val sid = SubscriptionId(0)
+      val templateParams = subscriptionManager.composeTemplateParams( subscribableName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
+      templateParams.fill( untemplateOutput )
+    serveOneHtmlPage( composed, interface, port )
+  else
+    Console.printLine(s"After customization, there were no contents to display. Original contents: ${contents}")
 
 def styleConfirmUntemplate(
   untemplateName      : String,
