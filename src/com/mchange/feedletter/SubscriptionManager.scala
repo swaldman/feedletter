@@ -97,9 +97,11 @@ object SubscriptionManager extends SelfLogging:
             None
 
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        val uniqueContent = contents.uniqueOr: (c, nu) =>
-          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
+        val customizedContents = customizeContents( assignableKey.subscribableName, this, assignableKey.withinTypeId, feedUrl, contents )
+        val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
+          // for the error message, we use uncustomized contents, so it's easier to match the raw sources
+          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
         val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent )
         mbTemplate.foreach: template =>
           val mastoDestinationsWithTemplateParams =
@@ -125,7 +127,7 @@ object SubscriptionManager extends SelfLogging:
 
     override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
   end Mastodon
-  
+
   object Email:
     type Companion = Each.type | Daily.type | Weekly.type | Fixed.type
     type Instance  = Each      | Daily      | Weekly      | Fixed
@@ -365,13 +367,15 @@ object SubscriptionManager extends SelfLogging:
         ( AddressHeader[To](to), templateParams )
 
     protected def routeSingle( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-      val uniqueContent = contents.uniqueOr: (c, nu) =>
-        throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
       val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+      val customizedContents = customizeContents( assignableKey.subscribableName, this, assignableKey.withinTypeId, feedUrl, contents )
+      val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
+        // for the error message, we use uncustomized contents, so it's easier to match the raw sources
+        throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, customizedContents )
       val tz = bestTimeZone(conn)
       val fullTemplate =
-        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, contents.head )
+        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, uniqueContent )
         val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
         compose( info ).text
       val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
@@ -380,18 +384,20 @@ object SubscriptionManager extends SelfLogging:
     protected def routeMultiple( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
       if contents.nonEmpty then
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents )
+        val customizedContents = customizeContents( assignableKey.subscribableName, this, assignableKey.withinTypeId, feedUrl, contents )
+        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, customizedContents )
         val tz = bestTimeZone(conn)
         val fullTemplate =
-          val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, contents )
+          val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, customizedContents )
           val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
           compose( info ).text
         val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
         PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String =
-      Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents ) ): customizer =>
-        customizer( subscribableName, this, withinTypeId, feedUrl, contents )
+      val customizedContents = customizeContents( subscribableName, this, withinTypeId, feedUrl, contents )
+      Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, customizedContents ) ): customizer =>
+        customizer( subscribableName, this, withinTypeId, feedUrl, customizedContents )
 
     def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String
 
@@ -571,6 +577,12 @@ sealed trait SubscriptionManager extends Jsonable:
     )
 
   def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
+
+  def customizeContents( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : Seq[ItemContent] =
+    val customizer = Customizer.Contents.retrieve(subscribableName)
+    customizer match
+      case Some( c ) => c( subscribableName, subscriptionManager, withinTypeId, feedUrl, contents )
+      case None => contents
 
   def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
 
