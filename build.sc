@@ -11,10 +11,15 @@ import mill.contrib.buildinfo.BuildInfo
 import $ivy.`de.tototec::de.tobiasroeser.mill.vcs.version::0.4.0`
 import de.tobiasroeser.mill.vcs.version.VcsVersion
 
+import $ivy.`com.mchange::mill-daemon:0.0.1-SNAPSHOT`
+
 import $ivy.`com.mchange::untemplate-mill:0.1.2`
 import untemplate.mill._
+import com.mchange.milldaemon.DaemonModule
 
-object feedletter extends RootModule with UntemplateModule with PublishModule with BuildInfo {
+import scala.util.control.NonFatal
+
+object feedletter extends RootModule with DaemonModule with UntemplateModule with PublishModule with BuildInfo {
   def scalaVersion = "3.3.1"
 
   override def scalacOptions = T{ Seq("-deprecation") }
@@ -41,6 +46,19 @@ object feedletter extends RootModule with UntemplateModule with PublishModule wi
     ivy"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
     ivy"com.mchange::untemplate:0.1.2",
   )
+
+  val pidFilePathFile = os.pwd / ".feedletter-pid-file-path"
+
+  override def runDaemonPidFile = {
+    if ( os.exists( pidFilePathFile ) )
+      try Some( os.Path( os.read( pidFilePathFile ).trim ) )
+      catch {
+        case NonFatal(t) =>
+          throw new Exception( s"Could not parse absolute path of desired PID file from contents of ${pidFilePathFile}. Please repair or remove this file.", t )
+      }
+    else
+      Some( os.pwd / "feedletter.pid" )
+  }
 
   def buildInfoMembers = Seq(
     BuildInfo.Value("version", VcsVersion.vcsState().format())

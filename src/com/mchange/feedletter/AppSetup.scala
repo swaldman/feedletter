@@ -55,4 +55,6 @@ case class AppSetup( secretsLoc : Option[os.Path], secrets : Map[String,String],
   lazy val smtpContext : Smtp.Context = Smtp.Context( (Smtp.Context.defaultProperties().asScala.toMap ++ secrets).toProperties, sys.env )
   lazy val secretSalt : String = secrets.get("feedletter.secret.salt").getOrElse:
     throw new NoSecretSalt("Please set 'feedletter.secret.salt' to an arbitrary but consistent String in the feedletter-secrets file.")
-  lazy val pidFile : os.Path = secrets.get("feedletter.pid.file").map( os.Path.apply ).getOrElse( os.pwd / "feedletter.pid" )
+
+  // we let the parent mill process write and sysd remove PID files now
+  //lazy val pidFile : os.Path = secrets.get("feedletter.pid.file").map( os.Path.apply ).getOrElse( os.pwd / "feedletter.pid" )

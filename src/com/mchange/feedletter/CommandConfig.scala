@@ -52,6 +52,8 @@ object CommandConfig extends SelfLogging:
       val packageLogger = Logger.getLogger( "com.mchange.feedletter" )
       rootLogger.getHandlers().foreach( _.setLevel(Level.FINEST) )
       packageLogger.setLevel(FeedletterLevel)
+    /*
+    // we let the parent mill process write and sysd remove PID files now
     def writePidFile( pidf : os.Path ) =
       val contents = s"${ProcessHandle.current().pid()}${LineSep}"
       os.write(pidf, contents)
@@ -61,13 +63,14 @@ object CommandConfig extends SelfLogging:
             INFO.log(s"Shutdown Hook: Removing PID file '${pidf}'")
             os.remove( pidf )
       java.lang.Runtime.getRuntime().addShutdownHook(onShutdown)
+    */
     override def zcommand : ZCommand =
       val task =
         for
           as <- ZIO.service[AppSetup]
           ds <- ZIO.service[DataSource]
           _  <- PgDatabase.ensureDb( ds )
-          _  <- if fork then ZIO.attempt( writePidFile(as.pidFile) ) else ZIO.unit
+          // _  <- if fork then ZIO.attempt( writePidFile(as.pidFile) ) else ZIO.unit // we let the parent mill process write and sysd remove PID files now
           _  <- if as.loggingConfig == LoggingConfig.Default then ZIO.attempt( logMore() ) else ZIO.unit
           _  <- com.mchange.feedletter.Daemon.startup( ds, as )
           _  <- SEVERE.zlog( "Unexpected successful completion of perpetual daemon!" ) // this is a bit ridiculous, but we're seeing unexpected daemon process exits

@@ -29,7 +29,7 @@ if [[ "$EXECNAME" == "feedletter" ]]; then
     if [[ "$SUBCMD" == "edit-subscribable" ]]; then  # we need native streams...
         ./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
     elif [[  "$SUBCMD" == "daemon" && "$FIRSTARG" == "--fork" ]]; then
-        ./millw --no-server runMainBackground com.mchange.feedletter.Main "$@"
+        ./millw --no-server runMainDaemon com.mchange.feedletter.Main "$@"
     else
         ./millw --no-server runMain com.mchange.feedletter.Main "$@"
     fi
