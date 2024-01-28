@@ -28,7 +28,7 @@ object FeedDigest:
   def apply( is : InputStream) : FeedDigest = apply( is, Instant.now() )
 
   def apply( feedUrl : FeedUrl, asOf : Instant = Instant.now() ) : FeedDigest =
-    requests.get.stream( feedUrl.str ).readBytesThrough( is => this.apply(is, asOf) )
+    requests.get.stream( feedUrl.str, keepAlive = false ).readBytesThrough( is => this.apply(is, asOf) )
 
 final case class FeedDigest( fileOrderedGuids : Seq[Guid], guidToItemContent : immutable.Map[Guid,ItemContent], timestamp : Instant ):
   def isEmpty  : Boolean = fileOrderedGuids.isEmpty
