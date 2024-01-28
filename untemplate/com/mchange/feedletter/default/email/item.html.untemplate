@@ -16,6 +16,7 @@ end val
 
 ( tup : (ComposeInfo.Universal, ItemContent) )[]~()>
 
+    <!-- Item GUID: <( contents.guid )> -->
     <div class="item">
 <()
   contents.title.foreach { title =>
