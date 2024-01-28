@@ -9,6 +9,8 @@ import com.mchange.mailutil.*
 import MLevel.*
 import com.mchange.feedletter.db.withConnectionTransactional
 
+import com.mchange.feedletter.BuildInfo
+
 object Daemon extends SelfLogging:
 
   private object RetrySchedule:
@@ -165,6 +167,7 @@ object Daemon extends SelfLogging:
   def startup( ds : DataSource, as : AppSetup ) : Task[Unit] =
     val singleLoad =
       for
+        _        <- INFO.zlog( s"feedletter-${BuildInfo.version} daemon (re)starting." )
         _        <- PgDatabase.clearFlag(ds, Flag.MustReloadDaemon)
         mbds     <- withConnectionTransactional( ds )( conn => PgDatabase.Config.mailBatchDelaySeconds(conn) )
         tapirApi <- tapirApi(ds,as)
