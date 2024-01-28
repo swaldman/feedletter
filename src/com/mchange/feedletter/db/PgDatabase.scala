@@ -331,12 +331,18 @@ object PgDatabase extends Migratory, SelfLogging:
     subject        : String
   ) : Unit =
     LatestSchema.Table.ImmediatelyMailable.insert(conn, contents, from, replyTo, to, templateParams, subject )
+    DEBUG.log( s"Template queued for immediate mailing, from '${from}', to '${to}', with subject '${subject}'." )
     setFlag(conn, Flag.ImmediateMailQueued)
 
-  def queueForMailing( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], tosWithParams : Set[(AddressHeader[To],TemplateParams)], subject : String ) : Unit = 
-    val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
-    LatestSchema.Table.MailableTemplate.ensure( conn, hash, contents )
-    LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tosWithParams, subject, 0 )
+  def queueForMailing( conn : Connection, contents : String, from : AddressHeader[From], replyTo : Option[AddressHeader[ReplyTo]], tosWithParams : Set[(AddressHeader[To],TemplateParams)], subject : String ) : Unit =
+    if tosWithParams.nonEmpty then
+      val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
+      LatestSchema.Table.MailableTemplate.ensure( conn, hash, contents )
+      LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tosWithParams, subject, 0 )
+      DEBUG.log( s"Template queued for batched mailing, from '${from}', to ${tosWithParams.size} recipients, with subject '${subject}'." )
+    else
+      DEBUG.log( s"Template NOT queued for batched mailing, from '${from}' with subject '${subject}', because no recipients were specified." )
+
 
   private def resilientDelayedForFeedInfo( ds : DataSource, fi : FeedInfo ) : Task[Unit] =
     val simple = withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ).zlogError( DEBUG, what = "Attempt to update/assign for ${fi}" )
