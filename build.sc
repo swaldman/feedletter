@@ -11,7 +11,7 @@ import mill.contrib.buildinfo.BuildInfo
 import $ivy.`de.tototec::de.tobiasroeser.mill.vcs.version::0.4.0`
 import de.tobiasroeser.mill.vcs.version.VcsVersion
 
-import $ivy.`com.mchange::mill-daemon:0.0.1-SNAPSHOT`
+import $ivy.`com.mchange::mill-daemon:0.0.1`
 
 import $ivy.`com.mchange::untemplate-mill:0.1.2`
 import untemplate.mill._
