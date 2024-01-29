@@ -2,7 +2,7 @@
 
 **Turn any RSS feed into a newsletter or notification bot**
 
-### Introduction
+## Introduction
 
 **feedletter** is a service that
 
@@ -24,19 +24,19 @@
 - which are **formatted via rich, customizable [`untemplates`](https://github.com/swaldman/untemplate-doc#readme)**
 - which are **managed via a web API** for easy subscription, confirmation, and unsubscription by users
 
-### Prerequisites
+## Prerequisites
 
 The application requres a Java 17+ JVM and a Postgres database.
 
 Typical installations will proxy the web API behind e.g. `nginx`, and run the daemon as a `systemd` service.
 
-### Getting Started
+## Getting Started
 
 A (very) detailed tutorial on setting up, configuring, and customizing a _feedletter_ instance is available [here](https://tech.interfluidity.com/2024/01/29/feedletter-tutorial/index.html).
 
-### Developer Notes
+## Developer Notes
 
-#### Lifecycle
+### Lifecycle
 
 1. A `feed` is added
 2. One or more `subscribable`s is defined against the feed
@@ -54,12 +54,12 @@ A (very) detailed tutorial on setting up, configuring, and customizing a _feedle
    * No longer belong to not-yet-completed `assignables` can drop their cached contents,
      and then move into the `Cleared` state.
 
-#### Database Schema
+### Database Schema
 
 I want to sketch the not-so-obvious db schema I've adopted for this project while
 I still understand it.
 
-##### feed
+#### feed
 
 First there are feeds:
 
@@ -87,7 +87,7 @@ this) they are manually removed.
 (`last_assigned` changes, but so far it's
 just informational, has no role in the application.)
 
-##### item
+#### item
 
 Next there are items:
 
@@ -128,7 +128,7 @@ CREATE TABLE item(
       Items can be manually updated from `Excluded` to `Unassigned` (timestamps should be reset to the tie of the update),
       to cause `Excluded` posts to be published.
 
-##### subscribable (subscription definition)
+#### subscribable (subscription definition)
 
 Next there is `subscribable`, which represents the definition of a subscription by which parties will be
 notified of items or collections of items.
@@ -161,7 +161,7 @@ Mastodon, mobile message, whatever) notifications will be sent, and how they wil
 Names are scoped on a per-feed-URL basis. Users subscribe to a `(feed_url, subscribable_name)`
 pair.
 
-##### assignable (a collection of items)
+#### assignable (a collection of items)
 
 Next there is `assignable`, which represents a collection. They essentially map
 `subscribables` (subscription definitions) to `within_type_id`s (the collections
@@ -183,7 +183,7 @@ Once an assignable has been notified ("completed"), it is simply deleted from th
 For each subscribable, the `within_type_id` of only the most recently completed
 assignable is retained (see `subscribable` table above).
 
-##### assignment (an item in a collection)
+#### assignment (an item in a collection)
 
 Next there is `assignment`, which represents an item in an `assignable`, i.e. a collection.
 It's pretty self-explanatory I think.
@@ -198,7 +198,7 @@ CREATE TABLE assignment(
 )
 ```
 
-##### subscription
+#### subscription
 
 Next there is `subscription`, which just maps a destination to a `subscribable`.
 the destination is JSON blob that can refer to a variety of things: e-mail addresses, SMS numbers, mastodon instances, etc.
@@ -229,7 +229,7 @@ CREATE UNIQUE INDEX destination_unique_subscribable_name ON subscription(destina
 That's it for the base schema! There are also tables that convert destinations specific to subscription
 types into their various queues for notification. I'm omitting those for now.
 
-#### Untemplates vs Templates
+### Untemplates vs Templates
 
 There are two layers of templating in _feedletter_:
 
