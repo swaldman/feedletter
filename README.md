@@ -19,7 +19,7 @@
    * In different arrangements
      - each item as newsletter
      - daily or weekly digests
-     - compilalions of every `n` posts
+     - compilations of every `n` posts
      - etc
 - which are **formatted via rich, customizable [`untemplates`](https://github.com/swaldman/untemplate-doc#readme)**
 - which are **managed via a web API** for easy subscription, confirmation, and unsubscription by users
