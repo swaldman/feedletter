@@ -9,9 +9,9 @@ val images = contents.media.filter( _.mimeType.map( _.startsWith("image") ).getO
 
 val (topImageUrl, bottomImageUrls) =
   images.size match
-    case 0 => (None, None)
-    case 1 => (Some(images.head.url), None)
-    case n => (None, Some(images.map(_.url)))
+    case 0 => (None, List.empty[String])
+    case 1 => (Some(images.head.url), List.empty[String])
+    case n => (None, images.map(_.url))
 end val
 
 ( tup : (ComposeInfo.Universal, ItemContent) )[]~()>
@@ -60,7 +60,7 @@ end val
 <()
     bottomImageUrls.foreach { url =>
 ()>
-        <div class="media-image top-image">
+        <div class="media-image bottom-image">
           <img src="<( url )>">
         </div>
 <()
