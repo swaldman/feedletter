@@ -32,7 +32,7 @@ Typical installations will proxy the web API behind e.g. `nginx`, and run the da
 
 ### Getting Started
 
-A tutorial is coming soon!
+A (very) detailed tutorial on setting up, configuring, and customizing a _feedletter_ instance is available [here](https://tech.interfluidity.com/2024/01/29/feedletter-tutorial/index.html).
 
 ### Developer Notes
 
