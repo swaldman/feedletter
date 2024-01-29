@@ -1,6 +1,6 @@
 # feedletter
 
-## Turn an RSS feed into a newsletter or notification bot
+**Turn any RSS feed into a newsletter or notification bot**
 
 ### Introduction
 
