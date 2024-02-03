@@ -440,6 +440,8 @@ object PgDatabase extends Migratory, SelfLogging:
     withConnectionTransactional( ds ): conn =>
       LatestSchema.Table.Subscribable.select( conn )
 
+  def knownSubscribableNames( ds : DataSource) : Task[Set[SubscribableName]] = listSubscribables(ds).map( tupSet => tupSet.map(_(0)) )
+
   object Config:
     def fetchValue( conn : Connection, key : ConfigKey ) : Option[String] = LatestSchema.Table.Config.select( conn, key )
     def zfetchValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] = ZIO.attemptBlocking( LatestSchema.Table.Config.select( conn, key ) )

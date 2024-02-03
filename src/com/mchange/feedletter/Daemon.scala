@@ -10,6 +10,7 @@ import MLevel.*
 import com.mchange.feedletter.db.withConnectionTransactional
 
 import com.mchange.feedletter.BuildInfo
+import com.mchange.feedletter.style.Customizer
 
 object Daemon extends SelfLogging:
 
@@ -168,6 +169,7 @@ object Daemon extends SelfLogging:
     val singleLoad =
       for
         _        <- INFO.zlog( s"feedletter-${BuildInfo.version} daemon (re)starting." )
+        _        <- PgDatabase.knownSubscribableNames(ds).map( Customizer.warnAllUnknown )
         _        <- PgDatabase.clearFlag(ds, Flag.MustReloadDaemon)
         mbds     <- withConnectionTransactional( ds )( conn => PgDatabase.Config.mailBatchDelaySeconds(conn) )
         tapirApi <- tapirApi(ds,as)
