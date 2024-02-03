@@ -41,11 +41,7 @@ def styleStatusChangeUntemplate(
   interface            : String,
   port                 : Int
 ) : Task[Unit] =
-  val unsubscribeLink = DummyApiLinkGenerator.removeGetLink(SubscriptionId(0))
-  val resubscribeLink = DummyApiLinkGenerator.createGetLink(subscribableName,destination)
-  val sci = StatusChangeInfo( statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation, unsubscribeLink, resubscribeLink )
-  val untemplate = AllUntemplates.findStatusChangeUntemplate( untemplateName )
-  val filled = untemplate( sci ).text
+  val filled = fillStatusChangeTemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation )
   serveOneHtmlPage( filled, interface, port )
 
 def styleComposeMultipleUntemplate(
@@ -61,6 +57,36 @@ def styleComposeMultipleUntemplate(
   interface           : String,
   port                : Int
 ) : Task[Unit] =
+  val composed = fillComposeMultipleUntemplate(untemplateName,subscribableName,subscriptionManager,withinTypeId,destination,timeZone,feedUrl,digest,guids)
+  composed match
+    case Some(c) => serveOneHtmlPage( c, interface, port )
+    case None    => Console.printLine(s"""After customization, perhaps also before, there were no contents to display. Original guids: ${digest.fileOrderedGuids.mkString(", ")}""")
+
+private def fillStatusChangeTemplate(
+  untemplateName       : String,
+  statusChange         : SubscriptionStatusChange,
+  subscribableName     : SubscribableName,
+  subscriptionManager  : SubscriptionManager,
+  destination          : subscriptionManager.D,
+  requiresConfirmation : Boolean
+) : String =
+  val unsubscribeLink = DummyApiLinkGenerator.removeGetLink(SubscriptionId(0))
+  val resubscribeLink = DummyApiLinkGenerator.createGetLink(subscribableName,destination)
+  val sci = StatusChangeInfo( statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation, unsubscribeLink, resubscribeLink )
+  val untemplate = AllUntemplates.findStatusChangeUntemplate( untemplateName )
+  untemplate( sci ).text
+
+private def fillComposeMultipleUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guids               : Seq[Guid]
+) : Option[String] =
   val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
   val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, contents )
   if customizedContents.nonEmpty then
@@ -71,9 +97,9 @@ def styleComposeMultipleUntemplate(
       val sid = SubscriptionId(0)
       val templateParams = subscriptionManager.composeTemplateParams( subscribableName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
       templateParams.fill( untemplateOutput )
-    serveOneHtmlPage( composed, interface, port )
+    Some(composed)
   else
-    Console.printLine(s"""After customization, perhaps also before, there were no contents to display. Original guids: ${digest.fileOrderedGuids.mkString(", ")}""")
+    None
 
 def styleComposeSingleUntemplate(
   untemplateName      : String,
@@ -88,6 +114,33 @@ def styleComposeSingleUntemplate(
   interface           : String,
   port                : Int
 ) : Task[Unit] =
+  val composed = fillComposeSingleUntemplate(untemplateName,subscribableName,subscriptionManager,withinTypeId,destination,timeZone,feedUrl,digest,guid)
+  composed match
+    case Some(c) => serveOneHtmlPage( c, interface, port )
+    case None    => Console.printLine(s"After customization, there were no contents to display. Original contents: ${digest.guidToItemContent( guid )}")
+
+def styleRemovalNotificationUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  interface           : String,
+  port                : Int
+) : Task[Unit] =
+  val filled = fillRemovalNotificationUntemplate(untemplateName,subscribableName,subscriptionManager,destination)
+  serveOneHtmlPage( filled, interface, port )
+
+private def fillComposeSingleUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guid                : Guid
+) : Option[String] =
   val contents = digest.guidToItemContent( guid )
   val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, Seq(contents) )
   if customizedContents.nonEmpty then
@@ -100,9 +153,22 @@ def styleComposeSingleUntemplate(
       val sid = SubscriptionId(0)
       val templateParams = subscriptionManager.composeTemplateParams( subscribableName, withinTypeId, feedUrl, destination, sid, DummyApiLinkGenerator.removeGetLink(sid) )
       templateParams.fill( untemplateOutput )
-    serveOneHtmlPage( composed, interface, port )
+    Some(composed)
   else
-    Console.printLine(s"After customization, there were no contents to display. Original contents: ${contents}")
+    None
+
+private def fillConfirmUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  feedUrl             : FeedUrl,
+  confirmHours        : Int
+) : String =
+  val sid = SubscriptionId(0)
+  val confirmInfo = ConfirmInfo( destination, subscribableName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), DummyApiLinkGenerator.removeGetLink(sid), confirmHours )
+  val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
+  untemplate( confirmInfo ).text
 
 def styleConfirmUntemplate(
   untemplateName      : String,
@@ -114,23 +180,18 @@ def styleConfirmUntemplate(
   interface           : String,
   port                : Int
 ) : Task[Unit] =
-  val sid = SubscriptionId(0)
-  val confirmInfo = ConfirmInfo( destination, subscribableName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), DummyApiLinkGenerator.removeGetLink(sid), confirmHours )
-  val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
-  val filled = untemplate( confirmInfo ).text
+  val filled = fillConfirmUntemplate(untemplateName,subscribableName,subscriptionManager,destination,feedUrl,confirmHours)
   serveOneHtmlPage( filled, interface, port )
 
-def styleRemovalNotificationUntemplate(
+private def fillRemovalNotificationUntemplate(
   untemplateName      : String,
   subscribableName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
-  destination         : subscriptionManager.D,
-  interface           : String,
-  port                : Int
-) : Task[Unit] =
+  destination         : subscriptionManager.D
+) : String =
   val sid = SubscriptionId(0)
   val rnInfo = RemovalNotificationInfo( subscribableName, subscriptionManager, destination, DummyApiLinkGenerator.createGetLink(subscribableName,destination))
   val untemplate = AllUntemplates.findRemovalNotificationUntemplate( untemplateName )
-  val filled = untemplate( rnInfo ).text
-  serveOneHtmlPage( filled, interface, port )
+  untemplate( rnInfo ).text
+
 
