@@ -7,7 +7,10 @@ import java.time.ZoneId
 import com.mchange.feedletter.*
 import com.mchange.feedletter.api.ApiLinkGenerator
 
+import com.mchange.mailutil.Smtp
+
 import com.mchange.conveniences.collection.*
+import com.mchange.feedletter.db.PgDatabase.subscriptionsForSubscribableName
 
 object DummyApiLinkGenerator extends ApiLinkGenerator:
   def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String =
@@ -44,6 +47,22 @@ def styleStatusChangeUntemplate(
   val filled = fillStatusChangeTemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation )
   serveOneHtmlPage( filled, interface, port )
 
+def mailStatusChangeUntemplate(
+  untemplateName       : String,
+  statusChange         : SubscriptionStatusChange,
+  subscribableName     : SubscribableName,
+  subscriptionManager  : SubscriptionManager,
+  destination          : subscriptionManager.D,
+  requiresConfirmation : Boolean,
+  from                 : Smtp.Address,
+  to                   : Smtp.Address,
+  smtpContext          : Smtp.Context
+) : Task[Unit] =
+  ZIO.attempt:
+    val filled = fillStatusChangeTemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation )
+    given ctx : Smtp.Context = smtpContext
+    Smtp.sendSimpleHtmlOnly(filled, from = from, to = to, subject = s"[${subscribableName}] Example Status Change")
+
 def styleComposeMultipleUntemplate(
   untemplateName      : String,
   subscribableName    : SubscribableName,
@@ -61,6 +80,105 @@ def styleComposeMultipleUntemplate(
   composed match
     case Some(c) => serveOneHtmlPage( c, interface, port )
     case None    => Console.printLine(s"""After customization, perhaps also before, there were no contents to display. Original guids: ${digest.fileOrderedGuids.mkString(", ")}""")
+
+def mailComposeMultipleUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guids               : Seq[Guid],
+  from                : Smtp.Address,
+  to                  : Smtp.Address,
+  smtpContext         : Smtp.Context
+) : Task[Unit] =
+  val composed = fillComposeMultipleUntemplate(untemplateName,subscribableName,subscriptionManager,withinTypeId,destination,timeZone,feedUrl,digest,guids)
+  composed match
+    case Some(c) =>
+      val contents = guids.map( digest.guidToItemContent.get ).flatten
+      val subject =
+        subscriptionManager match
+          case esm : SubscriptionManager.Email => "EXAMPLE: " + esm.subject( subscribableName, withinTypeId, feedUrl, contents )
+          case _ => s"[${subscribableName}] Example multiple-item notification"
+      ZIO.attempt:
+        given ctx : Smtp.Context = smtpContext
+        Smtp.sendSimpleHtmlOnly(c, from = from, to = to, subject = subject)
+    case None =>
+      Console.printLine(s"""After customization, perhaps also before, there were no contents to display. Original guids: ${digest.fileOrderedGuids.mkString(", ")}""")
+
+def styleComposeSingleUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guid                : Guid,
+  interface           : String,
+  port                : Int
+) : Task[Unit] =
+  val composed = fillComposeSingleUntemplate(untemplateName,subscribableName,subscriptionManager,withinTypeId,destination,timeZone,feedUrl,digest,guid)
+  composed match
+    case Some(c) => serveOneHtmlPage( c, interface, port )
+    case None    => Console.printLine(s"After customization, there were no contents to display. Original contents: ${digest.guidToItemContent( guid )}")
+
+def mailComposeSingleUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guid                : Guid,
+  from                : Smtp.Address,
+  to                  : Smtp.Address,
+  smtpContext         : Smtp.Context
+) : Task[Unit] =
+  val composed = fillComposeSingleUntemplate(untemplateName,subscribableName,subscriptionManager,withinTypeId,destination,timeZone,feedUrl,digest,guid)
+  composed match
+    case Some(c) =>
+      val contents = digest.guidToItemContent( guid )
+      val subject =
+        subscriptionManager match
+          case esm : SubscriptionManager.Email => "EXAMPLE: " + esm.subject( subscribableName, withinTypeId, feedUrl, Seq(contents) )
+          case _ => s"[${subscribableName}] Example single-item notification"
+      ZIO.attempt:
+        given ctx : Smtp.Context = smtpContext
+        Smtp.sendSimpleHtmlOnly(c, from = from, to = to, subject = subject)
+    case None =>
+      Console.printLine(s"After customization, there were no contents to display. Original contents: ${digest.guidToItemContent( guid )}")
+
+def styleRemovalNotificationUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  interface           : String,
+  port                : Int
+) : Task[Unit] =
+  val filled = fillRemovalNotificationUntemplate(untemplateName,subscribableName,subscriptionManager,destination)
+  serveOneHtmlPage( filled, interface, port )
+
+def mailRemovalNotificationUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  from                : Smtp.Address,
+  to                  : Smtp.Address,
+  smtpContext         : Smtp.Context
+) : Task[Unit] =
+  ZIO.attempt:
+    val filled = fillRemovalNotificationUntemplate(untemplateName,subscribableName,subscriptionManager,destination)
+    given ctx : Smtp.Context = smtpContext
+    Smtp.sendSimpleHtmlOnly(filled, from = from, to = to, subject = s"[${subscribableName}] Example Status Change")
 
 private def fillStatusChangeTemplate(
   untemplateName       : String,
@@ -100,35 +218,6 @@ private def fillComposeMultipleUntemplate(
     Some(composed)
   else
     None
-
-def styleComposeSingleUntemplate(
-  untemplateName      : String,
-  subscribableName    : SubscribableName,
-  subscriptionManager : SubscriptionManager,
-  withinTypeId        : String,
-  destination         : subscriptionManager.D,
-  timeZone            : ZoneId,
-  feedUrl             : FeedUrl,
-  digest              : FeedDigest,
-  guid                : Guid,
-  interface           : String,
-  port                : Int
-) : Task[Unit] =
-  val composed = fillComposeSingleUntemplate(untemplateName,subscribableName,subscriptionManager,withinTypeId,destination,timeZone,feedUrl,digest,guid)
-  composed match
-    case Some(c) => serveOneHtmlPage( c, interface, port )
-    case None    => Console.printLine(s"After customization, there were no contents to display. Original contents: ${digest.guidToItemContent( guid )}")
-
-def styleRemovalNotificationUntemplate(
-  untemplateName      : String,
-  subscribableName    : SubscribableName,
-  subscriptionManager : SubscriptionManager,
-  destination         : subscriptionManager.D,
-  interface           : String,
-  port                : Int
-) : Task[Unit] =
-  val filled = fillRemovalNotificationUntemplate(untemplateName,subscribableName,subscriptionManager,destination)
-  serveOneHtmlPage( filled, interface, port )
 
 private def fillComposeSingleUntemplate(
   untemplateName      : String,
