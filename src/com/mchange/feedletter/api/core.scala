@@ -80,6 +80,8 @@ object V0 extends SelfLogging:
           val destination : Destination = Destination.fromFields( queryParams.toSeqTrimmedValues ).getOrElse:
             throw new InvalidRequest( "Could not decode a Destination for subscription create request. Fields: " + queryParams.toSeq.mkString(", ") )
           Create( subscribableName, destination )
+        def fromBodyFormSeq( formData : Seq[(String,String)] ) : Create =
+          fromQueryParams( QueryParams.fromSeq( formData ) )
       case class Create( subscribableName : String, destination : Destination ) extends RequestPayload:
         override lazy val toMap : Map[String,String] = Map( "subscribableName" -> subscribableName ) ++ destination.toFields
       object Confirm extends Bouncer[Confirm]("ConfirmSuffix"):
@@ -181,25 +183,12 @@ object V0 extends SelfLogging:
 
       object Post:
         import com.mchange.feedletter.api.V0.given
-      /*
-        Too much trouble deriving Tapir Schemas... we'll handle the JSON in our own logic
-
         val Base = endpoint
                      .post
-                     .errorOut( jsonBody[ResponsePayload.Failure] )
-        val Create  = addElements(Base,createPathElements).in( jsonBody[RequestPayload.Subscription.Create] ).out( jsonBody[ResponsePayload.Subscription.Created] )
-        val Confirm = addElements(Base,confirmPathElements).in( jsonBody[RequestPayload.Subscription.Confirm] ).out( jsonBody[ResponsePayload.Subscription.Confirmed] )
-        val Remove  = addElements(Base,removePathElements).in( jsonBody[RequestPayload.Subscription.Remove] ).out( jsonBody[ResponsePayload.Subscription.Removed] )
-      */
-
-        val Base = endpoint
-                     .post
-                     .in( stringJsonBody )
-                     .out( stringJsonBody )
-                     .errorOut( stringJsonBody )
+                     .errorOut( stringBody )
+                     .in( formBody[Seq[(String, String)]] )
+                     .out( htmlBodyUtf8 )
         val Create  = addElements(Base,createPathElements)
-        val Confirm = addElements(Base,confirmPathElements)
-        val Remove  = addElements(Base,removePathElements)
 
       object Get:
         val Base = endpoint
@@ -219,18 +208,13 @@ object V0 extends SelfLogging:
       def allEndpoints( ds : DataSource, as : AppSetup ) : List[ZServerEndpoint[Any,Any]] =
         List(
           Post.Create.zServerLogic( subscriptionCreateLogicPost( ds, as ) ),
-          Post.Confirm.zServerLogic( subscriptionConfirmLogicPost( ds, as ) ),
-          Post.Remove.zServerLogic( subscriptionRemoveLogicPost( ds, as ) ),
           Get.Create.zServerLogic( subscriptionCreateLogicGet( ds, as ) ),
           Get.Confirm.zServerLogic( subscriptionConfirmLogicGet( ds, as ) ),
           Get.Remove.zServerLogic( subscriptionRemoveLogicGet( ds, as ) ),
         )
 
-      type ZSharedOut[T <: ResponsePayload.Success] = ZIO[Any,ResponsePayload.Failure,(Option[SubscriptionInfo],T)]
-      type ZPostOut                                 = ZIO[Any,String,String]
-      type ZGetOut                                  = ZIO[Any,String,String]
-
-      // type ZPostOut[T <: ResponsePayload.Success]   = ZIO[Any,ResponsePayload.Failure,T]
+      type ZRawOut[T <: ResponsePayload.Success] = ZIO[Any,ResponsePayload.Failure,(Option[SubscriptionInfo],T)]
+      type ZOut                                  = ZIO[Any,String,String]
 
       def mapError[T]( task : Task[T] ) : ZIO[Any,ResponsePayload.Failure,T] =
         task.mapError: t =>
@@ -243,7 +227,7 @@ object V0 extends SelfLogging:
 
       val AlreadySubscribedClassName = classOf[AlreadySubscribed].getName
 
-      def sharedToGet[T <: ResponsePayload.Success]( zpo : ZSharedOut[T] ) : ZGetOut =
+      def rawToGet[T <: ResponsePayload.Success]( zpo : ZRawOut[T] ) : ZOut =
         def failureToPlainText( f : ResponsePayload.Failure ) =
           f.throwableClassName match
             case Some( AlreadySubscribedClassName ) =>
@@ -275,7 +259,7 @@ object V0 extends SelfLogging:
               sman match
                 case vsman : SubscriptionManager.SupportsExternalSubscriptionApi =>
                   vsman.htmlForStatusChange( new StatusChangeInfo( rp.statusChanged.statusChange, sinfo.name, sman, sinfo.destination, !sinfo.confirmed, removeGetLink(sinfo.id), createGetLink(sinfo.name, sinfo.destination) ) )
-                case _ => // we should never see this, shared logic should have checked already
+                case _ => // we should never see this, raw logic should have checked already
                   throw new InvalidSubscribable(s"Subscribable '${sinfo.name}' does not support the external subscription API. (Manager '${sinfo.manager}' does not support.)")
             case None =>
               """|<html>
@@ -287,8 +271,8 @@ object V0 extends SelfLogging:
                  |</html>""".stripMargin
         zpo.mapError( failureToPlainText ).map( successToHtmlText )
 
-      def subscriptionCreateLogicShared( ds : DataSource, as : AppSetup )( screate : RequestPayload.Subscription.Create ) : ZSharedOut[ResponsePayload.Subscription.Created] =
-        TRACE.log( s"subscriptionCreateLogicShared( $screate )" )
+      def subscriptionCreateLogicRaw( ds : DataSource, as : AppSetup )( screate : RequestPayload.Subscription.Create ) : ZRawOut[ResponsePayload.Subscription.Created] =
+        TRACE.log( s"subscriptionCreateLogicRaw( $screate )" )
         val mainTask =
           withConnectionTransactional( ds ): conn =>
             val sname = SubscribableName(screate.subscribableName)
@@ -309,20 +293,25 @@ object V0 extends SelfLogging:
                 throw new InvalidSubscribable(s"Can't subscribe. Subscribable '${sname}' does not support the external subscription API. (Manager '$sman' does not support.)")
         mapError( mainTask )
 
-      def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup )( screateJson : String ) : ZPostOut =
-        val screate = read[RequestPayload.Subscription.Create]( screateJson )
-        subscriptionCreateLogicShared( ds, as )( screate ).map( tup => write(tup(1)) ).mapError( failure => write(failure) )
-
-      def subscriptionCreateLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
+      def subscriptionCreateLogicPost( ds : DataSource, as : AppSetup )( bodyFormParams : Seq[(String,String)] ) : ZOut =
         try
-          val screate = RequestPayload.Subscription.Create.fromQueryParams(qps)
-          val sharedOut = subscriptionCreateLogicShared( ds, as )( screate )
-          sharedToGet( sharedOut )
+          val screate = RequestPayload.Subscription.Create.fromBodyFormSeq( bodyFormParams )
+          val rawOut = subscriptionCreateLogicRaw( ds, as )( screate )
+          rawToGet(rawOut)
         catch
           case t : Throwable =>
             ZIO.fail( t.fullStackTrace )
 
-      def subscriptionConfirmLogicShared( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZSharedOut[ResponsePayload.Subscription.Confirmed] =
+      def subscriptionCreateLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZOut =
+        try
+          val screate = RequestPayload.Subscription.Create.fromQueryParams(qps)
+          val rawOut = subscriptionCreateLogicRaw( ds, as )( screate )
+          rawToGet( rawOut )
+        catch
+          case t : Throwable =>
+            ZIO.fail( t.fullStackTrace )
+
+      def subscriptionConfirmLogicRaw( ds : DataSource, as : AppSetup )( sconfirm : RequestPayload.Subscription.Confirm ) : ZRawOut[ResponsePayload.Subscription.Confirmed] =
         val mainTask =
           withConnectionTransactional( ds ): conn =>
             val sid = SubscriptionId(sconfirm.subscriptionId)
@@ -338,21 +327,17 @@ object V0 extends SelfLogging:
                 throw new InvalidSubscribable(s"Can't comfirm. Subscribable '${sinfo.name}' does not support the external subscription API. (Manager '${sinfo.manager}' does not support.)")
         mapError( mainTask )
 
-      def subscriptionConfirmLogicPost( ds : DataSource, as : AppSetup )( sconfirmJson : String ) : ZPostOut =
-        val sconfirm = read[RequestPayload.Subscription.Confirm]( sconfirmJson )
-        subscriptionConfirmLogicShared( ds, as )( sconfirm ).map( tup => write(tup(1)) ).mapError( failure => write(failure) )
-
-      def subscriptionConfirmLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
+      def subscriptionConfirmLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZOut =
         try
           val sconfirm = RequestPayload.Subscription.Confirm.fromQueryParams(qps)
-          val sharedOut = subscriptionConfirmLogicShared( ds, as )( sconfirm )
-          sharedToGet( sharedOut )
+          val rawOut = subscriptionConfirmLogicRaw( ds, as )( sconfirm )
+          rawToGet( rawOut )
         catch
           case t : Throwable =>
             ZIO.fail( t.fullStackTrace )
 
-      def subscriptionRemoveLogicShared( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZSharedOut[ResponsePayload.Subscription.Removed] =
-        TRACE.log( s"subscriptionRemoveLogicShared( $sremove )" )
+      def subscriptionRemoveLogicRaw( ds : DataSource, as : AppSetup )( sremove : RequestPayload.Subscription.Remove ) : ZRawOut[ResponsePayload.Subscription.Removed] =
+        TRACE.log( s"subscriptionRemoveLogicRaw( $sremove )" )
         val mainTask =
           withConnectionTransactional( ds ): conn =>
             val sid   = SubscriptionId(sremove.subscriptionId)
@@ -373,15 +358,11 @@ object V0 extends SelfLogging:
             ( mbSinfo, ResponsePayload.Subscription.Removed(message, sid.toLong,SubscriptionStatusChanged.Removed(mbSinfo.map(_.thin))) )
         mapError( mainTask )
 
-      def subscriptionRemoveLogicPost( ds : DataSource, as : AppSetup )( sremoveJson : String ) : ZPostOut =
-        val sremove = read[RequestPayload.Subscription.Remove]( sremoveJson )
-        subscriptionRemoveLogicShared( ds, as )( sremove ).map( tup => write(tup(1)) ).mapError( failure => write(failure) )
-
-      def subscriptionRemoveLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZGetOut =
+      def subscriptionRemoveLogicGet( ds : DataSource, as : AppSetup )( qps : QueryParams ) : ZOut =
         try
           val sremove = RequestPayload.Subscription.Remove.fromQueryParams(qps)
-          val sharedOut = subscriptionRemoveLogicShared( ds, as )( sremove )
-          sharedToGet( sharedOut )
+          val rawOut = subscriptionRemoveLogicRaw( ds, as )( sremove )
+          rawToGet( rawOut )
         catch
           case t : Throwable =>
             ZIO.fail( t.fullStackTrace )
