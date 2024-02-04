@@ -440,8 +440,7 @@ object CommandConfig extends SelfLogging:
       selection              : ComposeSelection.Single,
       destination            : Option[Destination],
       withinTypeId           : Option[String],
-      interface              : String,
-      port                   : Int
+      styleDest              : StyleDest
     ) extends CommandConfig:
       def digest( feedUrl : FeedUrl ) : FeedDigest =
         val digest = FeedDigest( feedUrl )
@@ -460,6 +459,7 @@ object CommandConfig extends SelfLogging:
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
+          as       <- ZIO.service[AppSetup]
           _        <- PgDatabase.ensureDb( ds )
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
@@ -468,7 +468,7 @@ object CommandConfig extends SelfLogging:
           g        =  guid( dig )
           un       = untemplateNameCompose(overrideUntemplateName, sman, subscribableName)
           tz       <- db.withConnectionTransactional(ds)( conn => sman.bestTimeZone( conn ) )
-          _        <- styleComposeSingleUntemplate(
+          _        <- serveOrMailComposeSingleUntemplate(
                         un,
                         subscribableName,
                         sman,
@@ -478,11 +478,9 @@ object CommandConfig extends SelfLogging:
                         fu,
                         dig,
                         g,
-                        interface,
-                        port
-                      ).fork
-          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
-          _       <- ZIO.never
+                        styleDest,
+                        as
+                      )
         yield ()
       end zcommand
     end ComposeUntemplateSingle
@@ -492,8 +490,8 @@ object CommandConfig extends SelfLogging:
       selection              : ComposeSelection.Multiple,
       destination            : Option[Destination],
       withinTypeId           : Option[String],
-      interface              : String,
-      port                   : Int ) extends CommandConfig:
+      styleDest              : StyleDest
+    ) extends CommandConfig:
       def digest( feedUrl : FeedUrl ) : FeedDigest =
         val digest = FeedDigest( feedUrl )
         if digest.isEmpty then
@@ -511,6 +509,7 @@ object CommandConfig extends SelfLogging:
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
+          as       <- ZIO.service[AppSetup]
           _        <- PgDatabase.ensureDb( ds )
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
@@ -521,7 +520,7 @@ object CommandConfig extends SelfLogging:
           _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.fileOrderedGuids.size}" ) ) else ZIO.unit
           un       =  untemplateNameCompose(overrideUntemplateName, sman, subscribableName)
           tz       <- db.withConnectionTransactional(ds)( conn => sman.bestTimeZone( conn ) )
-          _        <- styleComposeMultipleUntemplate(
+          _        <- serveOrMailComposeMultipleUntemplate(
                         un,
                         subscribableName,
                         sman,
@@ -531,57 +530,53 @@ object CommandConfig extends SelfLogging:
                         fu,
                         dig,
                         gs,
-                        interface,
-                        port
-                      ).fork
-          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
-          _       <- ZIO.never
+                        styleDest,
+                        as
+                      )
         yield ()
       end zcommand
     end ComposeUntemplateMultiple
-    case class Confirm( subscribableName : SubscribableName, overrideUntemplateName : Option[String], destination : Option[Destination], interface : String, port : Int ) extends CommandConfig:
+    case class Confirm( subscribableName : SubscribableName, overrideUntemplateName : Option[String], destination : Option[Destination], styleDest : StyleDest ) extends CommandConfig:
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
+          as       <- ZIO.service[AppSetup]
           _        <- PgDatabase.ensureDb( ds )
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
           sman     =  pair(1)
           un       = untemplateNameConfirm(overrideUntemplateName, sman, subscribableName)
           ch       <- PgDatabase.confirmHours( ds )
-          _        <- styleConfirmUntemplate(
+          _        <- serveOrMailConfirmUntemplate(
                         un,
                         subscribableName,
                         sman,
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         fu,
                         ch,
-                        interface,
-                        port
-                      ).fork
-          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
-          _       <- ZIO.never
+                        styleDest,
+                        as
+                      )
         yield ()
       end zcommand
-    case class RemovalNotification( subscribableName : SubscribableName, overrideUntemplateName : Option[String], destination : Option[Destination], interface : String, port : Int ) extends CommandConfig:
+    case class RemovalNotification( subscribableName : SubscribableName, overrideUntemplateName : Option[String], destination : Option[Destination], styleDest : StyleDest ) extends CommandConfig:
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
+          as       <- ZIO.service[AppSetup]
           _        <- PgDatabase.ensureDb( ds )
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
           sman     =  pair(1)
           un       =  untemplateNameRemovalNotification(overrideUntemplateName, sman, subscribableName)
-          _        <- styleRemovalNotificationUntemplate(
+          _        <- serveOrMailRemovalNotificationUntemplate(
                         un,
                         subscribableName,
                         sman,
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
-                        interface,
-                        port
-                      ).fork
-          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
-          _       <- ZIO.never
+                        styleDest,
+                        as
+                      )
         yield ()
       end zcommand
     case class StatusChange(
@@ -590,29 +585,27 @@ object CommandConfig extends SelfLogging:
       overrideUntemplateName : Option[String],
       destination            : Option[Destination],
       requiresConfirmation   : Boolean,
-      interface              : String,
-      port                   : Int
+      styleDest              : StyleDest
     ) extends CommandConfig:
       override def zcommand : ZCommand =
         for
           ds       <- ZIO.service[DataSource]
+          as       <- ZIO.service[AppSetup]
           _        <- PgDatabase.ensureDb( ds )
           pair     <- PgDatabase.feedUrlSubscriptionManagerForSubscribableName( ds, subscribableName )
           fu       =  pair(0)
           sman     =  pair(1)
           un       = untemplateNameStatusChange(overrideUntemplateName, sman, subscribableName)
-          _        <- styleStatusChangeUntemplate(
+          _        <- serveOrMailStatusChangeUntemplate(
                         un,
                         statusChange,
                         subscribableName,
                         sman,
                         destination.map(sman.narrowDestinationOrThrow).getOrElse(sman.sampleDestination),
                         requiresConfirmation,
-                        interface,
-                        port
-                      ).fork
-          _       <- INFO.zlog( s"HTTP Server started on interface '${interface}', port ${port}" )
-          _       <- ZIO.never
+                        styleDest,
+                        as
+                      )
         yield ()
       end zcommand
 sealed trait CommandConfig:

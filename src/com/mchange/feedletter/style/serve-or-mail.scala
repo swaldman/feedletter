@@ -48,11 +48,11 @@ def serveOrMailStatusChangeUntemplate(
 ) : Task[Unit] =
   styleDest match
     case StyleDest.Serve( interface, port ) =>
-      styleStatusChangeUntemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation, interface, port )
+      serveStatusChangeUntemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation, interface, port )
     case StyleDest.Mail( from, to ) =>
       mailStatusChangeUntemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation, from, to, appSetup.smtpContext )
 
-def styleStatusChangeUntemplate(
+def serveStatusChangeUntemplate(
   untemplateName       : String,
   statusChange         : SubscriptionStatusChange,
   subscribableName     : SubscribableName,
@@ -80,6 +80,7 @@ def mailStatusChangeUntemplate(
     val filled = fillStatusChangeTemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation )
     given ctx : Smtp.Context = smtpContext
     Smtp.sendSimpleHtmlOnly(filled, from = from, to = to, subject = s"[${subscribableName}] Example Status Change")
+    println( "Mail sent." )
 
 def serveOrMailComposeMultipleUntemplate(
   untemplateName      : String,
@@ -96,11 +97,11 @@ def serveOrMailComposeMultipleUntemplate(
 ) : Task[Unit] =
   styleDest match
     case StyleDest.Serve( interface, port ) =>
-      styleComposeMultipleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guids, interface, port )
+      serveComposeMultipleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guids, interface, port )
     case StyleDest.Mail( from, to ) =>
       mailComposeMultipleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guids, from, to, appSetup.smtpContext )
 
-def styleComposeMultipleUntemplate(
+def serveComposeMultipleUntemplate(
   untemplateName      : String,
   subscribableName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
@@ -143,6 +144,7 @@ def mailComposeMultipleUntemplate(
       ZIO.attempt:
         given ctx : Smtp.Context = smtpContext
         Smtp.sendSimpleHtmlOnly(c, from = from, to = to, subject = subject)
+        println( "Mail sent." )
     case None =>
       Console.printLine(s"""After customization, perhaps also before, there were no contents to display. Original guids: ${digest.fileOrderedGuids.mkString(", ")}""")
 
@@ -161,11 +163,11 @@ def serveOrMailComposeSingleUntemplate(
 ) : Task[Unit] =
   styleDest match
     case StyleDest.Serve( interface, port ) =>
-      styleComposeSingleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guid, interface, port )
+      serveComposeSingleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guid, interface, port )
     case StyleDest.Mail( from, to ) =>
       mailComposeSingleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guid, from, to, appSetup.smtpContext )
 
-def styleComposeSingleUntemplate(
+def serveComposeSingleUntemplate(
   untemplateName      : String,
   subscribableName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
@@ -208,8 +210,54 @@ def mailComposeSingleUntemplate(
       ZIO.attempt:
         given ctx : Smtp.Context = smtpContext
         Smtp.sendSimpleHtmlOnly(c, from = from, to = to, subject = subject)
+        println( "Mail sent." )
     case None =>
       Console.printLine(s"After customization, there were no contents to display. Original contents: ${digest.guidToItemContent( guid )}")
+def serveOrMailConfirmUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  feedUrl             : FeedUrl,
+  confirmHours        : Int,
+  styleDest           : StyleDest,
+  as                  : AppSetup
+) : Task[Unit] =
+  styleDest match
+    case StyleDest.Serve( interface, port ) =>
+      serveConfirmUntemplate( untemplateName, subscribableName, subscriptionManager, destination, feedUrl, confirmHours, interface, port )
+    case StyleDest.Mail( from, to ) =>
+      mailConfirmUntemplate( untemplateName, subscribableName, subscriptionManager, destination, feedUrl, confirmHours, from, to, as.smtpContext )
+
+def serveConfirmUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  feedUrl             : FeedUrl,
+  confirmHours        : Int,
+  interface           : String,
+  port                : Int
+) : Task[Unit] =
+  val filled = fillConfirmUntemplate(untemplateName,subscribableName,subscriptionManager,destination,feedUrl,confirmHours)
+  serveOneHtmlPage( filled, interface, port )
+
+def mailConfirmUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  feedUrl             : FeedUrl,
+  confirmHours        : Int,
+  from                : Smtp.Address,
+  to                  : Smtp.Address,
+  smtpContext         : Smtp.Context
+) : Task[Unit] =
+  ZIO.attempt:
+    val filled = fillConfirmUntemplate(untemplateName,subscribableName,subscriptionManager,destination,feedUrl,confirmHours)
+    given ctx : Smtp.Context = smtpContext
+    Smtp.sendSimpleHtmlOnly(filled, from = from, to = to, subject = s"[${subscribableName}] Example Confirm")
+    println( "Mail sent." )
 
 def serveOrMailRemovalNotificationUntemplate(
   untemplateName      : String,
@@ -221,11 +269,11 @@ def serveOrMailRemovalNotificationUntemplate(
 ) : Task[Unit] =
   styleDest match
     case StyleDest.Serve( interface, port ) =>
-      styleRemovalNotificationUntemplate( untemplateName, subscribableName, subscriptionManager, destination, interface, port )
+      serveRemovalNotificationUntemplate( untemplateName, subscribableName, subscriptionManager, destination, interface, port )
     case StyleDest.Mail( from, to ) =>
       mailRemovalNotificationUntemplate( untemplateName, subscribableName, subscriptionManager, destination, from, to, appSetup.smtpContext )
 
-def styleRemovalNotificationUntemplate(
+def serveRemovalNotificationUntemplate(
   untemplateName      : String,
   subscribableName    : SubscribableName,
   subscriptionManager : SubscriptionManager,
@@ -248,7 +296,8 @@ def mailRemovalNotificationUntemplate(
   ZIO.attempt:
     val filled = fillRemovalNotificationUntemplate(untemplateName,subscribableName,subscriptionManager,destination)
     given ctx : Smtp.Context = smtpContext
-    Smtp.sendSimpleHtmlOnly(filled, from = from, to = to, subject = s"[${subscribableName}] Example Status Change")
+    Smtp.sendSimpleHtmlOnly(filled, from = from, to = to, subject = s"[${subscribableName}] Example Removal Notification")
+    println( "Mail sent." )
 
 private def fillStatusChangeTemplate(
   untemplateName       : String,
@@ -328,19 +377,6 @@ private def fillConfirmUntemplate(
   val confirmInfo = ConfirmInfo( destination, subscribableName, subscriptionManager, DummyApiLinkGenerator.confirmGetLink(sid), DummyApiLinkGenerator.removeGetLink(sid), confirmHours )
   val untemplate = AllUntemplates.findConfirmUntemplate( untemplateName )
   untemplate( confirmInfo ).text
-
-def styleConfirmUntemplate(
-  untemplateName      : String,
-  subscribableName    : SubscribableName,
-  subscriptionManager : SubscriptionManager,
-  destination         : subscriptionManager.D,
-  feedUrl             : FeedUrl,
-  confirmHours        : Int,
-  interface           : String,
-  port                : Int
-) : Task[Unit] =
-  val filled = fillConfirmUntemplate(untemplateName,subscribableName,subscriptionManager,destination,feedUrl,confirmHours)
-  serveOneHtmlPage( filled, interface, port )
 
 private def fillRemovalNotificationUntemplate(
   untemplateName      : String,

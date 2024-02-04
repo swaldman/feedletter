@@ -30,7 +30,7 @@ object StyleMain extends AbstractMain:
         StyleDest.Serve( i, p )
     val StyleDestMail =
       val from = Opts.option[String]("from",help="Address from which to send the example.",metavar="e-mail").map( em => Smtp.Address.parseSingle(em) )
-      val to   = Opts.option[String]("from",help="Address to which to send the example.",metavar="e-mail").map( em => Smtp.Address.parseSingle(em) )
+      val to   = Opts.option[String]("to",help="Address to which to send the example.",metavar="e-mail").map( em => Smtp.Address.parseSingle(em) )
       (from, to) mapN: (f, t) =>
         StyleDest.Mail( f, t )
     val StyleDestAny =
@@ -50,10 +50,9 @@ object StyleMain extends AbstractMain:
       val withinTypeId =
         val help = "A subscription-type specific sample within-type-id for the notification."
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
-      val interface = CommonStyleOpts.Interface
-      val port = CommonStyleOpts.Port
-      ( subscribableName, untemplateName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, un, s, d, wti, i, p ) =>
-        CommandConfig.Style.ComposeUntemplateSingle( sn, un, s, d, wti, i, p )
+      val styleDest = CommonStyleOpts.StyleDestAny
+      ( subscribableName, untemplateName, selection, destination, withinTypeId, styleDest ) mapN: ( sn, un, s, d, wti, sd ) =>
+        CommandConfig.Style.ComposeUntemplateSingle( sn, un, s, d, wti, sd )
     Command("compose-single",header=header)( opts )
 
   val composeMultiple =
@@ -70,10 +69,9 @@ object StyleMain extends AbstractMain:
       val withinTypeId =
         val help = "A subscription-type specific sample within-type-id for the notification."
         Opts.option[String]("within-type-id",help=help,metavar="string").orNone
-      val interface = CommonStyleOpts.Interface
-      val port = CommonStyleOpts.Port
-      ( subscribableName, untemplateName, selection, destination, withinTypeId, interface, port ) mapN: ( sn, un, s, d, wti, i, p ) =>
-        CommandConfig.Style.ComposeUntemplateMultiple( sn, un, s, d, wti, i, p )
+      val styleDest = CommonStyleOpts.StyleDestAny
+      ( subscribableName, untemplateName, selection, destination, withinTypeId, styleDest ) mapN: ( sn, un, s, d, wti, sd ) =>
+        CommandConfig.Style.ComposeUntemplateMultiple( sn, un, s, d, wti, sd )
     Command("compose-multiple",header=header)( opts )
 
   val confirm =
@@ -82,10 +80,9 @@ object StyleMain extends AbstractMain:
       val subscribableName = CommonStyleOpts.SubscribableName
       val untemplateName = CommonStyleOpts.UntemplateName
       val destination = CommonStyleOpts.DestinationOrDefault
-      val interface = CommonStyleOpts.Interface
-      val port = CommonStyleOpts.Port
-      ( subscribableName, untemplateName, destination, interface, port ) mapN: ( sn, un, d, i, p ) =>
-        CommandConfig.Style.Confirm( sn, un, d, i, p )
+      val styleDest = CommonStyleOpts.StyleDestAny
+      ( subscribableName, untemplateName, destination, styleDest ) mapN: ( sn, un, d, sd ) =>
+        CommandConfig.Style.Confirm( sn, un, d, sd )
     Command("confirm",header=header)( opts )
 
   val statusChange =
@@ -100,10 +97,9 @@ object StyleMain extends AbstractMain:
       val untemplateName = CommonStyleOpts.UntemplateName
       val destination = CommonStyleOpts.DestinationOrDefault
       val preconfirmed = Opts.flag("preconfirmed",help="Set to mark the styled subscription already confirmed, or not in need of a confirmation step.").orFalse
-      val interface = CommonStyleOpts.Interface
-      val port = CommonStyleOpts.Port
-      ( kind, subscribableName, untemplateName, destination, preconfirmed, interface, port ) mapN: ( k, sn, un, d, prec, i, p ) =>
-        CommandConfig.Style.StatusChange( k, sn, un, d, !prec, i, p ) // requiresConfirmation == !preconfirmed
+      val styleDest = CommonStyleOpts.StyleDestAny
+      ( kind, subscribableName, untemplateName, destination, preconfirmed, styleDest ) mapN: ( k, sn, un, d, prec, sd ) =>
+        CommandConfig.Style.StatusChange( k, sn, un, d, !prec, sd ) // requiresConfirmation == !preconfirmed
     Command("status-change",header=header)( opts )
 
   val removalNotification =
@@ -112,10 +108,9 @@ object StyleMain extends AbstractMain:
       val subscribableName = CommonStyleOpts.SubscribableName
       val untemplateName = CommonStyleOpts.UntemplateName
       val destination = CommonStyleOpts.DestinationOrDefault
-      val interface = CommonStyleOpts.Interface
-      val port = CommonStyleOpts.Port
-      ( subscribableName, untemplateName, destination, interface, port ) mapN: ( sn, un, d, i, p ) =>
-        CommandConfig.Style.RemovalNotification( sn, un, d, i, p )
+      val styleDest = CommonStyleOpts.StyleDestAny
+      ( subscribableName, untemplateName, destination, styleDest ) mapN: ( sn, un, d, sd ) =>
+        CommandConfig.Style.RemovalNotification( sn, un, d, sd )
     Command("removal-notification",header=header)( opts )
 
   val feedletterStyle =
