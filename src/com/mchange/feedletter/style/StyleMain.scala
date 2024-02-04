@@ -5,9 +5,12 @@ import com.monovore.decline.*
 import cats.implicits.* // for mapN
 import cats.data.{NonEmptyList,Validated,ValidatedNel}
 
+import com.mchange.mailutil.Smtp
+
 import java.nio.file.{Path as JPath}
 
 object StyleMain extends AbstractMain:
+
   object CommonStyleOpts:
     val SubscribableName =
       val help = "The name of an already defined subscribable that will use this template."
@@ -22,6 +25,16 @@ object StyleMain extends AbstractMain:
     val UntemplateName =
       val help = "Fully name of an untemplate to style."
       Opts.option[String]("untemplate-name",help=help,metavar="fully-qualified-name").orNone
+    val StyleDestServe =
+      (Interface, Port) mapN: (i, p) =>
+        StyleDest.Serve( i, p )
+    val StyleDestMail =
+      val from = Opts.option[String]("from",help="Address from which to send the example.",metavar="e-mail").map( em => Smtp.Address.parseSingle(em) )
+      val to   = Opts.option[String]("from",help="Address to which to send the example.",metavar="e-mail").map( em => Smtp.Address.parseSingle(em) )
+      (from, to) mapN: (f, t) =>
+        StyleDest.Mail( f, t )
+    val StyleDestAny =
+      StyleDestMail orElse StyleDestServe
 
   val composeSingle =
     val header = "Style a template that composes a single item."

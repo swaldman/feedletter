@@ -32,7 +32,25 @@ def serveOneHtmlPage( html : String, interface : String, port : Int ) : Task[Uni
   for
     _ <- Console.printLine( s"Starting single-page webserver on interface '${interface}', port ${port}..." )
     _ <- Server.serve(httpApp).provide(ZLayer.succeed(Server.Config.default.binding(interface,port)), Server.live)
+    _ <- ZIO.never
   yield ()
+
+
+def serveOrMailStatusChangeUntemplate(
+  untemplateName       : String,
+  statusChange         : SubscriptionStatusChange,
+  subscribableName     : SubscribableName,
+  subscriptionManager  : SubscriptionManager,
+  destination          : subscriptionManager.D,
+  requiresConfirmation : Boolean,
+  styleDest            : StyleDest,
+  appSetup             : AppSetup
+) : Task[Unit] =
+  styleDest match
+    case StyleDest.Serve( interface, port ) =>
+      styleStatusChangeUntemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation, interface, port )
+    case StyleDest.Mail( from, to ) =>
+      mailStatusChangeUntemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation, from, to, appSetup.smtpContext )
 
 def styleStatusChangeUntemplate(
   untemplateName       : String,
@@ -62,6 +80,25 @@ def mailStatusChangeUntemplate(
     val filled = fillStatusChangeTemplate( untemplateName, statusChange, subscribableName, subscriptionManager, destination, requiresConfirmation )
     given ctx : Smtp.Context = smtpContext
     Smtp.sendSimpleHtmlOnly(filled, from = from, to = to, subject = s"[${subscribableName}] Example Status Change")
+
+def serveOrMailComposeMultipleUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guids               : Seq[Guid],
+  styleDest           : StyleDest,
+  appSetup            : AppSetup
+) : Task[Unit] =
+  styleDest match
+    case StyleDest.Serve( interface, port ) =>
+      styleComposeMultipleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guids, interface, port )
+    case StyleDest.Mail( from, to ) =>
+      mailComposeMultipleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guids, from, to, appSetup.smtpContext )
 
 def styleComposeMultipleUntemplate(
   untemplateName      : String,
@@ -109,6 +146,25 @@ def mailComposeMultipleUntemplate(
     case None =>
       Console.printLine(s"""After customization, perhaps also before, there were no contents to display. Original guids: ${digest.fileOrderedGuids.mkString(", ")}""")
 
+def serveOrMailComposeSingleUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  withinTypeId        : String,
+  destination         : subscriptionManager.D,
+  timeZone            : ZoneId,
+  feedUrl             : FeedUrl,
+  digest              : FeedDigest,
+  guid                : Guid,
+  styleDest           : StyleDest,
+  appSetup            : AppSetup
+) : Task[Unit] =
+  styleDest match
+    case StyleDest.Serve( interface, port ) =>
+      styleComposeSingleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guid, interface, port )
+    case StyleDest.Mail( from, to ) =>
+      mailComposeSingleUntemplate( untemplateName, subscribableName, subscriptionManager, withinTypeId, destination, timeZone, feedUrl, digest, guid, from, to, appSetup.smtpContext )
+
 def styleComposeSingleUntemplate(
   untemplateName      : String,
   subscribableName    : SubscribableName,
@@ -154,6 +210,20 @@ def mailComposeSingleUntemplate(
         Smtp.sendSimpleHtmlOnly(c, from = from, to = to, subject = subject)
     case None =>
       Console.printLine(s"After customization, there were no contents to display. Original contents: ${digest.guidToItemContent( guid )}")
+
+def serveOrMailRemovalNotificationUntemplate(
+  untemplateName      : String,
+  subscribableName    : SubscribableName,
+  subscriptionManager : SubscriptionManager,
+  destination         : subscriptionManager.D,
+  styleDest           : StyleDest,
+  appSetup            : AppSetup
+) : Task[Unit] =
+  styleDest match
+    case StyleDest.Serve( interface, port ) =>
+      styleRemovalNotificationUntemplate( untemplateName, subscribableName, subscriptionManager, destination, interface, port )
+    case StyleDest.Mail( from, to ) =>
+      mailRemovalNotificationUntemplate( untemplateName, subscribableName, subscriptionManager, destination, from, to, appSetup.smtpContext )
 
 def styleRemovalNotificationUntemplate(
   untemplateName      : String,
