@@ -913,17 +913,19 @@ object PgSchema:
                   ( FeedUrl( rs.getString(1) ), SubscriptionManager.materialize( SubscriptionManager.Json(rs.getString(2)) ) )
         end ItemSubscribable
         object ItemAssignment:
+          // since multiple feeds can share the same GUIDs (composite feeds, feeds with the same source, but different timings), it's important to specify the feed ID!
           private val SelectItemContentsForAssignable =
             """|SELECT item.guid, single_item_rss
                |FROM item
                |INNER JOIN assignment
                |ON item.guid = assignment.guid
-               |WHERE assignment.subscribable_name = ? AND assignment.within_type_id = ?
+               |WHERE item.feed_id = ? AND assignment.subscribable_name = ? AND assignment.within_type_id = ?
                |ORDER BY item.first_seen DESC""".stripMargin
-          def selectItemContentsForAssignable( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Seq[ItemContent] =
+          def selectItemContentsForAssignable( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String ) : Seq[ItemContent] =
             Using.resource( conn.prepareStatement( SelectItemContentsForAssignable ) ): ps =>
-              ps.setString(1, subscribableName.str)
-              ps.setString(2, withinTypeId)
+              ps.setInt   (1, feedId.toInt)
+              ps.setString(2, subscribableName.str)
+              ps.setString(3, withinTypeId)
               Using.resource( ps.executeQuery() ): rs =>
                 toSeq( rs )( rs => ItemContent.fromPrenormalizedSingleItemRss( rs.getString(1), rs.getString(2) ) )
         end ItemAssignment

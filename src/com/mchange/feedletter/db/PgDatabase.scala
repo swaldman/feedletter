@@ -294,16 +294,12 @@ object PgDatabase extends Migratory, SelfLogging:
   // so they should never be very stale.
   //
   // reverse chronological by first-seen time
-  private def materializeAssignable( conn : Connection, assignableKey : AssignableKey ) : Seq[ItemContent] =
-    LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, assignableKey.subscribableName, assignableKey.withinTypeId )
+  private def materializeAssignable( conn : Connection, feedId : FeedId, assignableKey : AssignableKey ) : Seq[ItemContent] =
+    LatestSchema.Join.ItemAssignment.selectItemContentsForAssignable( conn, feedId, assignableKey.subscribableName, assignableKey.withinTypeId )
 
-  private def route( conn : Connection, assignableKey : AssignableKey, apiLinkGenerator : ApiLinkGenerator ) : Unit =
-    val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, assignableKey.subscribableName )
-    route( conn, assignableKey, subscriptionManager, apiLinkGenerator )
-
-  private def route( conn : Connection, assignableKey : AssignableKey, sman : SubscriptionManager, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+  private def route( conn : Connection, feedId : FeedId, assignableKey : AssignableKey, sman : SubscriptionManager, apiLinkGenerator : ApiLinkGenerator ) : Unit =
     val AssignableKey( subscribableName, withinTypeId ) = assignableKey
-    val contents = materializeAssignable(conn, assignableKey)
+    val contents = materializeAssignable(conn, feedId, assignableKey)
     val idestinations = LatestSchema.Table.Subscription.selectConfirmedIdentifiedDestinationsForSubscribable( conn, subscribableName )
     val narrowed =
       val eithers = idestinations.map( sman.narrowIdentifiedDestination )
@@ -368,14 +364,14 @@ object PgDatabase extends Migratory, SelfLogging:
         val ( feedId, subscriptionManager ) = LatestSchema.Table.Subscribable.selectFeedIdAndManager( conn, subscribableName )
         val feedLastAssigned = LatestSchema.Table.Feed.selectLastAssigned( conn, feedId ).getOrElse:
           throw new AssertionError( s"DB constraints should have ensured a row for feed with ID '${feedId}' with a NOT NULL lastAssigned, but did not?" )
-        if subscriptionManager.isComplete( conn, withinTypeId, count, feedLastAssigned ) then
-          route( conn, ak, subscriptionManager, apiLinkGenerator )
+        if subscriptionManager.isComplete( conn, feedId, subscribableName, withinTypeId, count, feedLastAssigned ) then
+          route( conn, feedId, ak, subscriptionManager, apiLinkGenerator )
           LatestSchema.Table.Subscribable.updateLastCompletedWti( conn, subscribableName, withinTypeId )
-          cleanUpCompleted( conn, subscribableName, withinTypeId )
+          cleanUpCompleted( conn, feedId, subscribableName, withinTypeId )
           INFO.log( s"Completed assignable '${withinTypeId}' with subscribable '${subscribableName}'." )
           INFO.log( s"Cleaned away data associated with completed assignable '${withinTypeId}' in subscribable '${subscribableName}'." )
 
-  def cleanUpCompleted( conn : Connection, subscribableName : SubscribableName, withinTypeId : String ) : Unit =
+  private def cleanUpCompleted( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String ) : Unit =
     LatestSchema.Table.Assignment.cleanAwayAssignable( conn, subscribableName, withinTypeId )
     LatestSchema.Table.Assignable.delete( conn, subscribableName, withinTypeId )
     LatestSchema.Join.ItemAssignableAssignment.clearOldCache( conn ) // sets item status to ItemAssignability.Cleared for all fully-distributed items
