@@ -341,7 +341,7 @@ object PgDatabase extends Migratory, SelfLogging:
 
 
   private def resilientDelayedForFeedInfo( ds : DataSource, fi : FeedInfo ) : Task[Unit] =
-    val simple = withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ).zlogError( DEBUG, what = "Attempt to update/assign for ${fi}" )
+    val simple = withConnectionTransactional( ds )( conn => updateAssignItems( conn, fi ) ).zlogError( DEBUG, what = s"Attempt to update/assign for ${fi}" )
     val retrying = simple.retry( Schedule.exponential( 10.seconds, 1.5f ) && Schedule.upTo( 3.minutes ) ) // XXX: hard-coded
     val delaying =
       for
