@@ -348,7 +348,7 @@ object PgDatabase extends Migratory, SelfLogging:
         _ <- ZIO.sleep( math.round(math.random * 20).seconds ) // XXX: hard-coded
         _ <- retrying
       yield()
-    delaying.zlogErrorDefect( WARNING, s"Update/assign for feed ${fi.feedId}" )
+    delaying.zlogErrorDefect( WARNING, s"Update/assign for feed ${fi.feedId} (${fi.feedUrl})" )
 
   def updateAssignItems( ds : DataSource ) : Task[Unit] =
     for
