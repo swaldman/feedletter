@@ -242,7 +242,10 @@ object SubscriptionManager extends SelfLogging:
             weekStartWeekEndFormattedIsoLocal(withinTypeId) // backstop, but see comments above!
           else
             (ISO_LOCAL_DATE.format(allDates.head), ISO_LOCAL_DATE.format(allDates.last))
-        s"[${subscribableName}] Posts, ${minDate} to ${maxDate}"
+        if minDate != maxDate then
+          s"[${subscribableName}] Posts, ${minDate} to ${maxDate}"
+        else
+          s"[${subscribableName}] Posts from ${minDate}"
 
     final case class Daily(
       from                              : Destination.Email,
