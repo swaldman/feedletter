@@ -20,27 +20,27 @@ import com.mchange.milldaemon.DaemonModule
 import scala.util.control.NonFatal
 
 object feedletter extends RootModule with DaemonModule with UntemplateModule with PublishModule with BuildInfo {
-  def scalaVersion = "3.3.1"
+  def scalaVersion = "3.3.3"
 
   override def scalacOptions = T{ Seq("-deprecation") }
 
-  val TapirVersion = "1.9.5"
+  val TapirVersion = "1.10.3"
 
   def ivyDeps = Agg(
-    ivy"dev.zio::zio:2.0.18",
+    ivy"dev.zio::zio:2.0.21",
     ivy"com.monovore::decline:2.4.1",
-    ivy"org.postgresql:postgresql:42.6.0",
+    ivy"org.postgresql:postgresql:42.7.3",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
-    ivy"com.mchange:c3p0:0.9.5.5",
+    ivy"com.mchange:c3p0:0.10.0",
     ivy"com.mchange::audiofluidity-rss:0.0.6",
     ivy"com.mchange::mlog-scala:0.3.15",
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.3",
     ivy"com.mchange::cryptoutil:0.0.2",
     ivy"com.mchange::conveniences:0.0.3",
-    ivy"com.lihaoyi::os-lib:0.9.1",
-    ivy"com.lihaoyi::requests:0.8.0",
-    ivy"com.lihaoyi::upickle:3.1.3",
+    ivy"com.lihaoyi::os-lib:0.9.3",
+    ivy"com.lihaoyi::requests:0.8.2",
+    ivy"com.lihaoyi::upickle:3.2.0",
     ivy"com.softwaremill.sttp.tapir::tapir-zio:${TapirVersion}",
     ivy"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
     ivy"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
