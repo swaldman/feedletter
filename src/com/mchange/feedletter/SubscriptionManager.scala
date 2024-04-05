@@ -219,19 +219,30 @@ object SubscriptionManager extends SelfLogging:
       override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
+      // not sure why, but there's an off-by-on issue. these dates tend to be a day later on both ends
+      // than the actual dates in the subscribable.
+      // maybe use LocalDateTime set to noon to avoid timezone issues?
+      // Or use ZonedDateTime at bestTimeZone (but we don't have conn)
       def weekStartWeekEndLocalDate( withinTypeId : String ) : (LocalDate,LocalDate) =
         val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
         val weekStart = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 1 )
         val weekEnd = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 7 )
         (weekStart, weekEnd)
 
+      // not sure why, but there's an off-by-on issue. these dates tend to be a day later on both ends
+      // than the actual dates in the subscribable. See comment above
       def weekStartWeekEndFormattedIsoLocal( withinTypeId : String ) : (String,String) =
         val (weekStart, weekEnd) = weekStartWeekEndLocalDate(withinTypeId)
         (ISO_LOCAL_DATE.format(weekStart),ISO_LOCAL_DATE.format(weekEnd))
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent] ) : String =
-        val (weekStart, weekEnd) = weekStartWeekEndFormattedIsoLocal(withinTypeId)
-        s"[${subscribableName}] All posts, ${weekStart} to ${weekEnd}"
+        val allDates = contents.map( _.pubDate ).flatten.sorted
+        val (minDate, maxDate) =
+          if allDates.isEmpty then
+            weekStartWeekEndFormattedIsoLocal(withinTypeId) // backstop, but see comments above!
+          else
+            (ISO_LOCAL_DATE.format(allDates.head), ISO_LOCAL_DATE.format(allDates.last))
+        s"[${subscribableName}] Posts, ${minDate} to ${maxDate}"
 
     final case class Daily(
       from                              : Destination.Email,
