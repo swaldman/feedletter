@@ -139,7 +139,7 @@ def mailComposeMultipleUntemplate(
       val contents = guids.map( digest.guidToItemContent.get ).flatten
       val subject =
         subscriptionManager match
-          case esm : SubscriptionManager.Email => "EXAMPLE: " + esm.subject( subscribableName, withinTypeId, feedUrl, contents )
+          case esm : SubscriptionManager.Email => "EXAMPLE: " + esm.subject( subscribableName, withinTypeId, feedUrl, contents, timeZone )
           case _ => s"[${subscribableName}] Example multiple-item notification"
       ZIO.attempt:
         given ctx : Smtp.Context = smtpContext
@@ -205,7 +205,7 @@ def mailComposeSingleUntemplate(
       val contents = digest.guidToItemContent( guid )
       val subject =
         subscriptionManager match
-          case esm : SubscriptionManager.Email => "EXAMPLE: " + esm.subject( subscribableName, withinTypeId, feedUrl, Seq(contents) )
+          case esm : SubscriptionManager.Email => "EXAMPLE: " + esm.subject( subscribableName, withinTypeId, feedUrl, Seq(contents), timeZone )
           case _ => s"[${subscribableName}] Example single-item notification"
       ZIO.attempt:
         given ctx : Smtp.Context = smtpContext
@@ -325,7 +325,7 @@ private def fillComposeMultipleUntemplate(
   guids               : Seq[Guid]
 ) : Option[String] =
   val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
-  val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, contents )
+  val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, contents, timeZone )
   if customizedContents.nonEmpty then
     val composeInfo = ComposeInfo.Multiple( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone, customizedContents )
     val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
@@ -350,7 +350,7 @@ private def fillComposeSingleUntemplate(
   guid                : Guid
 ) : Option[String] =
   val contents = digest.guidToItemContent( guid )
-  val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, Seq(contents) )
+  val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, Seq(contents), timeZone )
   if customizedContents.nonEmpty then
     val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
       throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + customizedContents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
