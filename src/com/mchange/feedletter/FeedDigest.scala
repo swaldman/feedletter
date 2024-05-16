@@ -8,7 +8,9 @@ import scala.xml.{Elem,XML}
 
 import audiofluidity.rss.atom.rssElemFromAtomFeedElem
 
-object FeedDigest:
+import MLevel.*
+
+object FeedDigest extends SelfLogging:
   // we should err on the side of the timestamp being slightly early, so there's no risk
   // interval-dependent subscriptions see full assignment through a timestamp
   // then an item appearing at the very end of the interval, unassigned.
@@ -21,11 +23,15 @@ object FeedDigest:
         case other => throw new UnsupportedFeedType(s"'${other}' cannot be the root element of a supported feed type.")
     val items : Seq[Elem] = (rssElem \\ "item").map( _.asInstanceOf[Elem] )
     val fileOrderedGuids = items.map( _ \ "guid" ).map( _.text.trim ).map( Guid.apply )
-    val itemContents = fileOrderedGuids.map( g => ItemContent.fromRssGuid(rssElem,g.str) ) 
+    val itemContents = fileOrderedGuids.map( g => ItemContent.fromRssGuid(rssElem,g.str) )
     val guidToItemContent = fileOrderedGuids.zip( itemContents ).toMap
+    if fileOrderedGuids.length != items.length then
+      WARNING.log(s"While parsing a feed, found ${items.length-fileOrderedGuids.length} items without guid elements. These items will be skipped, not notified!")
+    if fileOrderedGuids.length != guidToItemContent.size then
+      WARNING.log(s"While parsing a feed, found ${fileOrderedGuids.length-guidToItemContent.size} duplicated guids. Only one item will be notified per GUID!")
     FeedDigest( fileOrderedGuids, guidToItemContent, asOf )
 
-  def apply( is : InputStream) : FeedDigest = apply( is, Instant.now() )
+  def apply( is : InputStream ) : FeedDigest = apply( is, Instant.now() )
 
   def apply( feedUrl : FeedUrl, asOf : Instant = Instant.now() ) : FeedDigest =
     requests.get.stream( feedUrl.str, keepAlive = false ).readBytesThrough( is => this.apply(is, asOf) )
