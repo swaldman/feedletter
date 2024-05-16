@@ -7,6 +7,7 @@ import scala.collection.immutable
 import scala.xml.{Elem,XML}
 
 import audiofluidity.rss.atom.rssElemFromAtomFeedElem
+import audiofluidity.rss.Element
 
 import MLevel.*
 
@@ -21,12 +22,24 @@ object FeedDigest extends SelfLogging:
         case "rss" => rootElem
         case "feed" => rssElemFromAtomFeedElem( rootElem )
         case other => throw new UnsupportedFeedType(s"'${other}' cannot be the root element of a supported feed type.")
-    val items : Seq[Elem] = (rssElem \\ "item").map( _.asInstanceOf[Elem] )
+    val items : Seq[Elem] =
+      val raw : Seq[Elem] = (rssElem \\ "item").map( _.asInstanceOf[Elem] )
+      def ensureGuid( elem : Elem ) : Seq[Elem] =
+        if (elem \ "guid").isEmpty then
+          val link = (elem \ "link").text.trim
+          if link.isEmpty then
+            val title = (elem \ "title").text
+            val post = if title.isEmpty then "An untitled post" else s"Post '${title}'"
+            WARNING.log(s"${post} contains neither link nor guid element. It will be skipped and never notified.")
+            Seq.empty
+          else
+            Seq( elem.copy( child = elem.child :+ Element.Guid(false, "feedletter-synthetic:" + link).toElem ) )
+        else
+          Seq(elem)
+      raw.flatMap(ensureGuid)
     val fileOrderedGuids = items.map( _ \ "guid" ).map( _.text.trim ).map( Guid.apply )
     val itemContents = fileOrderedGuids.map( g => ItemContent.fromRssGuid(rssElem,g.str) )
     val guidToItemContent = fileOrderedGuids.zip( itemContents ).toMap
-    if fileOrderedGuids.length != items.length then
-      WARNING.log(s"While parsing a feed, found ${items.length-fileOrderedGuids.length} items without guid elements. These items will be skipped, not notified!")
     if fileOrderedGuids.length != guidToItemContent.size then
       WARNING.log(s"While parsing a feed, found ${fileOrderedGuids.length-guidToItemContent.size} duplicated guids. Only one item will be notified per GUID!")
     FeedDigest( fileOrderedGuids, guidToItemContent, asOf )
