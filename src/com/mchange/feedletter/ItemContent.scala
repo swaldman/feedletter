@@ -54,7 +54,7 @@ case class ItemContent private (
   def withLink( link : String )        : ItemContent = this.copy( overrideLink = Some( link ) )
   def withMedia( media : Seq[Media] )  : ItemContent = this.copy( overrideMedia = Some( media ) )
 
-  val itemElem : Elem = (rssElem \ "channel" \ "item").uniqueOr { (ns : NodeSeq, nu : NotUnique) =>
+  lazy val itemElem : Elem = (rssElem \ "channel" \ "item").uniqueOr { (ns : NodeSeq, nu : NotUnique) =>
     throw new AssertionError( s"ItemContent should only be initialized with single-item RSS, we found ${nu}." )
   }.asInstanceOf[Elem]
 
