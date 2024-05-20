@@ -4,7 +4,7 @@ import java.io.InputStream
 import java.time.Instant
 
 import scala.collection.immutable
-import scala.xml.{Elem,NodeSeq,XML}
+import scala.xml.{Elem,Node,NodeSeq,XML}
 
 import audiofluidity.rss.atom.rssElemFromAtomFeedElem
 import audiofluidity.rss.util.{colorablyInNamespace,zeroOrOneChildElem}
@@ -27,7 +27,7 @@ object FeedDigest extends SelfLogging:
       val raw : Seq[Elem] = (rssElem \\ "item").map( _.asInstanceOf[Elem] )
       def ensureGuid( elem : Elem ) : Seq[Elem] =
         if (elem \ "guid").isEmpty then
-          val link = (elem \ "link").filter(_.prefix == null).text.trim // avoid any atom:link elenebts
+          val link = (elem \ "link").filter(_.prefix == null).text.trim // avoid any atom:link elements
           if link.isEmpty then
             val title = (elem \ "title").text
             val post = if title.isEmpty then "An untitled post" else s"Post '${title}'"
@@ -47,15 +47,16 @@ object FeedDigest extends SelfLogging:
             val effectiveWhenUpdated = (itemLevelWhenUpdated orElse channelLevelWhenUpdated).getOrElse( Element.Iffy.WhenUpdated.Value.Ignore )
             val mbOriginalGuid = extractOriginalGuid(item)
             (effectiveWhenUpdated, mbOriginalGuid) match
-              case ( Element.Iffy.WhenUpdated.Value.Ignore, None )               => Seq(item)
+              case ( Element.Iffy.WhenUpdated.Value.Ignore, None )               => Seq(item)                                                  // nothing to do...
               case ( Element.Iffy.WhenUpdated.Value.Ignore, Some(origGuid) )     => Seq(replaceGuid(item, origGuid))                           // just update cache of original item, suppress announcement
               case ( Element.Iffy.WhenUpdated.Value.Resurface, None )            => Seq(item)                                                  // no new GUID, shouldn't announce, should update cached contents
               case ( Element.Iffy.WhenUpdated.Value.Resurface, Some(origGuid) )  => Seq(replaceGuid(item, origGuid))                           // just update cache of original item, suppress announcement
-              case ( Element.Iffy.WhenUpdated.Value.Reannounce, None )           => Seq(item) ++ transformTitleGuidToAnnounce(item, timestamp) // keep orig item to update cache, synthesize new on to announce
+              case ( Element.Iffy.WhenUpdated.Value.Reannounce, None )           => Seq(item) ++ transformTitleGuidToAnnounce(item, timestamp) // keep orig item to update cache, synthesize new one to announce
               case ( Element.Iffy.WhenUpdated.Value.Reannounce, Some(origGuid) ) => Seq(replaceGuid( item, origGuid ), item)                   // keep new item to announce, but also provide item with old guid to update cache
       raw.flatMap(ensureGuid).flatMap(handleUpdated)
     val fileOrderedGuids = items.map( _ \ "guid" ).map( _.text.trim ).map( Guid.apply )
-    val itemContents = fileOrderedGuids.map( g => ItemContent.fromRssGuid(rssElem,g.str) )
+    val updatedRssElem = replaceItems( rssElem, items )
+    val itemContents = fileOrderedGuids.map( g => ItemContent.fromRssGuid(updatedRssElem,g.str) )
     val guidToItemContent = fileOrderedGuids.zip( itemContents ).toMap
     if fileOrderedGuids.length != guidToItemContent.size then
       WARNING.log(s"While parsing a feed, found ${fileOrderedGuids.length-guidToItemContent.size} duplicated guids. Only one item will be notified per GUID!")
@@ -107,6 +108,22 @@ object FeedDigest extends SelfLogging:
   private def replaceTitle( item : Elem, newTitle : String ) : Elem =
     item.copy( child = Element.Title(newTitle).toElem +: item.child.filter( _.label != "title" ) )
 
+  private def replaceItems( rssElem : Elem, items : Seq[Elem] ) : Elem =
+    val channelElems = rssElem \ "channel"
+    if channelElems.size != 1 then
+      throw new FeedletterException(s"An rss element should have precisely one channel, found ${channelElems.size}")
+    else
+      def noItemElems( n : Node ) = n match
+        case elem if elem.label == "item" => false
+        case _                            => true
+      def noChannelElems( n : Node ) = n match
+        case elem if elem.label == "channel" => false
+        case _                               => true
+
+      val ce = channelElems.head.asInstanceOf[Elem]
+      val newChannelElem = ce.copy( child=(ce.child.filter( noItemElems ) ++ items ) )
+      rssElem.copy( child=(rssElem.child.filter( noChannelElems ) :+ newChannelElem) )
+
   private def transformTitleGuidToAnnounce( itemElem : Elem, updatedTimestamp : String ) : Option[Elem] =
     val oldGuid = (itemElem \ "guid").text.trim
     if oldGuid.isEmpty then
@@ -115,7 +132,7 @@ object FeedDigest extends SelfLogging:
     else
       val oldTitle = (itemElem \ "title").text.trim
       val newTitle = "Updated: ${oldTitle} (${updatedTimestamp})"
-      val newGuid = s"${oldGuid}#updated-${updatedTimestamp}"
+      val newGuid = s"${oldGuid}#updated-${updatedTimestamp}" // we won't reannounce multiple times for one updated, because as long as the timestamp doesn't change, we'll just update cache
       val withNewGuid = replaceGuid(itemElem, newGuid)
       val withNewTitle = replaceTitle( withNewGuid, newTitle )
       Some( withNewTitle )
