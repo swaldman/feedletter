@@ -288,7 +288,9 @@ object V0 extends SelfLogging:
                 val confirmedMessage =
                   if confirming then ", but unconfirmed. Please respond to the confirmation request, coming soon." else ". No confirmation necessary."
                 val sinfo = SubscriptionInfo( sid, sname, vsman, destination, !confirming )
-                ( Some(sinfo), ResponsePayload.Subscription.Created(s"Subscription ${sid} successfully created${confirmedMessage}", sid.toLong, confirming, SubscriptionStatusChanged.Created(sinfo.thin)) )
+                val outMsg = s"Subscription ${sid} successfully created${confirmedMessage}"
+                INFO.log(outMsg)
+                ( Some(sinfo), ResponsePayload.Subscription.Created(outMsg, sid.toLong, confirming, SubscriptionStatusChanged.Created(sinfo.thin)) )
               case _ =>
                 throw new InvalidSubscribable(s"Can't subscribe. Subscribable '${sname}' does not support the external subscription API. (Manager '$sman' does not support.)")
         mapError( mainTask )
@@ -318,11 +320,13 @@ object V0 extends SelfLogging:
             RequestPayload.Subscription.Confirm.assertInvitation( sconfirm, as.secretSalt )
             val mbSinfo = PgDatabase.subscriptionInfoForSubscriptionId( conn, sid )
             val sinfo = mbSinfo.getOrElse:
-              throw new AssertionError( s"If a subscription successfully confirmed, it ought to be available to select from the database!")
+              throw new UnknownSubscriptionId( s"Received an invited attempt to conform subscription ${sid}, but that subscription is now unknown. Perhaps it has already been removed?" )
             sinfo.manager match
               case vsman : SubscriptionManager.SupportsExternalSubscriptionApi =>
                 PgDatabase.updateConfirmed( conn, sid, true )
-                ( Some(sinfo), ResponsePayload.Subscription.Confirmed(s"Subscription ${sid} of '${sinfo.destination.unique}' successfully confirmed.", sid.toLong, SubscriptionStatusChanged.Confirmed(sinfo.thin) ) )
+                val outMsg = s"Subscription ${sid} of '${sinfo.destination.unique}' successfully confirmed."
+                INFO.log(outMsg)
+                ( Some(sinfo), ResponsePayload.Subscription.Confirmed(outMsg, sid.toLong, SubscriptionStatusChanged.Confirmed(sinfo.thin) ) )
               case _ =>
                 throw new InvalidSubscribable(s"Can't comfirm. Subscribable '${sinfo.name}' does not support the external subscription API. (Manager '${sinfo.manager}' does not support.)")
         mapError( mainTask )
@@ -355,6 +359,7 @@ object V0 extends SelfLogging:
                       throw new InvalidSubscribable(s"Can't remove. Subscribable '${sinfo.name}' does not support the external subscription API. (Manager '${sinfo.manager}' does not support.)")
                 case None =>
                   s"Subscription with ID ${sid} does not exist or has already been removed."
+            INFO.log(message)
             ( mbSinfo, ResponsePayload.Subscription.Removed(message, sid.toLong,SubscriptionStatusChanged.Removed(mbSinfo.map(_.thin))) )
         mapError( mainTask )
 

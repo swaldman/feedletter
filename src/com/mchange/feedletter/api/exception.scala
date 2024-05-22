@@ -6,3 +6,4 @@ final class InvalidInvitation( msg : String, cause : Throwable = null ) extends 
 final class InvalidRequest( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 final class InvalidSubscribable( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 final class AlreadySubscribed( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+final class UnknownSubscriptionId( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
