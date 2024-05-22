@@ -13,7 +13,7 @@ import de.tobiasroeser.mill.vcs.version.VcsVersion
 
 import $ivy.`com.mchange::mill-daemon:0.0.1`
 
-import $ivy.`com.mchange::untemplate-mill:0.1.2`
+import $ivy.`com.mchange::untemplate-mill:0.1.3-SNAPSHOT`
 import untemplate.mill._
 import com.mchange.milldaemon.DaemonModule
 
@@ -32,7 +32,7 @@ object feedletter extends RootModule with DaemonModule with UntemplateModule wit
     ivy"org.postgresql:postgresql:42.7.3",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
     ivy"com.mchange:c3p0:0.10.0",
-    ivy"com.mchange::audiofluidity-rss:0.0.8",
+    ivy"com.mchange::audiofluidity-rss:0.0.9-SNAPSHOT",
     ivy"com.mchange::mlog-scala:0.3.15",
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.3",
