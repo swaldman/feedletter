@@ -1,5 +1,13 @@
 val d = scala.xml.Utility.escape( sci.destination.fullDesc )
 
+val email =
+  sci.subscriptionManager match
+    case _ : SubscriptionManager.Email => true
+    case _ => false
+end email
+
+val confirmExtra = if email then "Please check your e-mail for a confirmation message." else ""
+
 ( sci : StatusChangeInfo )[]~()>
 
 <html>
@@ -25,7 +33,7 @@ val d = scala.xml.Utility.escape( sci.destination.fullDesc )
 <()
         if sci.requiresConfirmation then {
 ()>
-        <p>The subscription still needs to be confirmed.</p>
+        <p>The subscription still needs to be confirmed. <( confirmExtra )></p>
 
         <p>If this subscription was made error, please don't confirm it.</p>
 
