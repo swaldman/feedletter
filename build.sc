@@ -37,7 +37,7 @@ object feedletter extends RootModule with DaemonModule with UntemplateModule wit
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.3",
     ivy"com.mchange::cryptoutil:0.0.2",
-    ivy"com.mchange::conveniences:0.0.4-SNAPSHOT",
+    ivy"com.mchange::conveniences:0.0.4",
     ivy"com.lihaoyi::os-lib:0.9.3",
     ivy"com.lihaoyi::requests:0.8.2",
     ivy"com.lihaoyi::upickle:3.2.0",
