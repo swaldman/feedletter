@@ -9,6 +9,8 @@ import scala.xml.{Elem,Node,NodeSeq,XML}
 import audiofluidity.rss.atom.rssElemFromAtomFeedElem
 import audiofluidity.rss.{Element,Namespace}
 
+import com.mchange.conveniences.string.*
+
 import MLevel.*
 
 object FeedDigest extends SelfLogging:
@@ -56,11 +58,11 @@ object FeedDigest extends SelfLogging:
       throw new FeedletterException(s"An rss element should have precisely one channel, found ${channelElems.size}")
     else
       def noItemElems( n : Node ) = n match
-        case elem if elem.label == "item" => false
-        case _                            => true
+        case elem if elem.label == "item" && elem.prefix.nullOrBlank => false
+        case _                                                       => true
       def noChannelElems( n : Node ) = n match
-        case elem if elem.label == "channel" => false
-        case _                               => true
+        case elem if elem.label == "channel" && elem.prefix.nullOrBlank => false
+        case _                                                          => true
 
       val ce = channelElems.head.asInstanceOf[Elem]
       val newChannelElem = ce.copy( child=(ce.child.filter( noItemElems ) ++ items ) )
