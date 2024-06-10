@@ -16,13 +16,15 @@ object Customizer extends SelfLogging:
   type MastoAnnouncement = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, timeZone : ZoneId ) => Option[String]
   type TemplateParams =
     ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
+  type Filter = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, fromWithinTypeId : String, content : ItemContent ) => Option[Boolean]
 
   object Subject           extends Registry[Customizer.Subject]
   object Contents          extends Registry[Customizer.Contents]
   object MastoAnnouncement extends Registry[Customizer.MastoAnnouncement]
   object TemplateParams    extends Registry[Customizer.TemplateParams]
+  object Filter            extends Registry[Customizer.Filter]
 
-  private val AllRegistries = Set( Subject, Contents, MastoAnnouncement, TemplateParams )
+  private val AllRegistries = Set( Subject, Contents, MastoAnnouncement, TemplateParams, Filter )
 
   def warnAllUnknown( knownSubscribables : Set[SubscribableName] ) : Unit =
     AllRegistries.foreach( registry => registry.warnUnknown( knownSubscribables ) )

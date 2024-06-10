@@ -76,7 +76,7 @@ object SubscriptionManager extends SelfLogging:
 
       override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
 
-      override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+      override def provisionalWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
@@ -154,7 +154,7 @@ object SubscriptionManager extends SelfLogging:
 
       override def isComposeMultiple : Boolean = false
 
-      override def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+      override def provisionalWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
@@ -191,7 +191,7 @@ object SubscriptionManager extends SelfLogging:
       override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
-      override def withinTypeId(
+      override def provisionalWithinTypeId(
         conn             : Connection,
         subscribableName : SubscribableName,
         feedId           : FeedId,
@@ -273,7 +273,7 @@ object SubscriptionManager extends SelfLogging:
       override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
-      override def withinTypeId(
+      override def provisionalWithinTypeId(
         conn             : Connection,
         subscribableName : SubscribableName,
         feedId           : FeedId,
@@ -333,7 +333,7 @@ object SubscriptionManager extends SelfLogging:
       override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
-      override def withinTypeId(
+      override def provisionalWithinTypeId(
         conn             : Connection,
         subscribableName : SubscribableName,
         feedId           : FeedId,
@@ -572,7 +572,12 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
-  def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
+  
+  final def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+    provisionalWithinTypeId( conn, subscribableName, feedId, guid, content, status ).filter( provisional => checkFilter( subscribableName, content, provisional ) )
+
+  protected def provisionalWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
+
   def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean
 
   def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
@@ -597,6 +602,14 @@ sealed trait SubscriptionManager extends Jsonable:
     customizer match
       case Some( c ) => c( subscribableName, this, withinTypeId, feedUrl, contents, tz )
       case None => contents
+
+  def checkFilter( subscribableName : SubscribableName, content : ItemContent, fromWithinTypeId : String ) : Boolean =
+    val filter = Customizer.Filter.retrieve(subscribableName)
+    filter match
+      case Some( f ) => f( subscribableName, this, fromWithinTypeId, content ).getOrElse( defaultFilter( subscribableName, fromWithinTypeId, content ) )
+      case None      => defaultFilter( subscribableName, fromWithinTypeId, content )
+
+  def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = true
 
   def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
 
