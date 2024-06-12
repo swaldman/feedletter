@@ -16,7 +16,7 @@ object Customizer extends SelfLogging:
   type MastoAnnouncement = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, timeZone : ZoneId ) => Option[String]
   type TemplateParams =
     ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
-  type Filter = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, fromWithinTypeId : String, content : ItemContent ) => Option[Boolean]
+  type Filter = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, fromWithinTypeId : String, content : ItemContent ) => Boolean
 
   object Subject           extends Registry[Customizer.Subject]
   object Contents          extends Registry[Customizer.Contents]

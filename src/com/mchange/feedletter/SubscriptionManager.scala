@@ -96,7 +96,7 @@ object SubscriptionManager extends SelfLogging:
             WARNING.log( s"No link found. withinTypeId: ${withinTypeId}" ) 
             None
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
         val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
         val tz = bestTimeZone( conn )
         val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, tz )
@@ -115,8 +115,7 @@ object SubscriptionManager extends SelfLogging:
               val fullContent = templateParams.fill( template )
               PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
 
-      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysOnly( content )
-      
+
       override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
         Map(
           "instanceUrl" -> destination.instanceUrl,
@@ -161,15 +160,14 @@ object SubscriptionManager extends SelfLogging:
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        routeSingle( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteSingle( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
-      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysOnly( content )
-      
+
     final case class Weekly(
       from                              : Destination.Email,
       replyTo                           : Option[Destination.Email],
@@ -221,8 +219,8 @@ object SubscriptionManager extends SelfLogging:
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       // not sure why, but there's an off-by-on issue. these dates tend to be a day later on both ends
       // than the actual dates in the subscribable.
@@ -252,8 +250,7 @@ object SubscriptionManager extends SelfLogging:
         else
           s"[${subscribableName}] Posts from ${minDate}"
 
-      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysPiggyback( content )
-      
+
     final case class Daily(
       from                              : Destination.Email,
       replyTo                           : Option[Destination.Email],
@@ -303,8 +300,8 @@ object SubscriptionManager extends SelfLogging:
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.DAY_OF_YEAR ) > day)
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       def dayLocalDate( withinTypeId : String ) : LocalDate =
         val ( year, day ) = extractYearAndDay( withinTypeId )
@@ -315,8 +312,7 @@ object SubscriptionManager extends SelfLogging:
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
         s"[${subscribableName}] All posts, ${dayFormattedIsoLocal(withinTypeId)}"
 
-      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysPiggyback( content )
-      
+
     final case class Fixed(
       from                              : Destination.Email,
       replyTo                           : Option[Destination.Email],
@@ -362,13 +358,12 @@ object SubscriptionManager extends SelfLogging:
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
         currentCount == numItemsPerLetter
 
-      override def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        routeMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
         s"[${subscribableName}] ${numItemsPerLetter} new items"
 
-      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysPiggyback( content )
 
   sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, UntemplatedRemovalNotification, SupportsExternalSubscriptionApi:
     def from                              : Destination.Email
@@ -390,7 +385,7 @@ object SubscriptionManager extends SelfLogging:
         val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, idestination.destination, sid, apiLinkGenerator.removeGetLink(sid) )
         ( AddressHeader[To](to), templateParams )
 
-    protected def routeSingle( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+    protected def doRouteSingle( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
       val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
       val tz = bestTimeZone(conn)
       val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, tz )
@@ -405,7 +400,7 @@ object SubscriptionManager extends SelfLogging:
         val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
         PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
-    protected def routeMultiple( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+    protected def doRouteMultiple( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
       val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
       val tz = bestTimeZone(conn)
       val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, tz )
@@ -615,24 +610,25 @@ sealed trait SubscriptionManager extends Jsonable:
   def checkFilter( subscribableName : SubscribableName, content : ItemContent, fromWithinTypeId : String ) : Boolean =
     val filter = Customizer.Filter.retrieve(subscribableName)
     filter match
-      case Some( f ) => f( subscribableName, this, fromWithinTypeId, content ).getOrElse( defaultFilter( subscribableName, fromWithinTypeId, content ) )
-      case None      => defaultFilter( subscribableName, fromWithinTypeId, content )
+      case Some( f ) => f( subscribableName, this, fromWithinTypeId, content )
+      case None      => true
 
-  def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean
+  final def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+    val transformedContents = transformContentsForRoute(conn, assignableKey, contents, destinations )
+    if transformedContents.nonEmpty then doRoute(conn, assignableKey, transformedContents, destinations, apiLinkGenerator)
 
-  protected def defaultFilterAlwaysOnly( content : ItemContent ) : Boolean =
-    content.iffyHintAnnounceUnrestrictedPolicy match
-      case Iffy.HintAnnounce.Policy.Always    => true
-      case Iffy.HintAnnounce.Policy.Piggyback => false
-      case Iffy.HintAnnounce.Policy.Never     => false
+  // XXX: this can filter or reorder, but if we ever add, we'll have to be careful about SubscriptionManagers that expect single-item contents
+  protected def transformContentsForRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]] ) : Seq[ItemContent] =
+    val withHintAnnounce = if this.respectHintAnnounce then applyHintAnnounceForRoute( contents ) else contents
+    withHintAnnounce
 
-  protected def defaultFilterAlwaysPiggyback( content : ItemContent ) : Boolean =
-    content.iffyHintAnnounceUnrestrictedPolicy match
-      case Iffy.HintAnnounce.Policy.Always    => true
-      case Iffy.HintAnnounce.Policy.Piggyback => true
-      case Iffy.HintAnnounce.Policy.Never     => false
+  def respectHintAnnounce : Boolean = true
 
-  def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
+  def applyHintAnnounceForRoute( contents : Seq[ItemContent] ) : Seq[ItemContent] =
+    val notNever = contents.filterNot( _.iffyHintAnnounceUnrestrictedPolicy == Iffy.HintAnnounce.Policy.Never )
+    if notNever.forall( _.iffyHintAnnounceUnrestrictedPolicy == Iffy.HintAnnounce.Policy.Piggyback) then Nil else notNever
+
+  def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
 
   def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )
   def jsonPretty : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this, indent=4) )
