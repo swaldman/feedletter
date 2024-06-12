@@ -3,13 +3,13 @@ package com.mchange.feedletter
 import java.time.Instant
 import scala.xml.{Elem,Node,NodeSeq,XML}
 import scala.util.{Success,Failure}
+import audiofluidity.rss.{Element,Namespace}
 import audiofluidity.rss.util.*
 import com.mchange.conveniences.collection.*
 import com.mchange.conveniences.string.*
 import com.mchange.sc.v1.log.*
 import MLevel.*
 import com.mchange.mailutil.Smtp
-import cats.instances.try_
 import scala.util.control.NonFatal
 
 object ItemContent:
@@ -32,6 +32,8 @@ object ItemContent:
     new ItemContent( guid, XML.loadString(prenormalizedSingleItemRssStr) )
 
   final case class Media( url : String, mimeType : Option[String], length : Option[Long], alt : Option[String] )
+
+
 
 import ItemContent.Media
 
@@ -64,6 +66,14 @@ case class ItemContent private (
   lazy val pubDate : Option[Instant] = overridePubDate orElse extractPubDate
   lazy val link    : Option[String]  = overrideLink    orElse extractLink
   lazy val media   : Seq[Media]      = overrideMedia.getOrElse( extractMedia )
+
+  lazy val iffyHintAnnounceParsings : Seq[Iffy.HintAnnounce] = Iffy.HintAnnounce.extract( itemElem )
+
+  lazy val iffyHintAnnounceUnrestrictedPolicy : Iffy.HintAnnounce.Policy =
+    iffyHintAnnounceParsings
+      .collect { case iha if iha.restriction.isEmpty => iha.policy }
+      .headOption
+      .getOrElse( Iffy.HintAnnounce.Policy.Always )
 
   def contentHash : Int = this.## // XXX: should I use a better, more guaranteed-stable hash?
 

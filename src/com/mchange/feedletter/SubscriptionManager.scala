@@ -115,6 +115,8 @@ object SubscriptionManager extends SelfLogging:
               val fullContent = templateParams.fill( template )
               PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
 
+      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysOnly( content )
+      
       override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
         Map(
           "instanceUrl" -> destination.instanceUrl,
@@ -166,6 +168,8 @@ object SubscriptionManager extends SelfLogging:
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
+      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysOnly( content )
+      
     final case class Weekly(
       from                              : Destination.Email,
       replyTo                           : Option[Destination.Email],
@@ -248,6 +252,8 @@ object SubscriptionManager extends SelfLogging:
         else
           s"[${subscribableName}] Posts from ${minDate}"
 
+      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysPiggyback( content )
+      
     final case class Daily(
       from                              : Destination.Email,
       replyTo                           : Option[Destination.Email],
@@ -309,6 +315,8 @@ object SubscriptionManager extends SelfLogging:
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
         s"[${subscribableName}] All posts, ${dayFormattedIsoLocal(withinTypeId)}"
 
+      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysPiggyback( content )
+      
     final case class Fixed(
       from                              : Destination.Email,
       replyTo                           : Option[Destination.Email],
@@ -360,6 +368,7 @@ object SubscriptionManager extends SelfLogging:
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
         s"[${subscribableName}] ${numItemsPerLetter} new items"
 
+      override def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = defaultFilterAlwaysPiggyback( content )
 
   sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, UntemplatedRemovalNotification, SupportsExternalSubscriptionApi:
     def from                              : Destination.Email
@@ -609,7 +618,19 @@ sealed trait SubscriptionManager extends Jsonable:
       case Some( f ) => f( subscribableName, this, fromWithinTypeId, content ).getOrElse( defaultFilter( subscribableName, fromWithinTypeId, content ) )
       case None      => defaultFilter( subscribableName, fromWithinTypeId, content )
 
-  def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean = true
+  def defaultFilter( subscribableName : SubscribableName, fromWithinTypeId : String, content : ItemContent ) : Boolean
+
+  protected def defaultFilterAlwaysOnly( content : ItemContent ) : Boolean =
+    content.iffyHintAnnounceUnrestrictedPolicy match
+      case Iffy.HintAnnounce.Policy.Always    => true
+      case Iffy.HintAnnounce.Policy.Piggyback => false
+      case Iffy.HintAnnounce.Policy.Never     => false
+
+  protected def defaultFilterAlwaysPiggyback( content : ItemContent ) : Boolean =
+    content.iffyHintAnnounceUnrestrictedPolicy match
+      case Iffy.HintAnnounce.Policy.Always    => true
+      case Iffy.HintAnnounce.Policy.Piggyback => true
+      case Iffy.HintAnnounce.Policy.Never     => false
 
   def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
 
