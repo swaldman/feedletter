@@ -17,12 +17,14 @@ object Customizer extends SelfLogging:
   type TemplateParams =
     ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
   type Filter = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, fromWithinTypeId : String, content : ItemContent ) => Boolean
+  type HintAnnounceRestriction = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, fromWithinTypeId : String, content : ItemContent ) => Option[Iffy.HintAnnounce.Policy]
 
-  object Subject           extends Registry[Customizer.Subject]
-  object Contents          extends Registry[Customizer.Contents]
-  object MastoAnnouncement extends Registry[Customizer.MastoAnnouncement]
-  object TemplateParams    extends Registry[Customizer.TemplateParams]
-  object Filter            extends Registry[Customizer.Filter]
+  object Subject                 extends Registry[Customizer.Subject]
+  object Contents                extends Registry[Customizer.Contents]
+  object MastoAnnouncement       extends Registry[Customizer.MastoAnnouncement]
+  object TemplateParams          extends Registry[Customizer.TemplateParams]
+  object Filter                  extends Registry[Customizer.Filter]
+  object HintAnnounceRestriction extends Registry[Customizer.HintAnnounceRestriction]
 
   private val AllRegistries = Set( Subject, Contents, MastoAnnouncement, TemplateParams, Filter )
 

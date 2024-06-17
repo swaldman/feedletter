@@ -6,6 +6,8 @@ import com.mchange.sc.v1.log.MLogger
 type SelfLogging = com.mchange.sc.v1.log.SelfLogging
 val  MLevel      = com.mchange.sc.v1.log.MLevel
 type MLevel      = com.mchange.sc.v1.log.MLevel
+val  MLogger     = com.mchange.sc.v1.log.MLogger
+type MLogger     = com.mchange.sc.v1.log.MLogger
 
 extension ( ml : MLevel )( using MLogger )
   def zlog( message : =>String ) : UIO[Unit]                      = ZIO.succeed( ml.log( message ) )

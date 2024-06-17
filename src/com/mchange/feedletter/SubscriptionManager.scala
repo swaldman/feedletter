@@ -27,7 +27,9 @@ import upickle.default.*
 import java.time.ZoneId
 import com.mchange.feedletter.Destination.Key
 
-object SubscriptionManager extends SelfLogging:
+object SubscriptionManager:
+  private lazy given logger : MLogger = MLogger(this)
+
   val  Json = SubscriptionManagerJson
   type Json = SubscriptionManagerJson
 
@@ -569,6 +571,8 @@ object SubscriptionManager extends SelfLogging:
   given ReadWriter[SubscriptionManager] = readwriter[ujson.Value].bimap[SubscriptionManager]( toUJsonV1, fromUJsonV1 )
 
 sealed trait SubscriptionManager extends Jsonable:
+  import SubscriptionManager.logger
+
   type D  <: Destination
 
   def extraParams : Map[String,String]
@@ -619,14 +623,36 @@ sealed trait SubscriptionManager extends Jsonable:
 
   // XXX: this can filter or reorder, but if we ever add, we'll have to be careful about SubscriptionManagers that expect single-item contents
   protected def transformContentsForRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]] ) : Seq[ItemContent] =
-    val withHintAnnounce = if this.respectHintAnnounce then applyHintAnnounceForRoute( contents ) else contents
+    val withHintAnnounce =
+      if this.respectHintAnnounce then
+        val restrictionFinder = Customizer.HintAnnounceRestriction.retrieve( assignableKey.subscribableName ).getOrElse( ( _, _, _, _ ) => None )
+        applyHintAnnounceForRoute( assignableKey.subscribableName, assignableKey.withinTypeId, contents, restrictionFinder )
+      else
+        contents
     withHintAnnounce
 
   def respectHintAnnounce : Boolean = true
 
-  def applyHintAnnounceForRoute( contents : Seq[ItemContent] ) : Seq[ItemContent] =
-    val notNever = contents.filterNot( _.iffyHintAnnounceUnrestrictedPolicy == Iffy.HintAnnounce.Policy.Never )
-    if notNever.forall( _.iffyHintAnnounceUnrestrictedPolicy == Iffy.HintAnnounce.Policy.Piggyback) then Nil else notNever
+  def applyHintAnnounceForRoute( subscribableName : SubscribableName, withinTypeId : String, contents : Seq[ItemContent], restrictionFinder : Customizer.HintAnnounceRestriction ) : Seq[ItemContent] =
+    def policy( content : ItemContent ) : Iffy.HintAnnounce.Policy = restrictionFinder( subscribableName, this, withinTypeId, content ).getOrElse( content.iffyHintAnnounceUnrestrictedPolicy )
+    val (never, notNever) = contents.partition( c => policy(c) == Iffy.HintAnnounce.Policy.Never )
+    def handleNotNevers =
+      if notNever.forall( c => policy(c) == Iffy.HintAnnounce.Policy.Piggyback) then
+        if notNever.nonEmpty then INFO.log( s"""Skipping announcement entirely, due to hint-announce all Piggyback [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${notNever.mkString(", ")}]""" )
+        Nil
+      else
+        notNever
+    (never.nonEmpty, notNever.nonEmpty) match
+      case ( true, true   ) =>
+        INFO.log( s"""Skipping announcement of some items, due to hint-announce policy 'Never' [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${never.mkString(", ")}]""" )
+        handleNotNevers
+      case ( false, true  ) =>
+        handleNotNevers
+      case ( true, false  ) =>
+        INFO.log( s"""Skipping announcement of all items, due to hint-announce policy 'Never' [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${never.mkString(", ")}]""" )
+        Nil
+      case ( false, false ) =>
+        Nil
 
   def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
 
