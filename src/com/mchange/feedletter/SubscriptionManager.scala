@@ -355,7 +355,7 @@ object SubscriptionManager:
             PgDatabase.lastCompletedWithinTypeId( conn, subscribableName ) match
               case Some(wti) => Some(nextAfter(wti))
               case None => // first series!
-                Some("1") 
+                Some("1")
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
         currentCount == numItemsPerLetter
@@ -580,9 +580,13 @@ sealed trait SubscriptionManager extends Jsonable:
 
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
-  
+
   final def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
-    provisionalWithinTypeId( conn, subscribableName, feedId, guid, content, status ).filter( provisional => checkFilter( subscribableName, content, provisional ) )
+    if hintAnnouncePolicy(subscribableName, content) != Iffy.HintAnnounce.Policy.Never then
+      provisionalWithinTypeId( conn, subscribableName, feedId, guid, content, status ).filter( provisional => checkFilter( subscribableName, content, provisional ) )
+    else
+      INFO.log( s"Not assigning item whose announce policy has been deteremined to be never. [subscribableName: ${subscribableName}, guid: ${guid}, content: ${content}]" )
+      None
 
   protected def provisionalWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
 
@@ -621,21 +625,25 @@ sealed trait SubscriptionManager extends Jsonable:
     val transformedContents = transformContentsForRoute(conn, assignableKey, contents, destinations )
     if transformedContents.nonEmpty then doRoute(conn, assignableKey, transformedContents, destinations, apiLinkGenerator)
 
+  def hintAnnouncePolicy( subscribableName : SubscribableName, content : ItemContent ) : Iffy.HintAnnounce.Policy =
+    val restrictionFinder = Customizer.HintAnnounceRestriction.retrieve( subscribableName ).getOrElse( ( _, _, _ ) => None )
+    restrictionFinder( subscribableName, this, content ).getOrElse( content.iffyHintAnnounceUnrestrictedPolicy )
+
   // XXX: this can filter or reorder, but if we ever add, we'll have to be careful about SubscriptionManagers that expect single-item contents
   protected def transformContentsForRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]] ) : Seq[ItemContent] =
     val withHintAnnounce =
       if this.respectHintAnnounce then
-        val restrictionFinder = Customizer.HintAnnounceRestriction.retrieve( assignableKey.subscribableName ).getOrElse( ( _, _, _, _ ) => None )
-        applyHintAnnounceForRoute( assignableKey.subscribableName, assignableKey.withinTypeId, contents, restrictionFinder )
+        applyHintAnnounceForRoute( assignableKey.subscribableName, assignableKey.withinTypeId, contents )
       else
         contents
     withHintAnnounce
 
   def respectHintAnnounce : Boolean = true
 
-  def applyHintAnnounceForRoute( subscribableName : SubscribableName, withinTypeId : String, contents : Seq[ItemContent], restrictionFinder : Customizer.HintAnnounceRestriction ) : Seq[ItemContent] =
-    def policy( content : ItemContent ) : Iffy.HintAnnounce.Policy = restrictionFinder( subscribableName, this, withinTypeId, content ).getOrElse( content.iffyHintAnnounceUnrestrictedPolicy )
+  def applyHintAnnounceForRoute( subscribableName : SubscribableName, withinTypeId : String, contents : Seq[ItemContent] ) : Seq[ItemContent] =
+    def policy( content : ItemContent ) : Iffy.HintAnnounce.Policy = hintAnnouncePolicy( subscribableName, content )
     val (never, notNever) = contents.partition( c => policy(c) == Iffy.HintAnnounce.Policy.Never )
+    // we now never even assign nevers, so never should always be empty
     def handleNotNevers =
       if notNever.forall( c => policy(c) == Iffy.HintAnnounce.Policy.Piggyback) then
         if notNever.nonEmpty then INFO.log( s"""Skipping announcement entirely, due to hint-announce all Piggyback [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${notNever.mkString(", ")}]""" )

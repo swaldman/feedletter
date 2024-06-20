@@ -17,7 +17,7 @@ object Customizer extends SelfLogging:
   type TemplateParams =
     ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, withinTypeId : String, feedUrl : FeedUrl, destination : Destination, subscriptionId : SubscriptionId, removeLink : String ) => Map[String,String]
   type Filter = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, fromWithinTypeId : String, content : ItemContent ) => Boolean
-  type HintAnnounceRestriction = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, fromWithinTypeId : String, content : ItemContent ) => Option[Iffy.HintAnnounce.Policy]
+  type HintAnnounceRestriction = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, content : ItemContent ) => Option[Iffy.HintAnnounce.Policy]
 
   object Subject                 extends Registry[Customizer.Subject]
   object Contents                extends Registry[Customizer.Contents]

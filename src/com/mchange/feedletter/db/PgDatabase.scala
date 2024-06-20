@@ -206,17 +206,20 @@ object PgDatabase extends Migratory, SelfLogging:
   private def assignForSubscribable( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Unit =
     TRACE.log( s"assignForSubscribable( $conn, $subscribableName, $feedId, $guid, $content, $status )" )
     val subscriptionManager = LatestSchema.Table.Subscribable.selectManager( conn, subscribableName )
-    subscriptionManager.withinTypeId( conn, subscribableName, feedId, guid, content, status ).foreach: wti =>
-      ensureOpenAssignable( conn, feedId, subscribableName, wti, Some(guid) )
-      LatestSchema.Table.Assignment.insert( conn, subscribableName, wti, guid )
-      DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned in subscribable '${subscribableName}' with assignable identifier '${wti}'." )
+    subscriptionManager.withinTypeId( conn, subscribableName, feedId, guid, content, status ) match
+      case Some(wti) =>
+        ensureOpenAssignable( conn, feedId, subscribableName, wti, Some(guid) )
+        LatestSchema.Table.Assignment.insert( conn, subscribableName, wti, guid )
+        DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned in subscribable '${subscribableName}' with assignable identifier '${wti}'." )
+      case None =>
+        INFO.log( s"Subscribable '${subscribableName}' determined that item with guid '${guid}' should not be announced to its subscribers." )
 
   private def assign( conn : Connection, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Unit =
     TRACE.log( s"assign( $conn, $feedId, $guid, $content, $status )" )
     val subscribableNames = LatestSchema.Table.Subscribable.selectSubscribableNamesByFeedId( conn, feedId )
     subscribableNames.foreach( subscribableName => assignForSubscribable( conn, subscribableName, feedId, guid, content, status ) )
     LatestSchema.Table.Item.updateLastCheckedAssignability( conn, feedId, guid, status.lastChecked, ItemAssignability.Assigned )
-    DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned in all subscribables to that feed." )
+    DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned (or refused assignment) in all subscribables to that feed." )
 
   private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : Guid, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     TRACE.log( s"updateAssignItem( $conn, $fi, $guid, $dbStatus, $freshContent, $now )" )
