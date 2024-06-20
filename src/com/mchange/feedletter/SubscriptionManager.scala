@@ -77,14 +77,14 @@ object SubscriptionManager:
 
       override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
 
-      override def provisionalWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+      override def assignWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
 
       def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
         Customizer.MastoAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
-          customizer( subscribableName, this, withinTypeId, feedUrl, content, tz )
+          customizer( subscribableName, this, feedUrl, content, tz )
 
       def defaultFormatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] = // ADD EXTRA-PARAMS AND GUIDs
         //assert( contents.size == 1, s"Mastodon.Announce expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -156,7 +156,7 @@ object SubscriptionManager:
 
       override def isComposeMultiple : Boolean = false
 
-      override def provisionalWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+      override def assignWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
@@ -194,7 +194,7 @@ object SubscriptionManager:
       override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
-      override def provisionalWithinTypeId(
+      override def assignWithinTypeId(
         conn             : Connection,
         subscribableName : SubscribableName,
         feedId           : FeedId,
@@ -277,7 +277,7 @@ object SubscriptionManager:
       override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
-      override def provisionalWithinTypeId(
+      override def assignWithinTypeId(
         conn             : Connection,
         subscribableName : SubscribableName,
         feedId           : FeedId,
@@ -338,7 +338,7 @@ object SubscriptionManager:
       override def isComposeMultiple : Boolean = true
 
       // this is only fixed on assignment, should be lastChecked, because week in which firstSeen might already have passed
-      override def provisionalWithinTypeId(
+      override def assignWithinTypeId(
         conn             : Connection,
         subscribableName : SubscribableName,
         feedId           : FeedId,
@@ -416,7 +416,7 @@ object SubscriptionManager:
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
       Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents, tz : ZoneId ) ): customizer =>
-        customizer( subscribableName, this, withinTypeId, feedUrl, contents, tz )
+        customizer( subscribableName, this, feedUrl, contents, tz )
 
     def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String
 
@@ -581,13 +581,17 @@ sealed trait SubscriptionManager extends Jsonable:
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
 
   final def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
-    if hintAnnouncePolicy(subscribableName, content) != Iffy.HintAnnounce.Policy.Never then
-      provisionalWithinTypeId( conn, subscribableName, feedId, guid, content, status ).filter( provisional => checkFilter( subscribableName, content, provisional ) )
+    if checkFilter( subscribableName, content ) then
+      if hintAnnouncePolicy(subscribableName, content) != Iffy.HintAnnounce.Policy.Never then
+        assignWithinTypeId( conn, subscribableName, feedId, guid, content, status )
+      else
+        INFO.log( s"Not assigning item whose announce policy has been determined to be never. [subscribableName: ${subscribableName}, guid: ${guid}, content: ${content}]" )
+        None
     else
-      INFO.log( s"Not assigning item whose announce policy has been deteremined to be never. [subscribableName: ${subscribableName}, guid: ${guid}, content: ${content}]" )
+      INFO.log( s"Not assigning item due to a user-provided filter returning false. [subscribableName: ${subscribableName}, guid: ${guid}, content: ${content}]" )
       None
 
-  protected def provisionalWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
+  protected def assignWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
 
   def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean
 
@@ -603,7 +607,7 @@ sealed trait SubscriptionManager extends Jsonable:
   def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams =
     TemplateParams(
       defaultComposeTemplateParams(subscribableName, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) ++
-      Customizer.TemplateParams.retrieve( subscribableName ).fold(Nil)( customizer => customizer( subscribableName, this, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) )
+      Customizer.TemplateParams.retrieve( subscribableName ).fold(Nil)( customizer => customizer( subscribableName, this, feedUrl, destination, subscriptionId, removeLink ) )
     )
 
   def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
@@ -611,13 +615,13 @@ sealed trait SubscriptionManager extends Jsonable:
   def customizeContents( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : Seq[ItemContent] =
     val customizer = Customizer.Contents.retrieve(subscribableName)
     customizer match
-      case Some( c ) => c( subscribableName, this, withinTypeId, feedUrl, contents, tz )
+      case Some( c ) => c( subscribableName, this, feedUrl, contents, tz )
       case None => contents
 
-  def checkFilter( subscribableName : SubscribableName, content : ItemContent, fromWithinTypeId : String ) : Boolean =
+  def checkFilter( subscribableName : SubscribableName, content : ItemContent ) : Boolean =
     val filter = Customizer.Filter.retrieve(subscribableName)
     filter match
-      case Some( f ) => f( subscribableName, this, fromWithinTypeId, content )
+      case Some( f ) => f( subscribableName, this, content )
       case None      => true
 
   final def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
