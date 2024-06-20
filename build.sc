@@ -13,7 +13,7 @@ import de.tobiasroeser.mill.vcs.version.VcsVersion
 
 import $ivy.`com.mchange::mill-daemon:0.0.1`
 
-import $ivy.`com.mchange::untemplate-mill:0.1.3`
+import $ivy.`com.mchange::untemplate-mill:0.1.4`
 import untemplate.mill._
 import com.mchange.milldaemon.DaemonModule
 
@@ -24,23 +24,23 @@ object feedletter extends RootModule with DaemonModule with UntemplateModule wit
 
   override def scalacOptions = T{ Seq("-deprecation") }
 
-  val TapirVersion = "1.10.3"
+  val TapirVersion = "1.10.9"
 
   def ivyDeps = Agg(
-    ivy"com.mchange::audiofluidity-rss:0.0.10-SNAPSHOT",
-    ivy"com.mchange::conveniences:0.0.5-SNAPSHOT",
-    ivy"com.mchange:c3p0:0.10.0",
+    ivy"com.mchange::audiofluidity-rss:0.0.10",
+    ivy"com.mchange::conveniences:0.0.5",
+    ivy"com.mchange:c3p0:0.10.1",
     ivy"com.mchange::mlog-scala:0.3.15",
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.4",
     ivy"com.mchange::cryptoutil:0.0.2",
-    ivy"com.mchange::untemplate:0.1.3",
-    ivy"dev.zio::zio:2.0.21",
+    ivy"com.mchange::untemplate:0.1.4",
+    ivy"dev.zio::zio:2.1.3",
     ivy"com.monovore::decline:2.4.1",
     ivy"org.postgresql:postgresql:42.7.3",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
-    ivy"com.lihaoyi::os-lib:0.9.3",
-    ivy"com.lihaoyi::requests:0.8.2",
+    ivy"com.lihaoyi::os-lib:0.10.2",
+    ivy"com.lihaoyi::requests:0.8.3",
     ivy"com.lihaoyi::upickle:3.2.0",
     ivy"com.softwaremill.sttp.tapir::tapir-zio:${TapirVersion}",
     ivy"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
