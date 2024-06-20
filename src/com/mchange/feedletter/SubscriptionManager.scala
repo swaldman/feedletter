@@ -12,7 +12,6 @@ import DateTimeFormatter.ISO_LOCAL_DATE
 import scala.collection.immutable
 
 import com.mchange.feedletter.api.ApiLinkGenerator
-import com.mchange.feedletter.style.Customizer
 
 import scala.collection.immutable
 

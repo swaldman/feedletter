@@ -10,7 +10,6 @@ import MLevel.*
 import com.mchange.feedletter.db.withConnectionTransactional
 
 import com.mchange.feedletter.BuildInfo
-import com.mchange.feedletter.style.Customizer
 
 object Daemon extends SelfLogging:
 

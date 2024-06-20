@@ -1,4 +1,4 @@
-package com.mchange.feedletter.style
+package com.mchange.feedletter
 
 import com.mchange.feedletter.*
 
