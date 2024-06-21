@@ -25,6 +25,7 @@ import MLevel.*
 import upickle.default.*
 import java.time.ZoneId
 import com.mchange.feedletter.Destination.Key
+import com.mchange.feedletter.db.PgDatabase.Config.timeZone
 
 object SubscriptionManager:
   private lazy given logger : MLogger = MLogger(this)
@@ -97,25 +98,20 @@ object SubscriptionManager:
             WARNING.log( s"No link found. withinTypeId: ${withinTypeId}" ) 
             None
 
-      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-        val tz = bestTimeZone( conn )
-        val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, tz )
-        if customizedContents.nonEmpty then
-          val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
-            throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + customizedContents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
-          val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent, tz )
-          mbTemplate.foreach: template =>
-            val mastoDestinationsWithTemplateParams =
-              idestinations.map: idestination =>
-                val destination = idestination.destination
-                val sid = idestination.subscriptionId
-                val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
-                ( destination, templateParams )
-            mastoDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
-              val fullContent = templateParams.fill( template )
-              PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
-
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        val uniqueContent = contents.uniqueOr: (c, nu) =>
+          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+        val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent, timeZone )
+        mbTemplate.foreach: template =>
+          val mastoDestinationsWithTemplateParams =
+            idestinations.map: idestination =>
+              val destination = idestination.destination
+              val sid = idestination.subscriptionId
+              val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
+              ( destination, templateParams )
+          mastoDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
+            val fullContent = templateParams.fill( template )
+            PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
 
       override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
         Map(
@@ -161,8 +157,8 @@ object SubscriptionManager:
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
 
-      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        doRouteSingle( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteSingle( conn, assignableKey, feedId, feedUrl, contents, idestinations, timeZone, apiLinkGenerator )
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -220,8 +216,8 @@ object SubscriptionManager:
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
 
-      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        doRouteMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteMultiple( conn, assignableKey, feedId, feedUrl, contents, idestinations, timeZone, apiLinkGenerator )
 
       // not sure why, but there's an off-by-on issue. these dates tend to be a day later on both ends
       // than the actual dates in the subscribable.
@@ -301,8 +297,8 @@ object SubscriptionManager:
         val laYear = laZoned.get( ChronoField.YEAR )
         laYear > year || (laYear == year && laZoned.get( ChronoField.DAY_OF_YEAR ) > day)
 
-      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        doRouteMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteMultiple( conn, assignableKey, feedId, feedUrl, contents, idestinations, timeZone, apiLinkGenerator )
 
       def dayLocalDate( withinTypeId : String ) : LocalDate =
         val ( year, day ) = extractYearAndDay( withinTypeId )
@@ -359,8 +355,8 @@ object SubscriptionManager:
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
         currentCount == numItemsPerLetter
 
-      override def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        doRouteMultiple( conn, assignableKey, contents, idestinations, apiLinkGenerator )
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteMultiple( conn, assignableKey, feedId, feedUrl, contents, idestinations, timeZone, apiLinkGenerator )
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
         s"[${subscribableName}] ${numItemsPerLetter} new items"
@@ -386,33 +382,25 @@ object SubscriptionManager:
         val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, idestination.destination, sid, apiLinkGenerator.removeGetLink(sid) )
         ( AddressHeader[To](to), templateParams )
 
-    protected def doRouteSingle( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-      val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-      val tz = bestTimeZone(conn)
-      val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, tz )
-      if customizedContents.nonEmpty then
-        val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
-          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + customizedContents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
-        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, customizedContents, tz )
-        val fullTemplate =
-          val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, uniqueContent )
-          val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
-          compose( info ).text
-        val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
-        PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
+    protected def doRouteSingle( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      val uniqueContent = contents.uniqueOr: (c, nu) =>
+        throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
+      val fullTemplate =
+        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, timeZone, uniqueContent )
+        val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
+        compose( info ).text
+      val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
+      PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
-    protected def doRouteMultiple( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-      val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-      val tz = bestTimeZone(conn)
-      val customizedContents = customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, tz )
-      if customizedContents.nonEmpty then
-        val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, customizedContents, tz )
-        val fullTemplate =
-          val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, tz, customizedContents )
-          val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
-          compose( info ).text
-        val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
-        PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
+    protected def doRouteMultiple( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
+      val fullTemplate =
+        val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, timeZone, contents )
+        val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
+        compose( info ).text
+      val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
+      PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
     def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
       Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents, tz : ZoneId ) ): customizer =>
@@ -625,21 +613,25 @@ sealed trait SubscriptionManager extends Jsonable:
       case None      => true
 
   final def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-    val transformedContents = transformContentsForRoute(conn, assignableKey, contents, destinations )
-    if transformedContents.nonEmpty then doRoute(conn, assignableKey, transformedContents, destinations, apiLinkGenerator)
+    val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
+    val timeZone = bestTimeZone( conn )
+    val transformedContents = transformContentsForRoute(conn, assignableKey, feedId, feedUrl, contents, destinations, timeZone )
+    if transformedContents.nonEmpty then doRoute(conn, assignableKey, feedId, feedUrl, transformedContents, destinations, timeZone, apiLinkGenerator)
 
   def hintAnnouncePolicy( subscribableName : SubscribableName, content : ItemContent ) : Iffy.HintAnnounce.Policy =
     val restrictionFinder = Customizer.HintAnnounceRestriction.retrieve( subscribableName ).getOrElse( ( _, _, _ ) => None )
     restrictionFinder( subscribableName, this, content ).getOrElse( content.iffyHintAnnounceUnrestrictedPolicy )
 
   // XXX: this can filter or reorder, but if we ever add, we'll have to be careful about SubscriptionManagers that expect single-item contents
-  protected def transformContentsForRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]] ) : Seq[ItemContent] =
+  private def transformContentsForRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], timeZone : ZoneId ) : Seq[ItemContent] =
     val withHintAnnounce =
       if this.respectHintAnnounce then
         applyHintAnnounceForRoute( assignableKey.subscribableName, assignableKey.withinTypeId, contents )
       else
         contents
-    withHintAnnounce
+    val withCustomizedContents =
+      customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, withHintAnnounce, timeZone )
+    withCustomizedContents
 
   def respectHintAnnounce : Boolean = true
 
@@ -665,7 +657,7 @@ sealed trait SubscriptionManager extends Jsonable:
       case ( false, false ) =>
         Nil
 
-  def doRoute( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit
+  protected def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit
 
   def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )
   def jsonPretty : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this, indent=4) )
