@@ -38,14 +38,15 @@ object ItemContent:
 import ItemContent.Media
 
 case class ItemContent private (
-  val guid        : String,
-  val rssElem     : Elem,
-  overrideTitle   : Option[String]     = None,
-  overrideAuthor  : Option[String]     = None,
-  overrideArticle : Option[String]     = None,
-  overridePubDate : Option[Instant]    = None,
-  overrideLink    : Option[String]     = None,
-  overrideMedia   : Option[Seq[Media]] = None
+  val guid                   : String,
+  val rssElem                : Elem,
+  overrideTitle              : Option[String]                   = None,
+  overrideAuthor             : Option[String]                   = None,
+  overrideArticle            : Option[String]                   = None,
+  overridePubDate            : Option[Instant]                  = None,
+  overrideLink               : Option[String]                   = None,
+  overrideMedia              : Option[Seq[Media]]               = None,
+  overrideHintAnnouncePolicy : Option[Iffy.HintAnnounce.Policy] = None
 ):
   import ItemContent.logger
 
@@ -67,7 +68,8 @@ case class ItemContent private (
   lazy val link    : Option[String]  = overrideLink    orElse extractLink
   lazy val media   : Seq[Media]      = overrideMedia.getOrElse( extractMedia )
 
-  lazy val iffyHintAnnounceParsings : Seq[Iffy.HintAnnounce] = Iffy.HintAnnounce.extract( itemElem )
+  lazy val iffyHintAnnounceParsings : Seq[Iffy.HintAnnounce] =
+    overrideHintAnnouncePolicy.map( p => Seq( Iffy.HintAnnounce(p, None) ) ).getOrElse( Iffy.HintAnnounce.extract( itemElem ) )
 
   lazy val iffyHintAnnounceUnrestrictedPolicy : Iffy.HintAnnounce.Policy =
     iffyHintAnnounceParsings

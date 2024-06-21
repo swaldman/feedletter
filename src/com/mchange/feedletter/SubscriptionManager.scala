@@ -568,13 +568,14 @@ sealed trait SubscriptionManager extends Jsonable:
   def sampleWithinTypeId : String
   def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
 
+  /*
+   *  We used to let Iffy.HintAnnounce.Policy.Never prevent assignment, as well as explicit filters.
+   *  We've removed that, so that content customizers potentially can override Iffy.HintAnnounce.Policy,
+   *  or do whatever they like with the full content except as explicitly filtered via a customizer 
+   */
   final def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
     if checkFilter( subscribableName, content ) then
-      if hintAnnouncePolicy(subscribableName, content) != Iffy.HintAnnounce.Policy.Never then
-        assignWithinTypeId( conn, subscribableName, feedId, guid, content, status )
-      else
-        INFO.log( s"Not assigning item whose announce policy has been determined to be never. [subscribableName: ${subscribableName}, guid: ${guid}, content: ${content}]" )
-        None
+      assignWithinTypeId( conn, subscribableName, feedId, guid, content, status )
     else
       INFO.log( s"Not assigning item due to a user-provided filter returning false. [subscribableName: ${subscribableName}, guid: ${guid}, content: ${content}]" )
       None
