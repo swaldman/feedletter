@@ -24,7 +24,9 @@ object Customizer extends SelfLogging:
   object MastoAnnouncement       extends Registry[Customizer.MastoAnnouncement]
   object TemplateParams          extends Registry[Customizer.TemplateParams]
   object Filter                  extends Registry[Customizer.Filter]
-  object HintAnnounceRestriction extends Registry[Customizer.HintAnnounceRestriction]
+
+  object HintAnnounceRestriction extends Registry[Customizer.HintAnnounceRestriction]:
+    val Disable : HintAnnounceRestriction = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, content : ItemContent ) => Some(Iffy.HintAnnounce.Policy.Always)
 
   private val AllRegistries = Set( Subject, Contents, MastoAnnouncement, TemplateParams, Filter )
 
