@@ -324,10 +324,11 @@ private def fillComposeMultipleUntemplate(
   digest              : FeedDigest,
   guids               : Seq[Guid]
 ) : Option[String] =
-  val contents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
-  val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, contents, timeZone )
-  if customizedContents.nonEmpty then
-    val composeInfo = ComposeInfo.Multiple( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone, customizedContents )
+  val rawContents = guids.map( digest.guidToItemContent.get ).collect { case Some(content) => content }
+  val filteredContents = rawContents.filter( c => subscriptionManager.checkFilter(subscribableName, c) )
+  val contents = subscriptionManager.transformContentsForRoute( AssignableKey(subscribableName, withinTypeId), feedUrl, filteredContents, timeZone )
+  if contents.nonEmpty then
+    val composeInfo = ComposeInfo.Multiple( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone, contents )
     val untemplate = AllUntemplates.findComposeUntemplateMultiple( untemplateName )
     val composed =
       val untemplateOutput = untemplate( composeInfo ).text
@@ -349,11 +350,11 @@ private def fillComposeSingleUntemplate(
   digest              : FeedDigest,
   guid                : Guid
 ) : Option[String] =
-  val contents = digest.guidToItemContent( guid )
-  val customizedContents = subscriptionManager.customizeContents( subscribableName, withinTypeId, feedUrl, Seq(contents), timeZone )
-  if customizedContents.nonEmpty then
-    val uniqueContent = customizedContents.uniqueOr: (c, nu) =>
-      throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + customizedContents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+  val filteredContents = Seq(digest.guidToItemContent( guid )).filter( c => subscriptionManager.checkFilter(subscribableName, c) )
+  val contents = subscriptionManager.transformContentsForRoute( AssignableKey(subscribableName, withinTypeId), feedUrl, filteredContents, timeZone )
+  if contents.nonEmpty then
+    val uniqueContent = contents.uniqueOr: (c, nu) =>
+      throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
     val composeInfo = ComposeInfo.Single( feedUrl, subscribableName, subscriptionManager, withinTypeId, timeZone, uniqueContent )
     val untemplate = AllUntemplates.findComposeUntemplateSingle( untemplateName )
     val composed =
