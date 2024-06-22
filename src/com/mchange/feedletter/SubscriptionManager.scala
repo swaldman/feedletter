@@ -616,7 +616,7 @@ sealed trait SubscriptionManager extends Jsonable:
   final def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
     val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
     val timeZone = bestTimeZone( conn )
-    val transformedContents = transformContentsForRoute(conn, assignableKey, feedId, feedUrl, contents, destinations, timeZone )
+    val transformedContents = transformContentsForRoute( assignableKey, feedUrl, contents, timeZone )
     if transformedContents.nonEmpty then doRoute(conn, assignableKey, feedId, feedUrl, transformedContents, destinations, timeZone, apiLinkGenerator)
 
   def hintAnnouncePolicy( subscribableName : SubscribableName, content : ItemContent ) : Iffy.HintAnnounce.Policy =
@@ -624,15 +624,15 @@ sealed trait SubscriptionManager extends Jsonable:
     restrictionFinder( subscribableName, this, content ).getOrElse( content.iffyHintAnnounceUnrestrictedPolicy )
 
   // XXX: this can filter or reorder, but if we ever add, we'll have to be careful about SubscriptionManagers that expect single-item contents
-  private def transformContentsForRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], timeZone : ZoneId ) : Seq[ItemContent] =
+  def transformContentsForRoute( assignableKey : AssignableKey, feedUrl : FeedUrl, contents : Seq[ItemContent], timeZone : ZoneId ) : Seq[ItemContent] =
+    val withCustomizedContents =
+      customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
     val withHintAnnounce =
       if this.respectHintAnnounce then
-        applyHintAnnounceForRoute( assignableKey.subscribableName, assignableKey.withinTypeId, contents )
+        applyHintAnnounceForRoute( assignableKey.subscribableName, assignableKey.withinTypeId, withCustomizedContents )
       else
-        contents
-    val withCustomizedContents =
-      customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, withHintAnnounce, timeZone )
-    withCustomizedContents
+        withCustomizedContents
+    withHintAnnounce
 
   def respectHintAnnounce : Boolean = true
 
