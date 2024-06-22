@@ -38,15 +38,15 @@ object ItemContent:
 import ItemContent.Media
 
 case class ItemContent private (
-  val guid                   : String,
-  val rssElem                : Elem,
-  overrideTitle              : Option[String]                   = None,
-  overrideAuthor             : Option[String]                   = None,
-  overrideArticle            : Option[String]                   = None,
-  overridePubDate            : Option[Instant]                  = None,
-  overrideLink               : Option[String]                   = None,
-  overrideMedia              : Option[Seq[Media]]               = None,
-  overrideHintAnnouncePolicy : Option[Iffy.HintAnnounce.Policy] = None
+  val guid                     : String,
+  val rssElemBeforeOverrides   : Elem,
+  overrideTitle                : Option[String]                 = None,
+  overrideAuthor               : Option[String]                 = None,
+  overrideArticle              : Option[String]                 = None,
+  overridePubDate              : Option[Instant]                = None,
+  overrideLink                 : Option[String]                 = None,
+  overrideMedia                : Option[Seq[Media]]             = None,
+  overrideHintAnnounceParsings : Option[Seq[Iffy.HintAnnounce]] = None
 ):
   import ItemContent.logger
 
@@ -57,7 +57,11 @@ case class ItemContent private (
   def withLink( link : String )        : ItemContent = this.copy( overrideLink = Some( link ) )
   def withMedia( media : Seq[Media] )  : ItemContent = this.copy( overrideMedia = Some( media ) )
 
-  lazy val itemElem : Elem = (rssElem \ "channel" \ "item").uniqueOr { (ns : NodeSeq, nu : NotUnique) =>
+  def withHintAnnounceParsings( parsings : Seq[Iffy.HintAnnounce] ) : ItemContent = this.copy( overrideHintAnnounceParsings = Some(parsings) )
+
+  def withHintAnnouncePolicy( policy : Iffy.HintAnnounce.Policy ) : ItemContent = withHintAnnounceParsings(Seq(Iffy.HintAnnounce(policy, None)))
+
+  lazy val itemElem : Elem = (rssElemBeforeOverrides \ "channel" \ "item").uniqueOr { (ns : NodeSeq, nu : NotUnique) =>
     throw new AssertionError( s"ItemContent should only be initialized with single-item RSS, we found ${nu}." )
   }.asInstanceOf[Elem]
 
@@ -69,7 +73,7 @@ case class ItemContent private (
   lazy val media   : Seq[Media]      = overrideMedia.getOrElse( extractMedia )
 
   lazy val iffyHintAnnounceParsings : Seq[Iffy.HintAnnounce] =
-    overrideHintAnnouncePolicy.map( p => Seq( Iffy.HintAnnounce(p, None) ) ).getOrElse( Iffy.HintAnnounce.extract( itemElem ) )
+    overrideHintAnnounceParsings.getOrElse( Iffy.HintAnnounce.extract( itemElem ) )
 
   lazy val iffyHintAnnounceUnrestrictedPolicy : Iffy.HintAnnounce.Policy =
     iffyHintAnnounceParsings

@@ -283,7 +283,7 @@ object PgSchema:
               ps.executeUpdate()
           def updateChanged( conn : Connection, feedId : FeedId, guid : Guid, newContent : ItemContent, newStatus : ItemStatus ) =
             Using.resource( conn.prepareStatement( this.UpdateChanged ) ): ps =>
-              ps.setString            ( 1, newContent.rssElem.toString )
+              ps.setString            ( 1, newContent.rssElemBeforeOverrides.toString )
               ps.setInt               ( 2, newStatus.contentHash)
               setStringOptional   (ps,  3, Types.VARCHAR, newContent.link)
               ps.setTimestamp         ( 4, Timestamp.from(newStatus.lastChecked))
@@ -304,7 +304,7 @@ object PgSchema:
               val now = Instant.now
               ps.setInt              (  1, feedId.toInt )
               ps.setString           (  2, guid.str )
-              itemContent.fold(ps.setNull(3, Types.CLOB))   (ic => ps.setString(3, ic.rssElem.toString() ))
+              itemContent.fold(ps.setNull(3, Types.CLOB))   (ic => ps.setString(3, ic.rssElemBeforeOverrides.toString() ))
               itemContent.fold(ps.setNull(4, Types.INTEGER))(ic => ps.setInt(4, ic.contentHash ))
               itemContent.fold(ps.setNull(5, Types.VARCHAR))(ic => setStringOptional(ps, 5, Types.VARCHAR, ic.link))
               ps.setTimestamp        (  6, Timestamp.from( now ) )
