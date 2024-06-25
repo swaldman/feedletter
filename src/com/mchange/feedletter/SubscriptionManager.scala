@@ -27,6 +27,8 @@ import java.time.ZoneId
 import com.mchange.feedletter.Destination.Key
 import com.mchange.feedletter.db.PgDatabase.Config.timeZone
 
+import audiofluidity.rss.Element
+
 object SubscriptionManager:
   private lazy given logger : MLogger = MLogger(this)
 
@@ -619,7 +621,7 @@ sealed trait SubscriptionManager extends Jsonable:
     val transformedContents = transformContentsForRoute( assignableKey, feedUrl, contents, timeZone )
     if transformedContents.nonEmpty then doRoute(conn, assignableKey, feedId, feedUrl, transformedContents, destinations, timeZone, apiLinkGenerator)
 
-  def hintAnnouncePolicy( subscribableName : SubscribableName, content : ItemContent ) : Iffy.HintAnnounce.Policy =
+  def hintAnnouncePolicy( subscribableName : SubscribableName, content : ItemContent ) : Element.Iffy.HintAnnounce.Policy =
     val restrictionFinder = Customizer.HintAnnounceRestriction.retrieve( subscribableName ).getOrElse( ( _, _, _ ) => None )
     restrictionFinder( subscribableName, this, content ).getOrElse( content.iffyHintAnnounceUnrestrictedPolicy )
 
@@ -637,11 +639,11 @@ sealed trait SubscriptionManager extends Jsonable:
   def respectHintAnnounce : Boolean = true
 
   def applyHintAnnounceForRoute( subscribableName : SubscribableName, withinTypeId : String, contents : Seq[ItemContent] ) : Seq[ItemContent] =
-    def policy( content : ItemContent ) : Iffy.HintAnnounce.Policy = hintAnnouncePolicy( subscribableName, content )
-    val (never, notNever) = contents.partition( c => policy(c) == Iffy.HintAnnounce.Policy.Never )
+    def policy( content : ItemContent ) : Element.Iffy.HintAnnounce.Policy = hintAnnouncePolicy( subscribableName, content )
+    val (never, notNever) = contents.partition( c => policy(c) == Element.Iffy.HintAnnounce.Policy.Never )
     // we now never even assign nevers, so never should always be empty
     def handleNotNevers =
-      if notNever.forall( c => policy(c) == Iffy.HintAnnounce.Policy.Piggyback) then
+      if notNever.forall( c => policy(c) == Element.Iffy.HintAnnounce.Policy.Piggyback) then
         if notNever.nonEmpty then INFO.log( s"""Skipping announcement entirely, due to hint-announce all Piggyback [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${notNever.mkString(", ")}]""" )
         Nil
       else

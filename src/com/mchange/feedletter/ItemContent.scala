@@ -40,13 +40,13 @@ import ItemContent.Media
 case class ItemContent private (
   val guid                     : String,
   val rssElemBeforeOverrides   : Elem,
-  overrideTitle                : Option[String]                 = None,
-  overrideAuthor               : Option[String]                 = None,
-  overrideArticle              : Option[String]                 = None,
-  overridePubDate              : Option[Instant]                = None,
-  overrideLink                 : Option[String]                 = None,
-  overrideMedia                : Option[Seq[Media]]             = None,
-  overrideHintAnnounceParsings : Option[Seq[Iffy.HintAnnounce]] = None
+  overrideTitle                : Option[String]                         = None,
+  overrideAuthor               : Option[String]                         = None,
+  overrideArticle              : Option[String]                         = None,
+  overridePubDate              : Option[Instant]                        = None,
+  overrideLink                 : Option[String]                         = None,
+  overrideMedia                : Option[Seq[Media]]                     = None,
+  overrideHintAnnounceParsings : Option[Seq[Element.Iffy.HintAnnounce]] = None
 ):
   import ItemContent.logger
 
@@ -57,9 +57,9 @@ case class ItemContent private (
   def withLink( link : String )        : ItemContent = this.copy( overrideLink = Some( link ) )
   def withMedia( media : Seq[Media] )  : ItemContent = this.copy( overrideMedia = Some( media ) )
 
-  def withHintAnnounceParsings( parsings : Seq[Iffy.HintAnnounce] ) : ItemContent = this.copy( overrideHintAnnounceParsings = Some(parsings) )
+  def withHintAnnounceParsings( parsings : Seq[Element.Iffy.HintAnnounce] ) : ItemContent = this.copy( overrideHintAnnounceParsings = Some(parsings) )
 
-  def withHintAnnouncePolicy( policy : Iffy.HintAnnounce.Policy ) : ItemContent = withHintAnnounceParsings(Seq(Iffy.HintAnnounce(policy, None)))
+  def withHintAnnouncePolicy( policy : Element.Iffy.HintAnnounce.Policy ) : ItemContent = withHintAnnounceParsings(Seq(Element.Iffy.HintAnnounce(policy, None)))
 
   lazy val itemElem : Elem = (rssElemBeforeOverrides \ "channel" \ "item").uniqueOr { (ns : NodeSeq, nu : NotUnique) =>
     throw new AssertionError( s"ItemContent should only be initialized with single-item RSS, we found ${nu}." )
@@ -72,14 +72,27 @@ case class ItemContent private (
   lazy val link    : Option[String]  = overrideLink    orElse extractLink
   lazy val media   : Seq[Media]      = overrideMedia.getOrElse( extractMedia )
 
-  lazy val iffyHintAnnounceParsings : Seq[Iffy.HintAnnounce] =
-    overrideHintAnnounceParsings.getOrElse( Iffy.HintAnnounce.extract( itemElem ) )
+  lazy val iffyHintAnnounceParsings : Seq[Element.Iffy.HintAnnounce] =
+    overrideHintAnnounceParsings.getOrElse:
+      val (warnings, parsings) = Element.Iffy.HintAnnounce.extractFromChildren( itemElem, false )
+      warnings.foreach( w => WARNING.log(w) )
+      parsings
 
-  lazy val iffyHintAnnounceUnrestrictedPolicy : Iffy.HintAnnounce.Policy =
+  lazy val iffyHintAnnounceUnrestrictedPolicy : Element.Iffy.HintAnnounce.Policy =
     iffyHintAnnounceParsings
-      .collect { case iha if iha.restriction.isEmpty => iha.policy }
+      .collect {
+        case iha if iha.restriction.isEmpty =>
+          val rawPolicy = iha.policy.value
+          Element.Iffy.HintAnnounce.Policy.lenientParse(rawPolicy) match
+            case Some( policy ) => policy
+            case None =>
+              val out = Element.Iffy.HintAnnounce.Policy.Always
+              WARNING.log("Found bad iffy:hint-announce policy '${rawPolicy}'. Defaulting to '${out}'.")
+              DEBUG.log(s"item with bad iffy:hint-announce policy '${rawPolicy}':\n${itemElem}")
+              out
+      }
       .headOption
-      .getOrElse( Iffy.HintAnnounce.Policy.Always )
+      .getOrElse( Element.Iffy.HintAnnounce.Policy.Always )
 
   def contentHash : Int = this.## // XXX: should I use a better, more guaranteed-stable hash?
 

@@ -27,7 +27,7 @@ object feedletter extends RootModule with DaemonModule with UntemplateModule wit
   val TapirVersion = "1.10.9"
 
   def ivyDeps = Agg(
-    ivy"com.mchange::audiofluidity-rss:0.0.10",
+    ivy"com.mchange::audiofluidity-rss:0.1.0-SNAPSHOT",
     ivy"com.mchange::conveniences:0.0.5",
     ivy"com.mchange:c3p0:0.10.1",
     ivy"com.mchange::mlog-scala:0.3.15",

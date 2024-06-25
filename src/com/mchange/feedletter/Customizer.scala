@@ -2,6 +2,8 @@ package com.mchange.feedletter
 
 import com.mchange.feedletter.*
 
+import audiofluidity.rss.Element
+
 import scala.collection.mutable
 
 import scala.annotation.targetName
@@ -16,7 +18,7 @@ object Customizer extends SelfLogging:
   type MastoAnnouncement       = ( SubscribableName, SubscriptionManager, FeedUrl, ItemContent, ZoneId )                 => Option[String]
   type TemplateParams          = ( SubscribableName, SubscriptionManager, FeedUrl, Destination, SubscriptionId, String ) => Map[String,String]
   type Filter                  = ( SubscribableName, SubscriptionManager, ItemContent )                                  => Boolean                          // filters are applied early, upon assignment
-  type HintAnnounceRestriction = ( SubscribableName, SubscriptionManager, ItemContent )                                  => Option[Iffy.HintAnnounce.Policy] // hint announce policy is applied last, just before routing
+  type HintAnnounceRestriction = ( SubscribableName, SubscriptionManager, ItemContent )                                  => Option[Element.Iffy.HintAnnounce.Policy] // hint announce policy is applied last, just before routing
 
   object Subject                 extends Registry[Customizer.Subject]
   object Contents                extends Registry[Customizer.Contents]
@@ -25,7 +27,7 @@ object Customizer extends SelfLogging:
   object Filter                  extends Registry[Customizer.Filter]
 
   object HintAnnounceRestriction extends Registry[Customizer.HintAnnounceRestriction]:
-    val Disable : HintAnnounceRestriction = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, content : ItemContent ) => Some(Iffy.HintAnnounce.Policy.Always)
+    val Disable : HintAnnounceRestriction = ( subscribableName : SubscribableName, subscriptionManager : SubscriptionManager, content : ItemContent ) => Some(Element.Iffy.HintAnnounce.Policy.Always)
 
   private val AllRegistries = Set( Subject, Contents, MastoAnnouncement, TemplateParams, Filter )
 
