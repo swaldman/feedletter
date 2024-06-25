@@ -10,12 +10,19 @@ import com.mchange.conveniences.collection.*
 
 import MLevel.*
 
+@deprecated("Moving to audiofluidity-rss", since="v0.0.14")
 object Iffy extends SelfLogging:
   private def iffyElem( elem : Elem ) : Boolean = elem.prefix == "iffy" || scopeContainsNamespaceLenient(Namespace.Iffy.unprefixed, elem.scope)
+
+  @deprecated("Moving to audiofluidity-rss", since="v0.0.14")
   object HintAnnounce:
+    @deprecated("Moving to audiofluidity-rss", since="v0.0.14")
     val  Policy = Element.Iffy.HintAnnounce.Policy
+
+    @deprecated("Moving to audiofluidity-rss", since="v0.0.14")
     type Policy = Element.Iffy.HintAnnounce.Policy
 
+    @deprecated("Moving to audiofluidity-rss", since="v0.0.14")
     def extract( itemElem : Elem ) : Seq[HintAnnounce] =
       val ihas = (itemElem \ "hint-announce").asInstanceOf[Seq[Elem]].filter( iffyElem )
       ihas.flatMap: n =>
@@ -42,4 +49,5 @@ object Iffy extends SelfLogging:
             WARNING.log("Illegal iffy:hint-announce ignored, missing policy element: " + n )
             None
 
+  @deprecated("Moving to audiofluidity-rss", since="v0.0.14")
   case class HintAnnounce( policy : HintAnnounce.Policy, restriction : Option[Elem] )
