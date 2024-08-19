@@ -74,9 +74,9 @@ case class ItemContent private (
 
   lazy val iffyHintAnnounceParsings : Seq[Element.Iffy.HintAnnounce] =
     overrideHintAnnounceParsings.getOrElse:
-      val (warnings, parsings) = Element.Iffy.HintAnnounce.extractFromChildren( itemElem, false )
+      val (warnings, parsings) = Element.Iffy.HintAnnounce.extractFromChildren( itemElem )
       warnings.foreach( w => WARNING.log(w) )
-      parsings
+      parsings.map( _(1) )
 
   lazy val iffyHintAnnounceUnrestrictedPolicy : Element.Iffy.HintAnnounce.Policy =
     iffyHintAnnounceParsings
