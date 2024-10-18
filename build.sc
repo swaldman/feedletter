@@ -32,15 +32,15 @@ object feedletter extends RootModule with DaemonModule with UntemplateModule wit
     ivy"com.mchange:c3p0:0.10.1",
     ivy"com.mchange::mlog-scala:0.3.15",
     ivy"com.mchange::texttable:0.0.3",
-    ivy"com.mchange::mailutil:0.0.4",
+    ivy"com.mchange::mailutil:0.0.5-SNAPSHOT",
     ivy"com.mchange::cryptoutil:0.0.2",
     ivy"com.mchange::untemplate:0.1.4",
     ivy"dev.zio::zio:2.1.11",
     ivy"com.monovore::decline:2.4.1",
     ivy"org.postgresql:postgresql:42.7.3",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
-    ivy"com.lihaoyi::os-lib:0.10.2",
-    ivy"com.lihaoyi::requests:0.8.3", // holding back on upgrade to 0.9.0 because of HttpClient hangs observed in unify-rss, similar to https://developer.jboss.org/thread/274758 under pre-21 JVMs
+    ivy"com.lihaoyi::os-lib:0.11.2",
+    ivy"com.lihaoyi::requests:0.8.3", // holding back on upgrade to 0.9.0 because of HttpClient hangs observed in unify-rss, similar to https://developer.jboss.org/thread/274758, only under pre-21 JVMs
     ivy"com.lihaoyi::upickle:3.2.0",
     ivy"com.softwaremill.sttp.tapir::tapir-zio:${TapirVersion}",
     ivy"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
