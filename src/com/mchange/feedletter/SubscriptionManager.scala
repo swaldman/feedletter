@@ -591,7 +591,7 @@ sealed trait SubscriptionManager extends Jsonable:
       throw new ExternalApiForibidden( s"[${subscribableName}]: Subscriptions must be made by an administrator, rather than via the public API." )
     else
       narrowDestination( destination ) match
-        case Right( _ ) => ()
+        case Right( d ) => d.assertValid
         case Left ( _ ) =>
           throw new InvalidDestination( s"[${subscribableName}] Incorrect destination type. We expect a ${sampleDestination.getClass.getName()}. Destination '${destination}' is not. Rejecting." )
 

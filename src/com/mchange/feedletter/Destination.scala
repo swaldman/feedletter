@@ -52,7 +52,7 @@ object Destination:
     override def fullDesc : String = this.rendered
     override def defaultDesc : String = fullDesc
     override def toCsvRow : Seq[String] = Seq( addressPart, q(displayNamePart.getOrElse("")) )
-
+    override lazy val whyInvalid : Option[Throwable] = this.toAddress.whyInvalid
   case class Mastodon( name : String, instanceUrl : String ) extends Destination:
     override def unique = "mastodon:" + wwwFormEncodeUTF8(("name",name),("instanceUrl",instanceUrl))
     override def toFields = Seq( destinationType.s -> Tag.Mastodon.toString, Key.name.s -> this.name, Key.instanceUrl.s -> this.instanceUrl )
@@ -171,4 +171,9 @@ sealed trait Destination extends Jsonable:
   def fullDesc    : String
   def defaultDesc : String
   def toCsvRow    : Seq[String]
+  def whyInvalid  : Option[Throwable] = None
+  def assertValid : Unit =
+    whyInvalid match
+      case None    => ()
+      case Some(t) => throw new InvalidDestination("Invalid destination: " + this, t)
 
