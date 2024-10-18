@@ -521,8 +521,9 @@ object PgDatabase extends Migratory, SelfLogging:
       case NonFatal(t) =>
         val lastRetryMessage = if mswt.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
         WARNING.log( s"Failed email attempt: subject = ${mswt.subject}, from = ${mswt.from}, to = ${mswt.to}, replyTo = ${mswt.replyTo} ), retried = ${mswt.retried} ${lastRetryMessage}", t )
-        LatestSchema.Table.Mailable.insert( conn, mswt.templateHash, mswt.from, mswt.replyTo, mswt.to, mswt.subject, mswt.templateParams, mswt.retried + 1)
-        attemptDeleteContents = false
+        if mswt.retried < maxRetries then
+          LatestSchema.Table.Mailable.insert( conn, mswt.templateHash, mswt.from, mswt.replyTo, mswt.to, mswt.subject, mswt.templateParams, mswt.retried + 1)
+          attemptDeleteContents = false
     if attemptDeleteContents then
       LatestSchema.Table.MailableTemplate.deleteIfUnreferenced( conn, mswt.templateHash )
 
