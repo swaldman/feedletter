@@ -11,7 +11,7 @@ import mill.contrib.buildinfo.BuildInfo
 import $ivy.`de.tototec::de.tobiasroeser.mill.vcs.version::0.4.0`
 import de.tobiasroeser.mill.vcs.version.VcsVersion
 
-import $ivy.`com.mchange::mill-daemon:0.0.1`
+import $ivy.`com.mchange::mill-daemon:0.1.1`
 
 import $ivy.`com.mchange::untemplate-mill:0.1.4`
 import untemplate.mill._
@@ -19,7 +19,7 @@ import com.mchange.milldaemon.DaemonModule
 
 import scala.util.control.NonFatal
 
-object feedletter extends RootModule with DaemonModule with UntemplateModule with PublishModule with BuildInfo {
+object `package` extends RootModule with DaemonModule with UntemplateModule with PublishModule with BuildInfo {
   def scalaVersion = "3.3.4"
 
   override def scalacOptions = T{ Seq("-deprecation") }
@@ -47,7 +47,7 @@ object feedletter extends RootModule with DaemonModule with UntemplateModule wit
     ivy"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
   )
 
-  val pidFilePathFile = os.pwd / ".feedletter-pid-file-path"
+  val pidFilePathFile = mill.api.WorkspaceRoot.workspaceRoot / ".feedletter-pid-file-path"
 
   override def runDaemonPidFile = {
     if ( os.exists( pidFilePathFile ) )
@@ -57,7 +57,7 @@ object feedletter extends RootModule with DaemonModule with UntemplateModule wit
           throw new Exception( s"Could not parse absolute path of desired PID file from contents of ${pidFilePathFile}. Please repair or remove this file.", t )
       }
     else
-      Some( os.pwd / "feedletter.pid" )
+      Some( mill.api.WorkspaceRoot.workspaceRoot / "feedletter.pid" )
   }
 
   def buildInfoMembers = Seq(
@@ -88,7 +88,7 @@ object feedletter extends RootModule with DaemonModule with UntemplateModule wit
   def overwriteLatestMillw() = T.command {
     import java.nio.file.attribute.PosixFilePermission._
     val target = mill.util.Util.download("https://raw.githubusercontent.com/lefou/millw/main/millw")
-    val millw = build.millSourcePath / "millw"
+    val millw = Task.workspace / "millw"
     os.copy.over(target.path, millw)
     os.perms.set(millw, os.perms(millw) + OWNER_EXECUTE + GROUP_EXECUTE + OTHERS_EXECUTE)
     target

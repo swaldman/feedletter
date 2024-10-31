@@ -1,6 +1,6 @@
 import mill._, scalalib._
 
-object millbuild extends MillBuildRootModule {
+object `package` extends MillBuildRootModule {
   def scalacOptions = T {
     super.scalacOptions() ++ Seq("-Ytasty-reader")
   }
