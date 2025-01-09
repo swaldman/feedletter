@@ -97,7 +97,7 @@ object SubscriptionManager:
           case (None,        Some(author), Some(link)) => Some( s"[${subscribableName}] New Untitled Post, by ${author} ${link}" )
           case (None,        None,         Some(link)) => Some( s"[${subscribableName}] New Untitled Post at ${link}" )
           case (_,           _,            None      ) =>
-            WARNING.log( s"No link found. withinTypeId: ${withinTypeId}" ) 
+            WARNING.log( s"No link found, skipping masto announcement. withinTypeId: ${withinTypeId}" ) 
             None
 
       override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
@@ -128,6 +128,61 @@ object SubscriptionManager:
 
     override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
   end Mastodon
+
+  object BlueSky:
+    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.BlueSky:
+
+      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
+
+      override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
+
+      override def assignWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+        Some( guid.toString() )
+
+      override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
+
+      def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
+        Customizer.BskyAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
+          customizer( subscribableName, this, feedUrl, content, tz )
+
+      def defaultFormatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] = // ADD EXTRA-PARAMS AND GUIDs
+        ( content.title, content.author, content.link) match
+          case (Some(title), Some(author), Some(link)) => Some( s"[${subscribableName}] New Post: ${title}, by ${author} ${link}" )
+          case (Some(title), None,         Some(link)) => Some( s"[${subscribableName}] New Post: ${title} ${link}" )
+          case (None,        Some(author), Some(link)) => Some( s"[${subscribableName}] New Untitled Post, by ${author} ${link}" )
+          case (None,        None,         Some(link)) => Some( s"[${subscribableName}] New Untitled Post at ${link}" )
+          case (_,           _,            None      ) =>
+            WARNING.log( s"No link found, skipping bsky announcement. withinTypeId: ${withinTypeId}" ) 
+            None
+
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        val uniqueContent = contents.uniqueOr: (c, nu) =>
+          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+        val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent, timeZone )
+        mbTemplate.foreach: template =>
+          val bskyDestinationsWithTemplateParams =
+            idestinations.map: idestination =>
+              val destination = idestination.destination
+              val sid = idestination.subscriptionId
+              val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
+              ( destination, templateParams )
+          bskyDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
+            val fullContent = templateParams.fill( template )
+            PgDatabase.queueForBskyPost( conn, fullContent, BskyEntrywayUrl( destination.entrywayUrl ), BskyIdentifier( destination.identifier ), uniqueContent.media )
+
+      override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
+        Map(
+          "entrywayUrl" -> destination.entrywayUrl,
+          "identifier" -> destination.identifier
+        )
+
+  sealed trait BlueSky extends SubscriptionManager:
+    override type D = Destination.BlueSky
+
+    override val sampleDestination = Destination.BlueSky( entrywayUrl = "https://bsky.social/", identifier = "interfluidity.com" )
+
+    override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
+  end BlueSky
 
   object Email:
     type Companion = Each.type | Daily.type | Weekly.type | Fixed.type
@@ -467,6 +522,7 @@ object SubscriptionManager:
     case Email_Weekly   extends Tag("Email.Weekly")
     case Email_Fixed    extends Tag("Email.Fixed")
     case Masto_Announce extends Tag("Mastodon.Announce")
+    case Bsky_Announce  extends Tag("BlueSky.Announce")
 
   private def toUJsonV1( subscriptionManager : SubscriptionManager ) : ujson.Value =
     def esf( emailsub : Email.Instance ) : ujson.Obj = // "email shared fields"
@@ -488,15 +544,19 @@ object SubscriptionManager:
     def ewf( weekly : Email.Weekly ) : ujson.Obj = epbsf( weekly )
     def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj addOne( ("numItemsPerLetter" -> fixed.numItemsPerLetter) ) )
     def maf( announce : Mastodon.Announce ) : ujson.Obj = ujson.Obj( // "mastodon announce fields"
-      "extraParams" -> writeJs( announce.extraParams ) 
+      "extraParams" -> writeJs( announce.extraParams )
+    )
+    def bsf( announce : BlueSky.Announce ) : ujson.Obj = ujson.Obj(
+      "extraParams" -> writeJs( announce.extraParams )
     )
     val (fields, tpe) =
       subscriptionManager match
-        case each     : Email.Each        => ( eef(each),     Tag.Email_Each     )
-        case daily    : Email.Daily       => ( edf(daily),    Tag.Email_Daily    )
-        case weekly   : Email.Weekly      => ( ewf(weekly),   Tag.Email_Weekly   )
-        case fixed    : Email.Fixed       => ( eff(fixed),    Tag.Email_Fixed    )
-        case announce : Mastodon.Announce => ( maf(announce), Tag.Masto_Announce )
+        case each        : Email.Each        => ( eef(each),        Tag.Email_Each     )
+        case daily       : Email.Daily       => ( edf(daily),       Tag.Email_Daily    )
+        case weekly      : Email.Weekly      => ( ewf(weekly),      Tag.Email_Weekly   )
+        case fixed       : Email.Fixed       => ( eff(fixed),       Tag.Email_Fixed    )
+        case m_announce  : Mastodon.Announce => ( maf(m_announce),  Tag.Masto_Announce )
+        case bs_announce : BlueSky.Announce  => ( bsf(bs_announce), Tag.Bsky_Announce  )
     val headerFields =
        ujson.Obj(
          "version" -> 1,
@@ -554,6 +614,9 @@ object SubscriptionManager:
           extraParams                       = read[Map[String,String]](obj("extraParams"))
         )
         case Tag.Masto_Announce => Mastodon.Announce(
+          extraParams = read[Map[String,String]](obj("extraParams"))
+        )
+        case Tag.Bsky_Announce => BlueSky.Announce(
           extraParams = read[Map[String,String]](obj("extraParams"))
         )
 

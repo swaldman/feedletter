@@ -16,6 +16,7 @@ object Customizer extends SelfLogging:
   type Subject                 = ( SubscribableName, SubscriptionManager, FeedUrl, Seq[ItemContent], ZoneId )            => String
   type Contents                = ( SubscribableName, SubscriptionManager, FeedUrl, Seq[ItemContent], ZoneId )            => Seq[ItemContent]
   type MastoAnnouncement       = ( SubscribableName, SubscriptionManager, FeedUrl, ItemContent, ZoneId )                 => Option[String]
+  type BskyAnnouncement        = ( SubscribableName, SubscriptionManager, FeedUrl, ItemContent, ZoneId )                 => Option[String]
   type TemplateParams          = ( SubscribableName, SubscriptionManager, FeedUrl, Destination, SubscriptionId, String ) => Map[String,String]
   type Filter                  = ( SubscribableName, SubscriptionManager, ItemContent )                                  => Boolean                                  // filters are applied early, upon assignment
   type HintAnnounceRestriction = ( SubscribableName, SubscriptionManager, ItemContent )                                  => Option[Element.Iffy.HintAnnounce.Policy] // hint announce policy is applied last, just before routing
@@ -23,6 +24,7 @@ object Customizer extends SelfLogging:
   object Subject                 extends Registry[Customizer.Subject]
   object Contents                extends Registry[Customizer.Contents]
   object MastoAnnouncement       extends Registry[Customizer.MastoAnnouncement]
+  object BskyAnnouncement        extends Registry[Customizer.BskyAnnouncement]
   object TemplateParams          extends Registry[Customizer.TemplateParams]
   object Filter                  extends Registry[Customizer.Filter]
 
