@@ -14,6 +14,7 @@ class EditorNotDefined( msg : String, cause : Throwable = null ) extends Feedlet
 class InvalidEditFormat( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class NoSecretSalt( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class NoAccessToken( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+class NoAppPassword( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class DuplicateKey( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class LeakySecrets( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class WouldDropSubscriptions( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )

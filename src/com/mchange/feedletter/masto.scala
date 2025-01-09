@@ -1,6 +1,5 @@
 package com.mchange.feedletter
 
-import scala.util.Using
 import com.mchange.conveniences.string.*
 import com.mchange.feedletter.Destination.Key
 
@@ -39,7 +38,7 @@ def postMedia( accessToken : String, instanceUrl : String, media : ItemContent.M
   val jsonOut = ujson.read(response.text())
   jsonOut.obj("id").str // the id comes back as a JSON *String*, not a number
 
-def mastoPost( as : AppSetup, mastoPostable : MastoPostable ) =
+def mastoPost( as : AppSetup, mastoPostable : MastoPostable ) : Unit =
   val accessTokenKey = s"feedletter.masto.access.token.${mastoPostable.name}"
   val accessToken = as.secrets.get( accessTokenKey ).getOrElse:
     throw new NoAccessToken( s"No access token found in application secrets under key '${accessTokenKey}'." )
