@@ -12,6 +12,7 @@ object Default:
     val StylePort      = 8080
 
   object Config:
+    val BlueskyMaxRetries     : Int         = 10
     val ConfirmHours          : Int         = 48
     val MailBatchSize         : Int         = 100
     val MailBatchDelaySeconds : Int         = 10 * 60 // 10 mins

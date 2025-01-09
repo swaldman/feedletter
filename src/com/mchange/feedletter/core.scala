@@ -49,6 +49,7 @@ final case class AssignableWithinTypeStatus( withinTypeId : String, count : Int 
 final case class BskyPostable( id : BskyPostableId, finalContent : String, entrywayUrl : BskyEntrywayUrl, identifier : BskyIdentifier, retried : Int, media : Seq[ItemContent.Media] )
 
 enum ConfigKey:
+  case BlueskyMaxRetries
   case ConfirmHours
   case DumpDbDir
   case MailBatchSize

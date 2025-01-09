@@ -224,6 +224,11 @@ object Main extends AbstractMain, SelfLogging:
         .map( v => (key, v.toString()) )
         .orNone
     val opts =
+      val blueskyMaxRetries = simpleConfigOpt[Int]( ConfigKey.BlueskyMaxRetries )(
+        name    = "bluesky-max-retries",
+        help    = "Number of times to retry failed Bluesky notifications.",
+        metavar = "retries"
+      )
       val confirmHours = simpleConfigOpt[Int]( ConfigKey.ConfirmHours )(
         name    = "confirm-hours",
         help    = "Number of hours to await a user confiration before automatically unsubscribing.",
@@ -250,6 +255,11 @@ object Main extends AbstractMain, SelfLogging:
         name    = "mail-max-retries",
         help    = "Number of times e-mail sends (defined as successful submission to an SMTP service) will be attempted before giving up.",
         metavar = "times"
+      )
+      val mastodonMaxRetries = simpleConfigOpt[Int]( ConfigKey.MastodonMaxRetries )(
+        name    = "mastodon-max-retries",
+        help    = "Number of times to retry failed Mastodon notifications.",
+        metavar = "retries"
       )
       val timeZone = simpleConfigOpt[String]( ConfigKey.TimeZone )(
         name    = "time-zone",
@@ -286,8 +296,8 @@ object Main extends AbstractMain, SelfLogging:
         help    = "The port from which the web api is served (usually blank, protocol determined).",
         metavar = "port"
       )
-      ( confirmHours, dumpDbDir, mailBatchSize, mailBatchDelaySecs, mailMaxRetries, timeZone, webDaemonInterface, webDaemonPort, webApiProtocol, webApiHostName, webApiBasePath, webApiPort ) mapN: ( ch, ddr, mbs, mbds, mmr, tz, wdi, wdp, wapro, wahn, wabp, wapo) =>
-        val settings : Map[ConfigKey,String] = (Vector.empty ++ ch ++ ddr ++ mbs ++ mbds ++ mmr ++ tz ++ wdi ++ wdp ++ wapro ++ wahn ++ wabp ++ wapo).toMap
+      ( blueskyMaxRetries, confirmHours, dumpDbDir, mailBatchSize, mailBatchDelaySecs, mailMaxRetries, mastodonMaxRetries, timeZone, webDaemonInterface, webDaemonPort, webApiProtocol, webApiHostName, webApiBasePath, webApiPort ) mapN: ( bmr, ch, ddr, mbs, mbds, mmr, mastomr, tz, wdi, wdp, wapro, wahn, wabp, wapo) =>
+        val settings : Map[ConfigKey,String] = (Vector.empty ++ bmr ++ ch ++ ddr ++ mbs ++ mbds ++ mmr ++ mastomr ++ tz ++ wdi ++ wdp ++ wapro ++ wahn ++ wabp ++ wapo).toMap
         CommandConfig.SetConfig( settings )
     Command("set-config", header=header)( opts )
   val sendTestEmail =

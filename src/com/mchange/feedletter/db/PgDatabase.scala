@@ -458,6 +458,7 @@ object PgDatabase extends Migratory, SelfLogging:
   object Config:
     def fetchValue( conn : Connection, key : ConfigKey ) : Option[String] = LatestSchema.Table.Config.select( conn, key )
     def zfetchValue( conn : Connection, key : ConfigKey ) : Task[Option[String]] = ZIO.attemptBlocking( LatestSchema.Table.Config.select( conn, key ) )
+    def blueskyMaxRetries( conn : Connection ) : Int = fetchValue( conn, ConfigKey.BlueskyMaxRetries ).map( _.toInt ).getOrElse( Default.Config.BlueskyMaxRetries )
     def confirmHours( conn : Connection ) : Int = fetchValue( conn, ConfigKey.ConfirmHours ).map( _.toInt ).getOrElse( Default.Config.ConfirmHours )
     def dumpDbDir( conn : Connection ) : os.Path = fetchValue( conn, ConfigKey.DumpDbDir ).map( os.Path.apply ).getOrElse( throw new ConfigurationMissing( ConfigKey.DumpDbDir ) )
     def timeZone( conn : Connection ) : ZoneId = fetchValue( conn, ConfigKey.TimeZone ).map( str => ZoneId.of(str) ).getOrElse( ZoneId.systemDefault() )
@@ -475,6 +476,7 @@ object PgDatabase extends Migratory, SelfLogging:
     // may throw, if there's nothing set and no default! catch and handle accordingly!
     def fetchByKey( conn : Connection, key : ConfigKey ) : Any =
       key match
+        case ConfigKey.BlueskyMaxRetries     => blueskyMaxRetries(conn)
         case ConfigKey.ConfirmHours          => confirmHours(conn)
         case ConfigKey.DumpDbDir             => dumpDbDir(conn)
         case ConfigKey.MailBatchSize         => mailBatchSize(conn)
@@ -779,4 +781,37 @@ object PgDatabase extends Migratory, SelfLogging:
 
   def destinationAlreadySubscribed( conn : Connection, destination : Destination, subscribableName : SubscribableName ) : Boolean =
     LatestSchema.Table.Subscription.destinationAlreadySubscribed( conn, destination, subscribableName )
+
+  def queueForBskyPost( conn : Connection, fullContent : String, bskyEntrywayUrl : BskyEntrywayUrl, bskyIdentifier : BskyIdentifier, media : Seq[ItemContent.Media] ) =
+    val id = LatestSchema.Table.BskyPostable.Sequence.BskyPostableSeq.selectNext( conn )
+    LatestSchema.Table.BskyPostable.insert( conn, id, fullContent, bskyEntrywayUrl, bskyIdentifier, 0 )
+    (0 until media.size).foreach: i =>
+      LatestSchema.Table.BskyPostableMedia.insert( conn, id, i, media(i) )
+
+  def attemptBskyPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, bskyPostable : BskyPostable ) : Boolean =
+    val media = bskyPostable.media
+    if media.nonEmpty then
+      LatestSchema.Table.BskyPostableMedia.deleteById(conn, bskyPostable.id)
+    LatestSchema.Table.BskyPostable.delete(conn, bskyPostable.id)
+    try
+      bskyPost( appSetup, bskyPostable )
+      INFO.log( s"Notification posted to Bluesky destination ${bskyPostable.entrywayUrl}." )
+      true
+    catch
+      case NonFatal(t) =>
+        val lastRetryMessage = if bskyPostable.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
+        WARNING.log( s"Failed attempt to post to Bluesky destination '${bskyPostable.entrywayUrl}', retried = ${bskyPostable.retried} ${lastRetryMessage}", t )
+        val newId = LatestSchema.Table.BskyPostable.Sequence.BskyPostableSeq.selectNext( conn )
+        LatestSchema.Table.BskyPostable.insert( conn, newId, bskyPostable.finalContent, bskyPostable.entrywayUrl, bskyPostable.identifier, bskyPostable.retried + 1 )
+        (0 until media.size).foreach: i =>
+          LatestSchema.Table.BskyPostableMedia.insert( conn, bskyPostable.id, i, media(i) )
+        false
+
+  def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
+    val retries = Config.blueskyMaxRetries( conn )
+    LatestSchema.Table.BskyPostable.foreach( conn ): bskyPostable =>
+      attemptBskyPost( conn, appSetup, retries, bskyPostable )
+
+  def notifyAllBskyPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
+    withConnectionTransactional( ds )( conn => notifyAllBskyPosts( conn, appSetup ) )
 
