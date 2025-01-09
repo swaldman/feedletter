@@ -31,7 +31,12 @@ trait AbstractMain extends SelfLogging:
         val instanceUrl = Opts.option[String]("masto-instance-url",help="The URL of the Mastodon instance",metavar="url")
         ( instanceName, instanceUrl ) mapN: (in, iu) =>
           Destination.Mastodon( name = in, instanceUrl = iu )
-      email orElse sms orElse mastodon
+      val bluesky =
+        val identifier  = Opts.option[String]("bsky-identifier",help="An account identifier, usually a DNS name or value beginning with 'did:'.",metavar="identifier")
+        val entrywayUrl = Opts.option[String]("bsky-entryway-url",help="The base URL of the bluesky service.",metavar="name").withDefault("https://bsky.social/")
+        ( identifier, entrywayUrl ) mapN: (id, eu) =>
+          Destination.BlueSky(entrywayUrl = eu, identifier = id)
+      email orElse sms orElse mastodon orElse bluesky
     val AwaitStabilizationMinutes =
       val help = "Period (in minutes) over which an item should not have changed before it is considered stable and can be notified."
       Opts.option[Int]("await-stabilization-minutes", help=help, metavar="minutes")
