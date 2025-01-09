@@ -963,3 +963,126 @@ object PgSchema:
         end SubscribableSubscription
       end Join
 
+  object V2 extends Base:
+    override val Version = 2
+      object Table:
+        val Config              = V1.Table.Config
+        val Flags               = V1.Table.Flags
+        val Feed                = V1.Table.Feed
+        val Item                = V1.Table.Item
+        val Subscribable        = V1.Table.Subscribable
+        val Assignable          = V1.Table.Assignable
+        val Assignment          = V1.Table.Assignment
+        val Subscription        = V1.Table.Subscription
+        val MailableTemplate    = V1.Table.MailableTemplate
+        val Mailable            = V1.Table.Mailable
+        val ImmediatelyMailable = V1.Table.ImmediatelyMailable
+        val MastoPostable       = V1.Table.MastoPostable
+        val MastoMostableMedia  = V1.Table.MastoPostableMedia
+
+        // BlueSky destination, like Mastodon destinations, are usually few, so we're not going to bother
+        // sharing content-addressed templates like we did for mailing
+        object BskyPostable extends Creatable:
+          protected val Create =
+            """|CREATE TABLE bsky_postable(
+               |  seqnum          BIGINT,
+               |  final_content   TEXT NOT NULL,
+               |  entryway_url    VARCHAR(1024) NOT NULL,
+               |  identifier      VARCHAR(256)  NOT NULL,
+               |  retried         INTEGER       NOT NULL,
+               |  PRIMARY KEY(seqnum)
+               |)""".stripMargin
+          private val Insert =
+            """|INSERT INTO bsky_postable(seqnum, final_content, entryway_url, identifier, retried)
+               |VALUES ( ?, ?, ?, ?, ? )""".stripMargin
+          private val Delete =
+            """|DELETE FROM bsky_postable
+               |WHERE seqnum = ?""".stripMargin
+          private val SelectById =
+            """|SELECT final_content, entryway_url, identifier, retried
+               |FROM bsky_postable
+               |WHERE seqnum = ?""".stripMargin
+          private val SelectAll =
+            """|SELECT seqnum, final_content, entryway_url, identifier, retried
+               |FROM bsky_postable""".stripMargin
+          def insert( conn : Connection, id : BskyPostableId, finalContent : String, bskyEntrywayUrl : BskyEntrywayUrl, bskyIdentifier : BskyIdentifier, retried : Int ) =
+            Using.resource( conn.prepareStatement( Insert ) ): ps =>
+              ps.setLong  (1, id.toLong)
+              ps.setString(2, finalContent)
+              ps.setString(3, bskyEntrywayUrl.str)
+              ps.setString(4, bskyIdentifier.str)
+              ps.setInt   (5, retried)
+              ps.executeUpdate()
+          def delete( conn : Connection, id : BskyPostableId ) =
+            Using.resource( conn.prepareStatement( Delete ) ): ps =>
+              ps.setLong(1, id.toLong)
+              ps.executeUpdate()
+          def selectByIdAndMedia( conn : Connection, id : BskyPostableId, media : Seq[ItemContent.Media] ) : Set[BskyPostable] =
+            Using.resource( conn.prepareStatement( SelectById ) ): ps =>
+              ps.setLong(1, id.toLong)
+              Using.resource( ps.executeQuery() ): rs =>
+                toSet( rs )( rs => com.mchange.feedletter.BskyPostable( BskyPostableId( id.toLong ), rs.getString(1), BskyEntrywayUrl( rs.getString(2) ), BskyIdentifier( rs.getString(3) ), rs.getInt(4), media ) )
+          def foreach( conn : Connection )( action : BskyPostable => Unit ) =
+            Using.resource( conn.prepareStatement(SelectAll) ): ps =>
+              Using.resource( ps.executeQuery() ): rs =>
+                while rs.next() do
+                  val id           = BskyPostableId( rs.getLong(1) )
+                  val finalContent = rs.getString(2)
+                  val entrywayUrl  = BskyEntrywayUrl( rs.getString(3) )
+                  val identifier   = BskyIdentifier( rs.getString(4) )
+                  val retried      = rs.getInt(5)
+                  val media        = BskyPostableMedia.selectAllForId(conn, id)
+                  action( com.mchange.feedletter.BskyPostable( id, finalContent, entrywayUrl, identifier, retried, media ) )
+          object Sequence:
+            object BskyPostableSeq extends Creatable:
+              protected val Create = "CREATE SEQUENCE bsky_postable_seq AS BIGINT"
+                private val SelectNext = "SELECT nextval('bsky_postable_seq')"
+                def selectNext( conn : Connection ) : BskyPostableId =
+                  Using.resource( conn.prepareStatement(SelectNext) ): ps =>
+                    Using.resource( ps.executeQuery() ): rs =>
+                      uniqueResult("select-next-bsky-postable-seq", rs)( rs => BskyPostableId( rs.getLong(1) ) )
+        object BskyPostableMedia extends Creatable:
+          protected val Create =
+            """|CREATE TABLE bsky_postable_media (
+               |  bsky_postable_id   BIGINT,
+               |  position           INT,
+               |  media_url          VARCHAR(1024) NOT NULL,
+               |  mime_type          VARCHAR(256),
+               |  size               BIGINT,
+               |  alt                TEXT,
+               |  PRIMARY KEY(bsky_postable_id, position),
+               |  FOREIGN KEY(bsky_postable_id) REFERENCES bsky_postable(seqnum)
+               |)""".stripMargin
+          private val Insert =
+            """|INSERT INTO bsky_postable_media(bsky_postable_id,position,media_url,mime_type,size,alt)
+               |VALUES( ?, ?, ?, ?, ?, ? )""".stripMargin
+          private val SelectAllForId =
+            """|SELECT media_url, mime_type, size, alt
+               |FROM bsky_postable_media
+               |WHERE bsky_postable_id = ?
+               |ORDER BY position""".stripMargin
+          private val DeleteById =
+            """|DELETE FROM bsky_postable_media
+               |WHERE bsky_postable_id = ?""".stripMargin
+          def insert( conn : Connection, id : BskyPostableId, position : Int, media : ItemContent.Media ) =
+            Using.resource( conn.prepareStatement(Insert) ): ps =>
+              ps.setLong            (1, id.toLong )
+              ps.setInt             (2, position )
+              ps.setString          (3, media.url )
+              setStringOptional( ps, 4, Types.VARCHAR, media.mimeType )
+              setLongOptional  ( ps, 5, Types.BIGINT, media.length )
+              setStringOptional( ps, 6, Types.CLOB, media.alt )
+              ps.executeUpdate()
+          def selectAllForId( conn : Connection, id : BskyPostableId ) : Seq[ItemContent.Media] =
+            Using.resource( conn.prepareStatement(SelectAllForId) ): ps =>
+              ps.setLong(1, id.toLong)
+              Using.resource( ps.executeQuery() ): rs =>
+                val builder = Seq.newBuilder[ItemContent.Media]
+                while rs.next do
+                  builder += ItemContent.Media( rs.getString(1), Option( rs.getString(2) ), Option( rs.getLong(3) ), Option( rs.getString(4) ) )
+                builder.result  
+          def deleteById( conn : Connection, id : BskyPostableId ) =
+            Using.resource( conn.prepareStatement( DeleteById ) ): ps =>
+              ps.setLong(1, id.toLong )
+              ps.executeUpdate()
+      val Join = V1.Join  
