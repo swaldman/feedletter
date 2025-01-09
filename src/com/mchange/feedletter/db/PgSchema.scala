@@ -978,7 +978,7 @@ object PgSchema:
         val Mailable            = V1.Table.Mailable
         val ImmediatelyMailable = V1.Table.ImmediatelyMailable
         val MastoPostable       = V1.Table.MastoPostable
-        val MastoMostableMedia  = V1.Table.MastoPostableMedia
+        val MastoPostableMedia  = V1.Table.MastoPostableMedia
 
         // BlueSky destination, like Mastodon destinations, are usually few, so we're not going to bother
         // sharing content-addressed templates like we did for mailing

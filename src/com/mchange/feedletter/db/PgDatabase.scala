@@ -26,7 +26,7 @@ import com.mchange.feedletter.BuildInfo
 import com.mchange.feedletter.api.ApiLinkGenerator
 
 object PgDatabase extends Migratory, SelfLogging:
-  val LatestSchema = PgSchema.V1
+  val LatestSchema = PgSchema.V2
   override val targetDbVersion = LatestSchema.Version
 
   private def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Option[String] =
@@ -137,10 +137,24 @@ object PgDatabase extends Migratory, SelfLogging:
           (MetadataKey.CreatorAppVersion, BuildInfo.version)
         )
 
+    def upMigrateFrom_1() : Task[Unit] =
+      TRACE.log( "upMigrateFrom_1()" )
+      withConnectionTransactional( ds ): conn =>
+        Using.resource( conn.createStatement() ): stmt =>
+          PgSchema.V2.Table.BskyPostable.create( stmt )
+          PgSchema.V2.Table.BskyPostable.Sequence.BskyPostableSeq.create( stmt )
+          PgSchema.V2.Table.BskyPostableMedia.create( stmt )
+        updateMetadataKeys(
+          conn,
+          (MetadataKey.SchemaVersion, "2"),
+          (MetadataKey.CreatorAppVersion, BuildInfo.version)
+        )
+
     TRACE.log( s"upMigrate( from=${from} )" )
     from match
       case None      => upMigrateFrom_New()
       case Some( 0 ) => upMigrateFrom_0()
+      case Some( 1 ) => upMigrateFrom_1()
       case Some( `targetDbVersion` ) =>
         ZIO.fail( new CannotUpMigrate( s"Cannot upmigrate from current target DB version: V${targetDbVersion}" ) )
       case Some( other ) =>
