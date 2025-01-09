@@ -17,6 +17,34 @@ opaque type AddressHeader[T <: AddressHeaderType] = String
 extension[T <: AddressHeaderType] ( addressHeader : AddressHeader[T] )
   @targetName("addressHeaderToString") inline def str : String = addressHeader
 
+object BskyEntrywayUrl:
+  def apply( s : String ) : BskyEntrywayUrl = s
+opaque type BskyEntrywayUrl = String
+
+extension( bskyEntrywayUrl : BskyEntrywayUrl )
+  @targetName("bskyEntrywayUrlToString") inline def str : String = bskyEntrywayUrl
+
+object BskyIdentifier:
+  def apply( s : String ) : BskyIdentifier = s
+opaque type BskyIdentifier = String
+
+extension( bskyIdentifier : BskyIdentifier )
+  @targetName("bskyIdentifierToString") inline def str : String = bskyIdentifier
+
+object BskyPostableId:
+  def apply( l : Long ) : BskyPostableId = l
+opaque type BskyPostableId = Long
+
+extension ( bspid : BskyPostableId )
+  @targetName("bskyPostableIdToLong") inline def toLong : Long = bspid
+
+object DestinationJson:
+  def apply( s : String ) : DestinationJson = s
+opaque type DestinationJson <: Json = String
+
+extension( destinationJson : DestinationJson )
+  @targetName("destinationJsonToString") inline def str : String = destinationJson
+
 object FeedId:
   def apply( i : Int ) : FeedId = i
 opaque type FeedId = Int
@@ -60,13 +88,6 @@ opaque type SubscriptionManagerJson <: Json = String
 
 extension( subscriptionManagerJson : SubscriptionManagerJson )
   @targetName("subscriptionManagerJsonToString") inline def str : String = subscriptionManagerJson
-
-object DestinationJson:
-  def apply( s : String ) : DestinationJson = s
-opaque type DestinationJson <: Json = String
-
-extension( destinationJson : DestinationJson )
-  @targetName("destinationJsonToString") inline def str : String = destinationJson
 
 object MastoName:
   def apply( s : String ) : MastoName = s
