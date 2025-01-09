@@ -22,9 +22,11 @@ object Destination:
     val Email    = Seq(q("E-Mail"), q("Display Name"))
     val Mastodon = Seq(q("Instance URL"), q("Name"))
     val Sms      = Seq(q("Phone Number"))
+    val BlueSky  = Seq(q("Entryway URL"), q("Identifier"))
   given TypeMetaInfo[Email] = new TypeMetaInfo[Email] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Email }
   given TypeMetaInfo[Mastodon] = new TypeMetaInfo[Mastodon] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Mastodon }
   given TypeMetaInfo[Sms] = new TypeMetaInfo[Sms] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Sms }
+  given TypeMetaInfo[BlueSky] = new TypeMetaInfo[BlueSky] { def csvRowHeaders : Seq[String] = CsvRowHeaders.BlueSky }
 
   def csvRowHeaders[T <: Destination](using TypeMetaInfo[T]) =
     summon[TypeMetaInfo[T]].csvRowHeaders
@@ -32,11 +34,11 @@ object Destination:
   private object Tag:
     def valueOfIgnoreCaseOption( s : String ) : Option[Tag] = Tag.values.find( _.toString.equalsIgnoreCase(s) )
   private enum Tag:
-    case Email, Sms, Mastodon
+    case Email, Sms, Mastodon, BlueSky
 
   private enum Key:
     def s = this.toString
-    case addressPart,displayNamePart,number,name,instanceUrl,version,`type`,destinationType
+    case addressPart,displayNamePart,number,name,instanceUrl,version,`type`,destinationType,entrywayUrl,identifier
 
   import Key.*
 
@@ -54,13 +56,12 @@ object Destination:
     override def toCsvRow : Seq[String] = Seq( addressPart, q(displayNamePart.getOrElse("")) )
     override lazy val whyInvalid : Option[Throwable] = this.toAddress.whyInvalid
   case class Mastodon( name : String, instanceUrl : String ) extends Destination:
-    override def unique = "mastodon:" + wwwFormEncodeUTF8(("name",name),("instanceUrl",instanceUrl))
+    override def unique = "mastodon:" + wwwFormEncodeUTF8((Key.name.s,name),(Key.instanceUrl.s,instanceUrl))
     override def toFields = Seq( destinationType.s -> Tag.Mastodon.toString, Key.name.s -> this.name, Key.instanceUrl.s -> this.instanceUrl )
     override def shortDesc : String = this.instanceUrl
-    override def fullDesc : String = s"Mastodon nicknamed '${name}' instance at ${instanceUrl}"
+    override def fullDesc : String = s"Mastodon instance nicknamed '${name}' at ${instanceUrl}"
     override def defaultDesc : String = shortDesc
     override def toCsvRow : Seq[String] = Seq( instanceUrl, q(name) )
-
   case class Sms( number : String ) extends Destination:
     override def unique = s"sms:${number}"
     override def toFields = Seq( destinationType.s -> Tag.Sms.toString, Key.number.s -> this.number )
@@ -68,6 +69,13 @@ object Destination:
     override def fullDesc : String = s"SMS destination '${number}'"
     override def defaultDesc : String = shortDesc
     override def toCsvRow : Seq[String] = Seq( q(number) )
+  case class BlueSky( entrywayUrl : String, identifier : String  ) extends Destination:
+    override def unique = "bluesky:" + wwwFormEncodeUTF8((Key.entrywayUrl.s,entrywayUrl),(Key.identifier.s,identifier))
+    override def toFields = Seq( destinationType.s -> Tag.BlueSky.toString, Key.entrywayUrl.s -> this.entrywayUrl, Key.identifier.s -> this.identifier )
+    override def shortDesc : String = s"${identifier} at ${entrywayUrl}"
+    override def fullDesc : String = s"Bluesky account identified as '${identifier}' at entryway '${entrywayUrl}'"
+    override def defaultDesc : String = shortDesc
+    override def toCsvRow : Seq[String] = Seq( entrywayUrl, identifier )
 
   def materialize( json : Destination.Json ) : Destination = read[Destination]( json.toString )
 
@@ -105,11 +113,19 @@ object Destination:
         nu <- fmap.get( number.s )
       yield
         Sms( number = nu )
+    def bluesky( fields : Seq[(String,String)] ) : Option[Destination.BlueSky] = bluesky( CarefulMap( fields ) )
+    private def bluesky( fmap : CarefulMap ) : Option[Destination.BlueSky] =
+      for
+        eu <- fmap.get( entrywayUrl.s )
+        id <- fmap.get( identifier.s )
+      yield
+        BlueSky( entrywayUrl = eu, identifier = id )
     private def byType( tpe : String, fmap : CarefulMap ) : Option[Destination] =
       Tag.valueOfIgnoreCaseOption(tpe) match
         case Some( Tag.Email )    => email(fmap)
         case Some( Tag.Mastodon ) => mastodon(fmap)
         case Some( Tag.Sms )      => sms(fmap)
+        case Some( Tag.BlueSky )  => bluesky(fmap)
         case None                 => None
     def apply( fields : Seq[(String,String)] ) : Option[Destination] = apply( CarefulMap(fields) )
     private def apply( fmap : CarefulMap ) : Option[Destination] =
@@ -126,12 +142,14 @@ object Destination:
   private def toUJsonV1( destination : Destination ) : ujson.Value =
     def emf( email : Destination.Email )   : ujson.Obj = ujson.Obj.from(Seq(addressPart.s->ujson.Str(email.addressPart)) ++ email.displayNamePart.map(dnp=>(displayNamePart.s->ujson.Str(dnp))))
     def smsf( sms : Destination.Sms )      : ujson.Obj = ujson.Obj( number.s -> sms.number )
-    def mf( masto : Destination.Mastodon ) : ujson.Obj = ujson.Obj( name.s -> masto.name, "instanceUrl" -> masto.instanceUrl )
+    def mf( masto : Destination.Mastodon ) : ujson.Obj = ujson.Obj( name.s -> masto.name, instanceUrl.s -> masto.instanceUrl )
+    def bsf( bsky : Destination.BlueSky )  : ujson.Obj = ujson.Obj( entrywayUrl.s -> bsky.entrywayUrl, identifier.s -> bsky.identifier )
     val (fields, tpe) =
       destination match
         case email : Destination.Email    => (emf(email), Tag.Email)
         case sms   : Destination.Sms      => (smsf(sms),  Tag.Sms)
         case masto : Destination.Mastodon => (mf(masto),  Tag.Mastodon)
+        case bsky  : Destination.BlueSky  => (bsf(bsky),  Tag.BlueSky)
     val headerFields =
        ujson.Obj(
          version.s -> 1,
@@ -150,6 +168,7 @@ object Destination:
         case Tag.Email    => Destination.Email( addressPart = obj(addressPart.s).str, displayNamePart = obj.get(displayNamePart.s).map(_.str)) 
         case Tag.Sms      => Destination.Sms( number = obj(number.s).str )
         case Tag.Mastodon => Destination.Mastodon( name = obj(name.s).str, instanceUrl = obj(instanceUrl.s).str )
+        case Tag.BlueSky  => Destination.BlueSky( entrywayUrl = obj(entrywayUrl.s).str, identifier = obj(identifier.s).str )
 
   given ReadWriter[Destination] =
     readwriter[ujson.Value].bimap[Destination](
