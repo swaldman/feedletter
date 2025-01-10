@@ -73,21 +73,11 @@ object SubscriptionManager:
     def maybeSendRemovalNotification( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean
     def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String
 
-  object Mastodon:
-    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon:
-
-      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
-
-      override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
-
+  sealed trait AbstractAnnounce extends SubscriptionManager:
       override def assignWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
         Some( guid.toString() )
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
-
-      def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
-        Customizer.MastoAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
-          customizer( subscribableName, this, feedUrl, content, tz )
 
       def defaultFormatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] = // ADD EXTRA-PARAMS AND GUIDs
         //assert( contents.size == 1, s"Mastodon.Announce expects contents exactly one item, while generating default subject, we found ${contents.size}." )
@@ -99,6 +89,17 @@ object SubscriptionManager:
           case (_,           _,            None      ) =>
             WARNING.log( s"No link found, skipping masto announcement. withinTypeId: ${withinTypeId}" ) 
             None
+
+  object Mastodon:
+    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon, SubscriptionManager.AbstractAnnounce:
+
+      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
+
+      override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
+
+      def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
+        Customizer.MastoAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
+          customizer( subscribableName, this, feedUrl, content, tz )
 
       override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
         val uniqueContent = contents.uniqueOr: (c, nu) =>
@@ -130,30 +131,15 @@ object SubscriptionManager:
   end Mastodon
 
   object BlueSky:
-    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.BlueSky:
+    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.BlueSky, SubscriptionManager.AbstractAnnounce:
 
       override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
 
       override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
 
-      override def assignWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
-        Some( guid.toString() )
-
-      override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean = true
-
       def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
         Customizer.BskyAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
           customizer( subscribableName, this, feedUrl, content, tz )
-
-      def defaultFormatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] = // ADD EXTRA-PARAMS AND GUIDs
-        ( content.title, content.author, content.link) match
-          case (Some(title), Some(author), Some(link)) => Some( s"[${subscribableName}] New Post: ${title}, by ${author} ${link}" )
-          case (Some(title), None,         Some(link)) => Some( s"[${subscribableName}] New Post: ${title} ${link}" )
-          case (None,        Some(author), Some(link)) => Some( s"[${subscribableName}] New Untitled Post, by ${author} ${link}" )
-          case (None,        None,         Some(link)) => Some( s"[${subscribableName}] New Untitled Post at ${link}" )
-          case (_,           _,            None      ) =>
-            WARNING.log( s"No link found, skipping bsky announcement. withinTypeId: ${withinTypeId}" ) 
-            None
 
       override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
         val uniqueContent = contents.uniqueOr: (c, nu) =>
