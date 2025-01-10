@@ -16,7 +16,8 @@ object Daemon extends SelfLogging:
   private object RetrySchedule:
     val updateAssignComplete = Schedule.exponential( 10.seconds, 1.25f ) && Schedule.upTo( 5.minutes ) // XXX: hard-coded for now
     val mailNextGroup = updateAssignComplete // XXX: for now!
-    val mastoNotify = updateAssignComplete     // XXX: for now!
+    val mastoNotify   = updateAssignComplete // XXX: for now!
+    val bskyNotify    = updateAssignComplete // XXX: for now!
     val expireUnconfirmedSubscriptions = updateAssignComplete
     val mainDaemon = Schedule.exponential( 10.seconds, 1.25f ) || Schedule.fixed( 1.minute ) // XXX: hard-coded for now, retries forever
     val checkFlags = Schedule.exponential( 5.seconds, 1.25f ) || Schedule.fixed( 10.seconds ) // XXX: hard-coded for now, retries forever
@@ -27,6 +28,7 @@ object Daemon extends SelfLogging:
       val initDelay = scala.util.Random.nextInt(mailBatchDelaySeconds).seconds
       Schedule.delayed( Schedule.once.map( _ => initDelay ) ) andThen Schedule.spaced( mailBatchDelaySeconds.seconds )
     val mastoNotify = Schedule.spaced( 2.minutes ).jittered(0.0, 0.5)  
+    val bskyNotify = Schedule.spaced( 2.minutes ).jittered(0.0, 0.5)  
     val checkFlags = Schedule.spaced( 5.seconds ).jittered(0.0, 0.25)  
     val expireUnconfirmedSubscriptions = Schedule.fixed( 1.hours )
 
@@ -76,6 +78,19 @@ object Daemon extends SelfLogging:
         .schedule( CyclingSchedule.mastoNotify )
         .unit
         .onInterrupt( DEBUG.zlog( "MastoNotify.cyclingRetrying fiber interrupted." ) )
+
+  object BskyNotify:
+    private def retrying( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
+      PgDatabase.notifyAllBskyPosts( ds, appSetup )
+        .zlogErrorDefect( WARNING, what = "BskyNotify" )
+        .retry( RetrySchedule.bskyNotify )
+
+    def cyclingRetrying( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
+      retrying( ds, appSetup )
+        .catchAll( t => WARNING.zlog( "Retry cycle for BskyNotify failed...", t ) )
+        .schedule( CyclingSchedule.bskyNotify )
+        .unit
+        .onInterrupt( DEBUG.zlog( "BskyNotify.cyclingRetrying fiber interrupted." ) )
 
   object ExpireUnconfirmedSubscriptions:
     private def retrying( ds : DataSource ) : Task[Unit] =
@@ -177,6 +192,7 @@ object Daemon extends SelfLogging:
         fmng     <- MailNextGroup.cyclingRetrying( ds, as.smtpContext, mbds ).fork
         fch      <- ExpireUnconfirmedSubscriptions.cyclingRetrying( ds ).fork
         fmn      <- MastoNotify.cyclingRetrying( ds, as ).fork
+        fbsn     <- BskyNotify.cyclingRetrying( ds, as ).fork
         fwd      <- webDaemon( ds, as, tapirApi ).fork
         rwap     <- Promise.make[Throwable,Unit]
         acimRef  <- Ref.make( false )
@@ -187,6 +203,7 @@ object Daemon extends SelfLogging:
         _        <- fmng.interrupt
         _        <- fch.interrupt
         _        <- fmn.interrupt
+        _        <- fbsn.interrupt
         _        <- fwd.interrupt
         _        <- fcf.interrupt
         _        <- DEBUG.zlog("All daemon fibers interrupted.")
