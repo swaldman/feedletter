@@ -109,6 +109,21 @@ object CommandConfig extends SelfLogging:
         _  <- doMigrate( ds )
       yield ()
     end zcommand
+  case class DefineBlueSkySubscribable(
+    feedId                        : FeedId,
+    subscribableName              : SubscribableName,
+    extraParams                   : Map[String,String]
+  ) extends CommandConfig:
+    override def zcommand : ZCommand =
+      val subscriptionManager = SubscriptionManager.BlueSky.Announce( extraParams )
+      for
+        ds   <- ZIO.service[DataSource]
+        _    <- PgDatabase.ensureDb( ds )
+        tup  <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
+        _    <- printSubscribable(tup)
+        _    <- Console.printLine(s"An BlueSky subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
+      yield ()
+    end zcommand
   case class DefineEmailSubscribable[T](
     feedId                               : FeedId,
     subscribableName                     : SubscribableName,
@@ -205,7 +220,7 @@ object CommandConfig extends SelfLogging:
         _    <- PgDatabase.ensureDb( ds )
         tup  <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
         _    <- printSubscribable(tup)
-        _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
+        _    <- Console.printLine(s"A Mastodon subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
       yield ()
     end zcommand
   case class DropFeedAndSubscribables( feedId : FeedId, removeSubscriptions : Boolean ) extends CommandConfig:

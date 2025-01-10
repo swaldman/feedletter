@@ -89,6 +89,19 @@ object Main extends AbstractMain, SelfLogging:
       val help = "Force migration even if the application can find no recent database dump."
       Opts.flag("force",help=help,short="f").orFalse.map( force => CommandConfig.DbMigrate(force) )
     Command("db-migrate", header=header )( opts )
+  val defineBlueSkySubscribable =
+    val header = "Define a BlueSky subscribable, a source from which BlueSky feeds can receive automatic posts.."
+    val opts =
+      val feedId =
+        val help = "The ID of the RSS feed to be watched."
+        Opts.option[Int]("feed-id", help=help, metavar="feed-id").map( FeedId.apply )
+      val name =
+        val help = "A name for the new subscribable."
+        Opts.option[String]("name",help=help,metavar="name").map( SubscribableName.apply )
+      val extraParams = CommonOpts.ExtraParams
+      ( feedId, name, extraParams ) mapN: ( fi, n, ep ) =>
+        CommandConfig.DefineBlueSkySubscribable( fi, n, ep )
+    Command("define-bluesky-subscribable",header=header)( opts )
   val defineEmailSubscribable =
     val header = "Define a new email subscribable, a mailing lost to which users can subscribe."
     val opts =
@@ -352,6 +365,7 @@ object Main extends AbstractMain, SelfLogging:
           dbDump,
           dbInit,
           dbMigrate,
+          defineBlueSkySubscribable,
           defineEmailSubscribable,
           defineMastodonSubscribable,
           dropFeedAndSubscribables,
