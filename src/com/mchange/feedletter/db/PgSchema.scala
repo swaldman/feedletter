@@ -46,7 +46,9 @@ object PgSchema:
   object V1 extends Base:
     override val Version = 1
       object Table:
-        object Config extends Creatable:
+        // careful updating this one, as new versions of the app need to be able to set --dump-db-dir even against old schemas
+        // see special case in CommandConfig.DbDump
+        object Config extends Creatable: 
           protected val Create = "CREATE TABLE config( key VARCHAR(64) PRIMARY KEY, value VARCHAR(1024) NOT NULL )"
           private val Insert = "INSERT INTO config(key, value) VALUES( ?, ? )"
           private val Update = "UPDATE config SET value = ? WHERE key = ?"

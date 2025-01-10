@@ -323,9 +323,10 @@ object CommandConfig extends SelfLogging:
     end zcommand
   case class SetConfig( settings : Map[ConfigKey,String] ) extends CommandConfig:
     override def zcommand : ZCommand =
+      val onlyDumpDbDir = settings.size == 1 && settings.head(0) == ConfigKey.DumpDbDir
       for
         ds <- ZIO.service[DataSource]
-        _  <- PgDatabase.ensureDb( ds )
+        _  <- if onlyDumpDbDir then ZIO.unit else PgDatabase.ensureDb( ds )
         ss <- PgDatabase.upsertConfigKeyMapAndReport( ds, settings )
         _  <- printConfigurationTuplesTable(ss)
       yield ()
