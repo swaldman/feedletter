@@ -121,7 +121,7 @@ object CommandConfig extends SelfLogging:
         _    <- PgDatabase.ensureDb( ds )
         tup  <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
         _    <- printSubscribable(tup)
-        _    <- Console.printLine(s"An BlueSky subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
+        _    <- Console.printLine(s"A BlueSky subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
       yield ()
     end zcommand
   case class DefineEmailSubscribable[T](
