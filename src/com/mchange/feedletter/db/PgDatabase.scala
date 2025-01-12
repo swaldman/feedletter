@@ -825,7 +825,29 @@ object PgDatabase extends Migratory, SelfLogging:
             LatestSchema.Table.BskyPostableMedia.insert( conn, bskyPostable.id, i, media(i) )
         false
 
-  def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
+  def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) = parallelAcrossSpacedWithinAccountsNotifyAllBskyPosts(conn, appSetup)
+
+  def parallelAcrossSpacedWithinAccountsNotifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
+    def parallelAcrossSpacedWithinTask( retries : Int ) : Task[Unit] =
+      val allPostables = LatestSchema.Table.BskyPostable.all(conn)
+      val byAccounts = allPostables.groupBy(p => Tuple2(p.entrywayUrl, p.identifier))
+      def timeSpaced( postables : Iterable[BskyPostable] ) : Task[Unit] =
+        val sleepTask = ZIO.sleep( MinBskyPostSpacing )
+        val postTasks : Vector[Task[Boolean]] = postables.map( postable => ZIO.attempt( attemptBskyPost(conn, appSetup, retries, postable) ) ).toVector
+        val intercolatedPostTasks : Vector[Task[Any]] =
+          postTasks match
+            case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
+            case _            => Vector.empty
+        ZIO.collectAllDiscard( intercolatedPostTasks )
+      val allWithins = byAccounts.values.map(timeSpaced)
+      ZIO.collectAllParDiscard(allWithins)
+
+    for
+      retries <- ZIO.attempt( Config.blueskyMaxRetries( conn ) )
+      _       <- parallelAcrossSpacedWithinTask( retries )
+    yield ()
+
+  def tooSequentialNotifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
     def timeSpacedAll( retries : Int ) : Task[Unit] =
       val sleepTask = ZIO.sleep( MinBskyPostSpacing )
       val allPostables = LatestSchema.Table.BskyPostable.all(conn)
