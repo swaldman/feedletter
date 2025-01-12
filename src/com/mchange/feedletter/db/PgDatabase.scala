@@ -671,13 +671,20 @@ object PgDatabase extends Migratory, SelfLogging:
       LatestSchema.Table.MastoPostableMedia.insert( conn, id, i, media(i) )
 
   def attemptMastoPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, mastoPostable : MastoPostable ) : Boolean =
+    TRACE.log(s"attemptMastoPost: ${mastoPostable}")
     val media = mastoPostable.media
     if media.nonEmpty then
       LatestSchema.Table.MastoPostableMedia.deleteById(conn, mastoPostable.id)
-    LatestSchema.Table.MastoPostable.delete(conn, mastoPostable.id)
+    val deleted =
+      LatestSchema.Table.MastoPostable.delete(conn, mastoPostable.id)
     try
-      mastoPost( appSetup, mastoPostable )
-      true
+      if deleted then
+        TRACE.log(s"Deleted masto-postable with id ${mastoPostable.id}. Attempting post.")
+        mastoPost( appSetup, mastoPostable )
+        true
+      else
+        WARNING.log(s"While attempting to post Mastodon postable with id ${mastoPostable.id}, found it was no longer in the database, has apparently already been handled. Skipping post.")
+        false
     catch
       case NonFatal(t) =>
         val lastRetryMessage = if mastoPostable.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
@@ -686,9 +693,11 @@ object PgDatabase extends Migratory, SelfLogging:
           val newId = LatestSchema.Table.MastoPostable.Sequence.MastoPostableSeq.selectNext( conn )
           LatestSchema.Table.MastoPostable.insert( conn, newId, mastoPostable.finalContent, mastoPostable.instanceUrl, mastoPostable.name, mastoPostable.retried + 1 )
           (0 until media.size).foreach: i =>
-            LatestSchema.Table.MastoPostableMedia.insert( conn, mastoPostable.id, i, media(i) )
+            LatestSchema.Table.MastoPostableMedia.insert( conn, newId, i, media(i) )
+          TRACE.log(s"Reinserted masto-postable after failure, formerly with id ${mastoPostable.id}, updated to id ${newId}.")
         false
 
+  // should NOT be executed within a transaction! handles transactions itself!
   def _parallelAcrossSpacedWithinAccountsNotifyAllPosts[POSTABLE](
     fetchAllPostables : Connection => Set[POSTABLE],
     accountDiscriminator : POSTABLE => Any,
@@ -696,37 +705,45 @@ object PgDatabase extends Migratory, SelfLogging:
     attemptPost : (Connection, AppSetup, Int, POSTABLE) => Boolean,
     findNumRetries : Connection => Int,
     serviceName : String,
-    conn : Connection,
+    ds : DataSource,
     appSetup : AppSetup
   ) : Task[Unit] =
-    def parallelAcrossSpacedWithinTask( retries : Int ) : Task[Unit] =
-      val allPostables = fetchAllPostables(conn)
-      val byAccounts = allPostables.groupBy( accountDiscriminator )
-      def timeSpaced( discriminator : Any, postables : Iterable[POSTABLE] ) : Task[Unit] =
-        val spacing = findSpacing( conn )
-        val sleepTask = ZIO.sleep( spacing )
-        val postTasks : Vector[Task[Boolean]] =
-          val iterable =
-            postables.map: postable =>
-              ZIO.attempt:
-               val out = attemptPost(conn, appSetup, retries, postable)
-               INFO.log(s"Posted ${serviceName} notification to ${discriminator}")
-               out
-          iterable.toVector
-        val intercolatedPostTasks : Vector[Task[Any]] =
-          postTasks match
-            case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
-            case _            => Vector.empty
-        ZIO.collectAllDiscard( intercolatedPostTasks )
-      val allWithins = byAccounts.map(timeSpaced)
-      ZIO.collectAllParDiscard(allWithins)
-
+    val allWithins =
+      withConnectionTransactional(ds): setupConn =>
+        val retries = findNumRetries( setupConn )
+        val allPostables = fetchAllPostables(setupConn)
+        val byAccounts = allPostables.groupBy( accountDiscriminator )
+        val spacing = findSpacing( setupConn )
+        def timeSpaced( discriminator : Any, postables : Iterable[POSTABLE] ) : Task[Unit] =
+          val sleepTask = ZIO.sleep( spacing )
+          val postTasks : Vector[Task[Boolean]] =
+            val iterable =
+              postables.map: postable =>
+                withConnectionTransactional(ds): postConn =>
+                  val succeeded = attemptPost(postConn, appSetup, retries, postable)
+                  if succeeded then
+                    if logger.isLoggable(MLevel.TRACE) then
+                      TRACE.log(s"Posted ${serviceName} notification to ${discriminator}. Postable: ${postable}")
+                    else
+                      INFO.log(s"Posted ${serviceName} notification to ${discriminator}")
+                  else
+                    WARNING.log(s"Attempt to post ${serviceName} notification to ${discriminator} failed or was skipped. Postable: ${postable}")
+                  succeeded
+            iterable.toVector
+          val intercolatedPostTasks : Vector[Task[Any]] =
+            postTasks match
+              case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
+              case _            => Vector.empty
+          ZIO.collectAllDiscard( intercolatedPostTasks )
+        val out = byAccounts.map(timeSpaced)
+        TRACE.log("Finished setting up sequences of tasks to post in spaced distinct, transactions")
+        out
     for
-      retries <- ZIO.attempt( findNumRetries( conn ) )
-      _       <- parallelAcrossSpacedWithinTask( retries )
-    yield ()
+      aw <- allWithins
+      _  <- ZIO.collectAllParDiscard(aw)
+    yield()  
 
-  def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
+  def notifyAllMastoPosts( ds : DataSource, appSetup : AppSetup ) =
     val fetchAllPostables = (conn : Connection) => LatestSchema.Table.MastoPostable.all(conn)
     val accountDiscriminator = (mastoPostable : MastoPostable) => Tuple2( mastoPostable.instanceUrl, mastoPostable.name )
     val findSpacing = (_ : Connection) => MinMastoPostSpacing
@@ -740,12 +757,9 @@ object PgDatabase extends Migratory, SelfLogging:
       attemptPost,
       findNumRetries,
       serviceName,
-      conn,
+      ds,
       appSetup
     )
-
-  def notifyAllMastoPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
-    withConnectionTransactionalZIO( ds )( conn => notifyAllMastoPosts( conn, appSetup ) )
 
   def subscriptionsForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[Set[( SubscriptionId, Destination, Boolean, Instant )]] =
     withConnectionTransactional( ds ): conn =>
@@ -847,10 +861,16 @@ object PgDatabase extends Migratory, SelfLogging:
     val media = bskyPostable.media
     if media.nonEmpty then
       LatestSchema.Table.BskyPostableMedia.deleteById(conn, bskyPostable.id)
-    LatestSchema.Table.BskyPostable.delete(conn, bskyPostable.id)
+    val deleted =  
+      LatestSchema.Table.BskyPostable.delete(conn, bskyPostable.id)
     try
-      bskyPost( appSetup, bskyPostable )
-      true
+      if deleted then
+        TRACE.log(s"Deleted bsky-postable with id ${bskyPostable.id}. Attempting post.")
+        bskyPost( appSetup, bskyPostable )
+        true
+      else
+        WARNING.log(s"While attempting to post BlueSky postable with id ${bskyPostable.id}, found it was no longer in the database, has apparently already been handled. Skipping post.")
+        false
     catch
       case NonFatal(t) =>
         val lastRetryMessage = if bskyPostable.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
@@ -859,10 +879,10 @@ object PgDatabase extends Migratory, SelfLogging:
           val newId = LatestSchema.Table.BskyPostable.Sequence.BskyPostableSeq.selectNext( conn )
           LatestSchema.Table.BskyPostable.insert( conn, newId, bskyPostable.finalContent, bskyPostable.entrywayUrl, bskyPostable.identifier, bskyPostable.retried + 1 )
           (0 until media.size).foreach: i =>
-            LatestSchema.Table.BskyPostableMedia.insert( conn, bskyPostable.id, i, media(i) )
+            LatestSchema.Table.BskyPostableMedia.insert( conn, newId, i, media(i) )
         false
 
-  def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
+  def notifyAllBskyPosts( ds : DataSource, appSetup : AppSetup ) =
     val fetchAllPostables = (conn : Connection) => LatestSchema.Table.BskyPostable.all(conn)
     val accountDiscriminator = ( bskyPostable : BskyPostable ) => Tuple2(bskyPostable.entrywayUrl, bskyPostable.identifier)
     val findSpacing = ( conn: Connection ) => MinBskyPostSpacing
@@ -876,10 +896,8 @@ object PgDatabase extends Migratory, SelfLogging:
       attemptPost,
       findNumRetries,
       serviceName,
-      conn,
+      ds,
       appSetup
     )
 
-  def notifyAllBskyPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
-    withConnectionTransactionalZIO( ds )( conn => notifyAllBskyPosts( conn, appSetup ) )
 

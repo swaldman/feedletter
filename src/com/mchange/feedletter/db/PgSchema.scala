@@ -9,7 +9,9 @@ import com.mchange.cryptoutil.{Hash, given}
 import com.mchange.feedletter.*
 import com.mchange.feedletter.Destination.Key
 
-object PgSchema:
+import MLevel.*
+
+object PgSchema extends SelfLogging:
   trait Creatable:
     protected def Create : String
     def create( stmt : Statement ) : Int = stmt.executeUpdate( this.Create )
@@ -819,11 +821,14 @@ object PgSchema:
               ps.setString(3, mastoInstanceUrl.str)
               ps.setString(4, mastoName.str)
               ps.setInt   (5, retried)
-              ps.executeUpdate()
-          def delete( conn : Connection, id : MastoPostableId ) =
+              val rowsInserted = ps.executeUpdate()
+              TRACE.log(s"Inserted into masto_postable, seqnum ${id.toLong}, ${rowsInserted} rows inserted.")
+          def delete( conn : Connection, id : MastoPostableId ) : Boolean =
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setLong(1, id.toLong)
-              ps.executeUpdate()
+              val rowsDeleted = ps.executeUpdate()
+              TRACE.log(s"Deleted from masto_postable, seqnum ${id.toLong}, ${rowsDeleted} rows deleted.")
+              rowsDeleted > 0
           def selectByIdAndMedia( conn : Connection, id : MastoPostableId, media : Seq[ItemContent.Media] ) : Set[MastoPostable] =
             Using.resource( conn.prepareStatement( SelectById ) ): ps =>
               ps.setLong(1, id.toLong)
@@ -1024,11 +1029,14 @@ object PgSchema:
               ps.setString(3, bskyEntrywayUrl.str)
               ps.setString(4, bskyIdentifier.str)
               ps.setInt   (5, retried)
-              ps.executeUpdate()
-          def delete( conn : Connection, id : BskyPostableId ) =
+              val rowsInserted = ps.executeUpdate()
+              TRACE.log(s"Inserted into bsky_postable, seqnum ${id.toLong}, ${rowsInserted} rows inserted.")
+          def delete( conn : Connection, id : BskyPostableId ) : Boolean =
             Using.resource( conn.prepareStatement( Delete ) ): ps =>
               ps.setLong(1, id.toLong)
-              ps.executeUpdate()
+              val rowsDeleted = ps.executeUpdate()
+              TRACE.log(s"Deleted from bsky_postable, seqnum ${id.toLong}, ${rowsDeleted} rows deleted.")
+              rowsDeleted > 0
           def selectByIdAndMedia( conn : Connection, id : BskyPostableId, media : Seq[ItemContent.Media] ) : Set[BskyPostable] =
             Using.resource( conn.prepareStatement( SelectById ) ): ps =>
               ps.setLong(1, id.toLong)
