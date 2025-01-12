@@ -54,13 +54,25 @@ object Daemon extends SelfLogging:
         .onInterrupt( DEBUG.zlog( "UpdateAsignComplete.cyclingRetrying fiber interrupted." ) )
 
   object MailNextGroup:
-    private def retrying( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
-      PgDatabase.mailNextGroup( ds, smtpContext )
+    private def cautiousMailNextGroup( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
+      val happyPath =
+        for
+          smtpContext <- ZIO.attempt( appSetup.smtpContext )
+          _ <- PgDatabase.mailNextGroup( ds, smtpContext )
+        yield ()
+      happyPath.catchSome:
+        case sif : SmtpInitializationFailed =>
+          for
+            queued <- PgDatabase.mailQueued(ds)
+            _      <- if queued then WARNING.zlog("Mail is queued, but the SMTP context is not configured or is misconfigured.", sif) else ZIO.unit
+          yield ()
+    private def retrying( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
+      cautiousMailNextGroup( ds, appSetup )
         .zlogErrorDefect( WARNING, what = "MailNextGroup" )
         .retry( RetrySchedule.mailNextGroup )
 
-    def cyclingRetrying( ds : DataSource, smtpContext : Smtp.Context, mailBatchDelaySeconds : Int ) : Task[Unit] =
-      retrying( ds, smtpContext )
+    def cyclingRetrying( ds : DataSource, appSetup : AppSetup, mailBatchDelaySeconds : Int ) : Task[Unit] =
+      retrying( ds, appSetup )
         .catchAll( t => WARNING.zlog( "Retry cycle for MailNextGroup failed...", t ) )
         .schedule( CyclingSchedule.mailNextGroup( mailBatchDelaySeconds ) )
         .unit
@@ -189,7 +201,7 @@ object Daemon extends SelfLogging:
         tapirApi <- tapirApi(ds,as)
         _        <- INFO.zlog( s"Spawning daemon fibers." )
         fuac     <- UpdateAssignComplete.cyclingRetrying( ds, tapirApi ).fork
-        fmng     <- MailNextGroup.cyclingRetrying( ds, as.smtpContext, mbds ).fork
+        fmng     <- MailNextGroup.cyclingRetrying( ds, as, mbds ).fork
         fch      <- ExpireUnconfirmedSubscriptions.cyclingRetrying( ds ).fork
         fmn      <- MastoNotify.cyclingRetrying( ds, as ).fork
         fbsn     <- BskyNotify.cyclingRetrying( ds, as ).fork

@@ -514,6 +514,8 @@ object PgDatabase extends Migratory, SelfLogging:
 
   def confirmHours( ds : DataSource ) : Task[Int] = withConnectionTransactional( ds )( Config.confirmHours )
 
+  def mailQueued( ds : DataSource ) : Task[Boolean] = withConnectionTransactional( ds )( LatestSchema.Table.Mailable.mailQueued )
+
   def pullMailGroup( conn : Connection ) : Set[MailSpec.WithTemplate] =
     val batchSize = Config.mailBatchSize( conn )
     val withHashes : Set[MailSpec.WithHash] = LatestSchema.Table.Mailable.selectForDelivery(conn, batchSize)

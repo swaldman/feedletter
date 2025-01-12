@@ -686,7 +686,13 @@ object PgSchema:
           private val DeleteSingle =
             """|DELETE FROM mailable
                |WHERE seqnum = ?""".stripMargin
-          def selectForDelivery( conn : Connection, batchSize : Int ) : Set[MailSpec.WithHash] = 
+          private val MailQueued =
+            """SELECT EXISTS (SELECT seqnum FROM mailable LIMIT 1)"""
+          def mailQueued( conn : Connection ) : Boolean =
+            Using.resource( conn.prepareStatement(this.MailQueued) ): ps =>
+              Using.resource( ps.executeQuery() ): rs =>
+                uniqueResult[Boolean]("check for existence of queued mail", rs)( rs => rs.getBoolean(1) )
+          def selectForDelivery( conn : Connection, batchSize : Int ) : Set[MailSpec.WithHash] =
             Using.resource( conn.prepareStatement( this.SelectForDelivery ) ): ps =>
               ps.setInt( 1, batchSize )
               Using.resource( ps.executeQuery() ): rs =>
