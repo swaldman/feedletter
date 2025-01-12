@@ -29,6 +29,9 @@ object PgDatabase extends Migratory, SelfLogging:
   val LatestSchema = PgSchema.V2
   override val targetDbVersion = LatestSchema.Version
 
+  val MinMastoPostSpacing = 2.minutes // should be configurable, but for now...
+  val MinBskyPostSpacing  = 2.minutes // should be configurable, but for now...
+
   private def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Option[String] =
     PgSchema.Unversioned.Table.Metadata.select( conn, key )
 
@@ -688,12 +691,23 @@ object PgDatabase extends Migratory, SelfLogging:
         false
 
   def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
-    val retries = Config.mastodonMaxRetries( conn )
-    LatestSchema.Table.MastoPostable.foreach( conn ): mastoPostable =>
-      attemptMastoPost( conn, appSetup, retries, mastoPostable )
+    def timeSpacedAll( retries : Int ) : Task[Unit] =
+      val sleepTask = ZIO.sleep( MinMastoPostSpacing )
+      val allPostables = LatestSchema.Table.MastoPostable.all(conn)
+      val allPostTasks : Vector[Task[Boolean]] = allPostables.map( postable => ZIO.attempt( attemptMastoPost(conn, appSetup, retries, postable) ) ).toVector
+      val intercolatedPostTasks : Vector[Task[Any]] =
+        allPostTasks match
+          case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
+          case _            => Vector.empty
+      ZIO.collectAllDiscard( intercolatedPostTasks )
+
+    for
+      retries <- ZIO.attempt( Config.mastodonMaxRetries( conn ) )
+      _       <- timeSpacedAll( retries )
+    yield ()
 
   def notifyAllMastoPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
-    withConnectionTransactional( ds )( conn => notifyAllMastoPosts( conn, appSetup ) )
+    withConnectionTransactionalZIO( ds )( conn => notifyAllMastoPosts( conn, appSetup ) )
 
   def subscriptionsForSubscribableName( ds : DataSource, subscribableName : SubscribableName ) : Task[Set[( SubscriptionId, Destination, Boolean, Instant )]] =
     withConnectionTransactional( ds ): conn =>
@@ -812,10 +826,26 @@ object PgDatabase extends Migratory, SelfLogging:
         false
 
   def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
-    val retries = Config.blueskyMaxRetries( conn )
-    LatestSchema.Table.BskyPostable.foreach( conn ): bskyPostable =>
-      attemptBskyPost( conn, appSetup, retries, bskyPostable )
+    def timeSpacedAll( retries : Int ) : Task[Unit] =
+      val sleepTask = ZIO.sleep( MinBskyPostSpacing )
+      val allPostables = LatestSchema.Table.BskyPostable.all(conn)
+      val allPostTasks : Vector[Task[Boolean]] = allPostables.map( postable => ZIO.attempt( attemptBskyPost(conn, appSetup, retries, postable) ) ).toVector
+      val intercolatedPostTasks : Vector[Task[Any]] =
+        allPostTasks match
+          case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
+          case _            => Vector.empty
+      ZIO.collectAllDiscard( intercolatedPostTasks )
+
+    for
+      retries <- ZIO.attempt( Config.blueskyMaxRetries( conn ) )
+      _       <- timeSpacedAll( retries )
+    yield ()
+
+//  def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
+//    val retries = Config.blueskyMaxRetries( conn )
+//    LatestSchema.Table.BskyPostable.foreach( conn ): bskyPostable =>
+//      attemptBskyPost( conn, appSetup, retries, bskyPostable )
 
   def notifyAllBskyPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
-    withConnectionTransactional( ds )( conn => notifyAllBskyPosts( conn, appSetup ) )
+    withConnectionTransactionalZIO( ds )( conn => notifyAllBskyPosts( conn, appSetup ) )
 

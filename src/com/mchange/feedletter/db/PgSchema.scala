@@ -840,6 +840,10 @@ object PgSchema:
                   val retried      = rs.getInt(5)
                   val media        = MastoPostableMedia.selectAllForId(conn, id)
                   action( com.mchange.feedletter.MastoPostable( id, finalContent, instanceUrl, name, retried, media ) )
+          def all( conn : Connection ) : Set[MastoPostable] =
+            val proto = Set.newBuilder[MastoPostable]
+            foreach( conn )( mp => proto += mp )
+            proto.result()
           object Sequence:
             object MastoPostableSeq extends Creatable:
               protected val Create = "CREATE SEQUENCE masto_postable_seq AS BIGINT"
@@ -1041,6 +1045,10 @@ object PgSchema:
                   val retried      = rs.getInt(5)
                   val media        = BskyPostableMedia.selectAllForId(conn, id)
                   action( com.mchange.feedletter.BskyPostable( id, finalContent, entrywayUrl, identifier, retried, media ) )
+          def all( conn : Connection ) : Set[BskyPostable] =
+            val proto = Set.newBuilder[BskyPostable]
+            foreach( conn )( mp => proto += mp )
+            proto.result()
           object Sequence:
             object BskyPostableSeq extends Creatable:
               protected val Create = "CREATE SEQUENCE bsky_postable_seq AS BIGINT"
