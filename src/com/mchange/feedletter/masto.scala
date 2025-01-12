@@ -2,6 +2,14 @@ package com.mchange.feedletter
 
 import com.mchange.conveniences.string.*
 import com.mchange.feedletter.Destination.Key
+import scala.util.control.NonFatal
+
+import MLevel.*
+
+object Masto:
+  given logger : MLogger = MLogger("com.mchange.feedletter.masto")
+
+import Masto.logger
 
 /*
 private def filenameForMimeType( mimeType : String ) : String =
@@ -14,35 +22,43 @@ private def filenameForMimeType( mimeType : String ) : String =
   val base = scala.util.Random.nextLong()
 */
 
-def postMedia( accessToken : String, instanceUrl : String, media : ItemContent.Media ) : String =
-  val mediaEndpoint = pathJoin( instanceUrl, "api/v2/media" )
-  val mbFilename =
-    val lastSlash = media.url.lastIndexOf("/")
-    if lastSlash >= 0 then
-      media.url.substring(lastSlash+1).toOptionNotBlank
-    else
-      None
-  val data = requests.get(media.url).data.array
-  val fileMultiItem =
-    mbFilename match
-      case Some(fn) => requests.MultiItem("file", data=data, filename=fn)
-      case None     => requests.MultiItem("file", data=data)
-  val multipart =
-    media.alt match
-      case Some( text ) => requests.MultiPart( fileMultiItem, requests.MultiItem("description", data=text) )
-      case None         => requests.MultiPart( fileMultiItem )
-  val headers = Map (
-    "Authorization" -> s"Bearer ${accessToken}",
-  )
-  val response = requests.post( mediaEndpoint, data=multipart, headers=headers )
-  val jsonOut = ujson.read(response.text())
-  jsonOut.obj("id").str // the id comes back as a JSON *String*, not a number
+def postMedia( accessToken : String, instanceUrl : String, media : ItemContent.Media, skipFailures : Boolean ) : Option[String] =
+  try
+    val mediaEndpoint = pathJoin( instanceUrl, "api/v2/media" )
+    val mbFilename =
+      val lastSlash = media.url.lastIndexOf("/")
+      if lastSlash >= 0 then
+        media.url.substring(lastSlash+1).toOptionNotBlank
+      else
+        None
+    val data = requests.get(media.url).data.array
+    val fileMultiItem =
+      mbFilename match
+        case Some(fn) => requests.MultiItem("file", data=data, filename=fn)
+        case None     => requests.MultiItem("file", data=data)
+    val multipart =
+      media.alt match
+        case Some( text ) => requests.MultiPart( fileMultiItem, requests.MultiItem("description", data=text) )
+        case None         => requests.MultiPart( fileMultiItem )
+    val headers = Map (
+      "Authorization" -> s"Bearer ${accessToken}",
+    )
+    val response = requests.post( mediaEndpoint, data=multipart, headers=headers )
+    val jsonOut = ujson.read(response.text())
+    Some( jsonOut.obj("id").str ) // the id comes back as a JSON *String*, not a number
+  catch
+    case NonFatal(t) =>
+      if skipFailures then
+        WARNING.log("Failed to post media item, skipping: ${media}", t)
+        None
+      else
+        throw t
 
-def mastoPost( as : AppSetup, mastoPostable : MastoPostable ) : Unit =
+def mastoPost( as : AppSetup, mastoPostable : MastoPostable, skipMediaOnMediaFail : Boolean = false ) : Unit =
   val accessTokenKey = s"feedletter.masto.access.token.${mastoPostable.name}"
   val accessToken = as.secrets.get( accessTokenKey ).getOrElse:
     throw new NoAccessToken( s"No access token found in application secrets under key '${accessTokenKey}'." )
-  val mediaIds = mastoPostable.media.map( media => postMedia(accessToken, mastoPostable.instanceUrl.str, media) )
+  val mediaIds = mastoPostable.media.map( media => postMedia(accessToken, mastoPostable.instanceUrl.str, media, skipMediaOnMediaFail) ).flatten
   val statusEndpoint = pathJoin( mastoPostable.instanceUrl.str, "api/v1/statuses/" )
   val headers = Map (
     "Authorization" -> s"Bearer ${accessToken}",

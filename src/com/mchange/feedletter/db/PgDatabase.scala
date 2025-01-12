@@ -679,8 +679,9 @@ object PgDatabase extends Migratory, SelfLogging:
       LatestSchema.Table.MastoPostable.delete(conn, mastoPostable.id)
     try
       if deleted then
+        val skipFailedMedia = mastoPostable.retried == maxRetries // iff this is our last attempt, skip media that fail to retrieve or post
         TRACE.log(s"Deleted masto-postable with id ${mastoPostable.id}. Attempting post.")
-        mastoPost( appSetup, mastoPostable )
+        mastoPost( appSetup, mastoPostable, skipFailedMedia )
         true
       else
         WARNING.log(s"While attempting to post Mastodon postable with id ${mastoPostable.id}, found it was no longer in the database, has apparently already been handled. Skipping post.")
