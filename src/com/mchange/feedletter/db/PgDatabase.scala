@@ -677,7 +677,6 @@ object PgDatabase extends Migratory, SelfLogging:
     LatestSchema.Table.MastoPostable.delete(conn, mastoPostable.id)
     try
       mastoPost( appSetup, mastoPostable )
-      INFO.log( s"Notification posted to Mastodon destination ${mastoPostable.instanceUrl}." )
       true
     catch
       case NonFatal(t) =>
@@ -690,21 +689,60 @@ object PgDatabase extends Migratory, SelfLogging:
             LatestSchema.Table.MastoPostableMedia.insert( conn, mastoPostable.id, i, media(i) )
         false
 
-  def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
-    def timeSpacedAll( retries : Int ) : Task[Unit] =
-      val sleepTask = ZIO.sleep( MinMastoPostSpacing )
-      val allPostables = LatestSchema.Table.MastoPostable.all(conn)
-      val allPostTasks : Vector[Task[Boolean]] = allPostables.map( postable => ZIO.attempt( attemptMastoPost(conn, appSetup, retries, postable) ) ).toVector
-      val intercolatedPostTasks : Vector[Task[Any]] =
-        allPostTasks match
-          case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
-          case _            => Vector.empty
-      ZIO.collectAllDiscard( intercolatedPostTasks )
+  def _parallelAcrossSpacedWithinAccountsNotifyAllPosts[POSTABLE](
+    fetchAllPostables : Connection => Set[POSTABLE],
+    accountDiscriminator : POSTABLE => Any,
+    findSpacing : Connection => Duration,
+    attemptPost : (Connection, AppSetup, Int, POSTABLE) => Boolean,
+    findNumRetries : Connection => Int,
+    serviceName : String,
+    conn : Connection,
+    appSetup : AppSetup
+  ) : Task[Unit] =
+    def parallelAcrossSpacedWithinTask( retries : Int ) : Task[Unit] =
+      val allPostables = fetchAllPostables(conn)
+      val byAccounts = allPostables.groupBy( accountDiscriminator )
+      def timeSpaced( discriminator : Any, postables : Iterable[POSTABLE] ) : Task[Unit] =
+        val spacing = findSpacing( conn )
+        val sleepTask = ZIO.sleep( spacing )
+        val postTasks : Vector[Task[Boolean]] =
+          val iterable =
+            postables.map: postable =>
+              ZIO.attempt:
+               val out = attemptPost(conn, appSetup, retries, postable)
+               INFO.log(s"Posted ${serviceName} notification to ${discriminator}")
+               out
+          iterable.toVector
+        val intercolatedPostTasks : Vector[Task[Any]] =
+          postTasks match
+            case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
+            case _            => Vector.empty
+        ZIO.collectAllDiscard( intercolatedPostTasks )
+      val allWithins = byAccounts.map(timeSpaced)
+      ZIO.collectAllParDiscard(allWithins)
 
     for
-      retries <- ZIO.attempt( Config.mastodonMaxRetries( conn ) )
-      _       <- timeSpacedAll( retries )
+      retries <- ZIO.attempt( findNumRetries( conn ) )
+      _       <- parallelAcrossSpacedWithinTask( retries )
     yield ()
+
+  def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
+    val fetchAllPostables = (conn : Connection) => LatestSchema.Table.MastoPostable.all(conn)
+    val accountDiscriminator = (mastoPostable : MastoPostable) => Tuple2( mastoPostable.instanceUrl, mastoPostable.name )
+    val findSpacing = (_ : Connection) => MinMastoPostSpacing
+    val attemptPost = attemptMastoPost
+    val findNumRetries = (conn : Connection) => Config.mastodonMaxRetries( conn )
+    val serviceName = "Mastodon"
+    _parallelAcrossSpacedWithinAccountsNotifyAllPosts[MastoPostable](
+      fetchAllPostables,
+      accountDiscriminator,
+      findSpacing,
+      attemptPost,
+      findNumRetries,
+      serviceName,
+      conn,
+      appSetup
+    )
 
   def notifyAllMastoPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
     withConnectionTransactionalZIO( ds )( conn => notifyAllMastoPosts( conn, appSetup ) )
@@ -812,7 +850,6 @@ object PgDatabase extends Migratory, SelfLogging:
     LatestSchema.Table.BskyPostable.delete(conn, bskyPostable.id)
     try
       bskyPost( appSetup, bskyPostable )
-      INFO.log( s"Notification posted to Bluesky destination ${bskyPostable.entrywayUrl}." )
       true
     catch
       case NonFatal(t) =>
@@ -825,73 +862,23 @@ object PgDatabase extends Migratory, SelfLogging:
             LatestSchema.Table.BskyPostableMedia.insert( conn, bskyPostable.id, i, media(i) )
         false
 
-  def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) = parallelAcrossSpacedWithinAccountsNotifyAllBskyPosts(conn, appSetup)
-
-  def _parallelAcrossSpacedWithinAccountsNotifyPosts[POSTABLE](
-    fetchAllPostables : Connection => Set[POSTABLE],
-    accountDiscriminator : POSTABLE => Any,
-    findSpacing : Connection => Duration,
-    attemptPost : (Connection, AppSetup, Int, POSTABLE) => Boolean,
-    findNumRetries : Connection => Int,
-    conn : Connection,
-    appSetup : AppSetup
-  ) : Task[Unit] =
-    def parallelAcrossSpacedWithinTask( retries : Int ) : Task[Unit] =
-      val allPostables = fetchAllPostables(conn)
-      val byAccounts = allPostables.groupBy( accountDiscriminator )
-      def timeSpaced( postables : Iterable[POSTABLE] ) : Task[Unit] =
-        val spacing = findSpacing( conn )
-        val sleepTask = ZIO.sleep( spacing )
-        val postTasks : Vector[Task[Boolean]] = postables.map( postable => ZIO.attempt( attemptPost(conn, appSetup, retries, postable) ) ).toVector
-        val intercolatedPostTasks : Vector[Task[Any]] =
-          postTasks match
-            case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
-            case _            => Vector.empty
-        ZIO.collectAllDiscard( intercolatedPostTasks )
-      val allWithins = byAccounts.values.map(timeSpaced)
-      ZIO.collectAllParDiscard(allWithins)
-
-    for
-      retries <- ZIO.attempt( findNumRetries( conn ) )
-      _       <- parallelAcrossSpacedWithinTask( retries )
-    yield ()
-
-  def parallelAcrossSpacedWithinAccountsNotifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
+  def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
     val fetchAllPostables = (conn : Connection) => LatestSchema.Table.BskyPostable.all(conn)
     val accountDiscriminator = ( bskyPostable : BskyPostable ) => Tuple2(bskyPostable.entrywayUrl, bskyPostable.identifier)
     val findSpacing = ( conn: Connection ) => MinBskyPostSpacing
     val attemptPost = attemptBskyPost
     val findNumRetries = ( conn : Connection ) => Config.blueskyMaxRetries( conn )
-    _parallelAcrossSpacedWithinAccountsNotifyPosts(
+    val serviceName = "BlueSky"
+    _parallelAcrossSpacedWithinAccountsNotifyAllPosts(
       fetchAllPostables,
       accountDiscriminator,
       findSpacing,
       attemptPost,
       findNumRetries,
+      serviceName,
       conn,
       appSetup
     )
-
-  def tooSequentialNotifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
-    def timeSpacedAll( retries : Int ) : Task[Unit] =
-      val sleepTask = ZIO.sleep( MinBskyPostSpacing )
-      val allPostables = LatestSchema.Table.BskyPostable.all(conn)
-      val allPostTasks : Vector[Task[Boolean]] = allPostables.map( postable => ZIO.attempt( attemptBskyPost(conn, appSetup, retries, postable) ) ).toVector
-      val intercolatedPostTasks : Vector[Task[Any]] =
-        allPostTasks match
-          case head +: tail => tail.foldLeft( Vector(head) : Vector[Task[Any]] )( (accum, next) => accum :+ sleepTask :+ next )
-          case _            => Vector.empty
-      ZIO.collectAllDiscard( intercolatedPostTasks )
-
-    for
-      retries <- ZIO.attempt( Config.blueskyMaxRetries( conn ) )
-      _       <- timeSpacedAll( retries )
-    yield ()
-
-//  def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
-//    val retries = Config.blueskyMaxRetries( conn )
-//    LatestSchema.Table.BskyPostable.foreach( conn ): bskyPostable =>
-//      attemptBskyPost( conn, appSetup, retries, bskyPostable )
 
   def notifyAllBskyPosts( ds : DataSource, appSetup : AppSetup ) : Task[Unit] =
     withConnectionTransactionalZIO( ds )( conn => notifyAllBskyPosts( conn, appSetup ) )
