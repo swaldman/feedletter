@@ -680,10 +680,11 @@ object PgDatabase extends Migratory, SelfLogging:
       case NonFatal(t) =>
         val lastRetryMessage = if mastoPostable.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
         WARNING.log( s"Failed attempt to post to Mastodon destination '${mastoPostable.instanceUrl}', retried = ${mastoPostable.retried} ${lastRetryMessage}", t )
-        val newId = LatestSchema.Table.MastoPostable.Sequence.MastoPostableSeq.selectNext( conn )
-        LatestSchema.Table.MastoPostable.insert( conn, newId, mastoPostable.finalContent, mastoPostable.instanceUrl, mastoPostable.name, mastoPostable.retried + 1 )
-        (0 until media.size).foreach: i =>
-          LatestSchema.Table.MastoPostableMedia.insert( conn, mastoPostable.id, i, media(i) )
+        if mastoPostable.retried < maxRetries then
+          val newId = LatestSchema.Table.MastoPostable.Sequence.MastoPostableSeq.selectNext( conn )
+          LatestSchema.Table.MastoPostable.insert( conn, newId, mastoPostable.finalContent, mastoPostable.instanceUrl, mastoPostable.name, mastoPostable.retried + 1 )
+          (0 until media.size).foreach: i =>
+            LatestSchema.Table.MastoPostableMedia.insert( conn, mastoPostable.id, i, media(i) )
         false
 
   def notifyAllMastoPosts( conn : Connection, appSetup : AppSetup ) =
@@ -803,10 +804,11 @@ object PgDatabase extends Migratory, SelfLogging:
       case NonFatal(t) =>
         val lastRetryMessage = if bskyPostable.retried == maxRetries then "(last retry, will drop)" else s"(maxRetries: ${maxRetries})"
         WARNING.log( s"Failed attempt to post to Bluesky destination '${bskyPostable.entrywayUrl}', retried = ${bskyPostable.retried} ${lastRetryMessage}", t )
-        val newId = LatestSchema.Table.BskyPostable.Sequence.BskyPostableSeq.selectNext( conn )
-        LatestSchema.Table.BskyPostable.insert( conn, newId, bskyPostable.finalContent, bskyPostable.entrywayUrl, bskyPostable.identifier, bskyPostable.retried + 1 )
-        (0 until media.size).foreach: i =>
-          LatestSchema.Table.BskyPostableMedia.insert( conn, bskyPostable.id, i, media(i) )
+        if bskyPostable.retried < maxRetries then
+          val newId = LatestSchema.Table.BskyPostable.Sequence.BskyPostableSeq.selectNext( conn )
+          LatestSchema.Table.BskyPostable.insert( conn, newId, bskyPostable.finalContent, bskyPostable.entrywayUrl, bskyPostable.identifier, bskyPostable.retried + 1 )
+          (0 until media.size).foreach: i =>
+            LatestSchema.Table.BskyPostableMedia.insert( conn, bskyPostable.id, i, media(i) )
         false
 
   def notifyAllBskyPosts( conn : Connection, appSetup : AppSetup ) =
