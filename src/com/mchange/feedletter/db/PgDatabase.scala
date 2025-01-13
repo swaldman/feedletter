@@ -355,9 +355,9 @@ object PgDatabase extends Migratory, SelfLogging:
       val hash = Hash.SHA3_256.hash( contents.getBytes( scala.io.Codec.UTF8.charSet ) )
       LatestSchema.Table.MailableTemplate.ensure( conn, hash, contents )
       LatestSchema.Table.Mailable.insertBatch( conn, hash, from, replyTo, tosWithParams, subject, 0 )
-      DEBUG.log( s"Template queued for batched mailing, from '${from}', to ${tosWithParams.size} recipients, with subject '${subject}'." )
+      FINE.log( s"Template queued for batched mailing, from '${from}', to ${tosWithParams.size} recipients, with subject '${subject}'." )
     else
-      DEBUG.log( s"Template NOT queued for batched mailing, from '${from}' with subject '${subject}', because no recipients were specified." )
+      FINE.log( s"Template NOT queued for batched mailing, from '${from}' with subject '${subject}', because no recipients were specified." )
 
 
   private def resilientDelayedForFeedInfo( ds : DataSource, fi : FeedInfo ) : Task[Unit] =
@@ -669,6 +669,7 @@ object PgDatabase extends Migratory, SelfLogging:
     LatestSchema.Table.MastoPostable.insert( conn, id, fullContent, mastoInstanceUrl, mastoName, 0 )
     (0 until media.size).foreach: i =>
       LatestSchema.Table.MastoPostableMedia.insert( conn, id, i, media(i) )
+    FINE.log( s"Queued Mastodon post for distribution. Content: $fullContent" )
 
   def attemptMastoPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, mastoPostable : MastoPostable ) : Boolean =
     TRACE.log(s"attemptMastoPost: ${mastoPostable}")
@@ -857,6 +858,7 @@ object PgDatabase extends Migratory, SelfLogging:
     LatestSchema.Table.BskyPostable.insert( conn, id, fullContent, bskyEntrywayUrl, bskyIdentifier, 0 )
     (0 until media.size).foreach: i =>
       LatestSchema.Table.BskyPostableMedia.insert( conn, id, i, media(i) )
+    FINE.log( s"Queued BlueSky post for distribution. Content: $fullContent" )
 
   def attemptBskyPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, bskyPostable : BskyPostable ) : Boolean =
     val media = bskyPostable.media
