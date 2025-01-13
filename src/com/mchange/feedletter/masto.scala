@@ -70,7 +70,26 @@ def mastoPost( as : AppSetup, mastoPostable : MastoPostable, skipMediaOnMediaFai
       "media_ids" -> ujson.Arr( mediaIds.map( ujson.Str.apply )* ),
     )
     ujson.write(obj)
-  requests.post( statusEndpoint, data=jsonData, headers=headers )
-
+  try
+    requests.post( statusEndpoint, data=jsonData, headers=headers )
+  catch
+    case rfe : requests.RequestFailedException =>
+      FINE.log( s"Initial attempt to post MastoPostable failed! MastoPostable: ${mastoPostable}", rfe )
+      val statusCode = rfe.response.statusCode
+      if statusCode == 422 then // often this means the server requires a delay to finish processing the media
+        FINE.log( "Pausing then retrying masto-post in case medie needs to be processed." )
+        Thread.sleep(1000) // ick -- rework all this as ZIO at some point
+        try
+          requests.post( statusEndpoint, data=jsonData, headers=headers )
+        catch
+          case rfe2 : requests.RequestFailedException =>
+            FINE.log( "Delayed repost attempt failed.", rfe2 )
+            if skipMediaOnMediaFail then
+              FINE.log( "Retrying masto-post without media." )
+              requests.post( statusEndpoint, data=ujson.Obj("status" -> ujson.Str(mastoPostable.finalContent)), headers=headers )
+            else
+              throw rfe2
+      else
+        throw rfe
 
 
