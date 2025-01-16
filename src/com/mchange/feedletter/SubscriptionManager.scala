@@ -207,6 +207,10 @@ object SubscriptionManager:
         assert( contents.size == 1, s"Email.Each expects contents exactly one item, while generating default subject, we found ${contents.size}." )
         s"[${subscribableName}] " + contents.head.title.fold("New Untitled Post")( title => s"New Post: ${title}" )
 
+    // initially I tried to use java.time's WeekFields, but in subtle ways
+    // it didn't behave as I expect.
+    //
+    // so i now use a much simpler NaiveWeek utility
 
     final case class Weekly(
       from                              : Destination.Email,
@@ -218,8 +222,6 @@ object SubscriptionManager:
       timeZone                          : Option[ZoneId],
       extraParams                       : Map[String,String]
     ) extends Email, PeriodBased:
-
-      private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'week'ww")
 
       override val sampleWithinTypeId = "2023-week50"
 
@@ -242,40 +244,22 @@ object SubscriptionManager:
         status           : ItemStatus
       ) : Option[String] =
         val tz = bestTimeZone( conn )
-        Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
-
-      // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
-      private def extractYearWeekAndWeekFields( withinTypeId : String ) : (Int, Int, WeekFields) =
-        val ( yearStr, restStr ) = withinTypeId.span( Character.isDigit )
-        val year = yearStr.toInt
-        val baseDayOfWeek = LocalDate.of( year, 1, 1 ).getDayOfWeek()
-        val weekNum = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
-        ( year, weekNum, WeekFields.of(baseDayOfWeek, 1) )
+        Some( NaiveWeek.format( status.lastChecked.atZone(tz) ) )
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
-        val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
+        val ( year, woy ) = NaiveWeek.yearWeekFromString( withinTypeId )
         val tz = bestTimeZone( conn )
         val laZoned = feedLastAssigned.atZone(tz)
         val laYear = laZoned.get( ChronoField.YEAR )
-        laYear > year || (laYear == year && laZoned.get( ChronoField.ALIGNED_WEEK_OF_YEAR ) > woy)
+        laYear > year || (laYear == year && NaiveWeek.week(laZoned) > woy)
 
       override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
         doRouteMultiple( conn, assignableKey, feedId, feedUrl, contents, idestinations, timeZone, apiLinkGenerator )
 
       // not sure why, but there's an off-by-on issue. these dates tend to be a day later on both ends
-      // than the actual dates in the subscribable.
-      // maybe use LocalDateTime set to noon to avoid timezone issues?
-      // Or use ZonedDateTime at bestTimeZone (but we don't have conn)
-      def weekStartWeekEndLocalDate( withinTypeId : String ) : (LocalDate,LocalDate) =
-        val ( year, woy, weekFields ) = extractYearWeekAndWeekFields( withinTypeId )
-        val weekStart = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 1 )
-        val weekEnd = LocalDate.of(year, 1, 1).`with`( weekFields.weekOfWeekBasedYear(), woy ).`with`(weekFields.dayOfWeek(), 7 )
-        (weekStart, weekEnd)
-
-      // not sure why, but there's an off-by-on issue. these dates tend to be a day later on both ends
       // than the actual dates in the subscribable. See comment above
       def weekStartWeekEndFormattedIsoLocal( withinTypeId : String ) : (String,String) =
-        val (weekStart, weekEnd) = weekStartWeekEndLocalDate(withinTypeId)
+        val (weekStart, weekEnd) = NaiveWeek.weekStartWeekEndLocalDate(withinTypeId)
         (ISO_LOCAL_DATE.format(weekStart),ISO_LOCAL_DATE.format(weekEnd))
 
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
