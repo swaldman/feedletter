@@ -672,7 +672,7 @@ object PgDatabase extends Migratory, SelfLogging:
     FINE.log( s"Queued Mastodon post for distribution. Content: $fullContent" )
 
   def attemptMastoPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, mastoPostable : MastoPostable ) : Boolean =
-    TRACE.log(s"attemptMastoPost: ${mastoPostable}")
+    FINE.log( s"Attempting Mastodon post, content: ${mastoPostable.finalContent}" )
     val media = mastoPostable.media
     if media.nonEmpty then
       LatestSchema.Table.MastoPostableMedia.deleteById(conn, mastoPostable.id)
@@ -698,6 +698,9 @@ object PgDatabase extends Migratory, SelfLogging:
             LatestSchema.Table.MastoPostableMedia.insert( conn, newId, i, media(i) )
           TRACE.log(s"Reinserted masto-postable after failure, formerly with id ${mastoPostable.id}, updated to id ${newId}.")
         false
+      case t : Throwable =>  
+        WARNING.log(s"A fatal error occurred attempting to post Mastodon postable. Rethrowing! Content $mastoPostable.finalContent}", t)
+        throw t
 
   // should NOT be executed within a transaction! handles transactions itself!
   def _parallelAcrossSpacedWithinAccountsNotifyAllPosts[POSTABLE](
@@ -746,6 +749,7 @@ object PgDatabase extends Migratory, SelfLogging:
     yield()  
 
   def notifyAllMastoPosts( ds : DataSource, appSetup : AppSetup ) =
+    FINE.log( s"Notifying all queued Mastodon posts." )
     val fetchAllPostables = (conn : Connection) => LatestSchema.Table.MastoPostable.all(conn)
     val accountDiscriminator = (mastoPostable : MastoPostable) => Tuple2( mastoPostable.instanceUrl, mastoPostable.name )
     val findSpacing = (_ : Connection) => MinMastoPostSpacing
@@ -861,6 +865,7 @@ object PgDatabase extends Migratory, SelfLogging:
     FINE.log( s"Queued BlueSky post for distribution. Content: $fullContent" )
 
   def attemptBskyPost( conn : Connection, appSetup : AppSetup, maxRetries : Int, bskyPostable : BskyPostable ) : Boolean =
+    FINE.log( s"Attempting BlueSky post, content: ${bskyPostable.finalContent}" )
     val media = bskyPostable.media
     if media.nonEmpty then
       LatestSchema.Table.BskyPostableMedia.deleteById(conn, bskyPostable.id)
@@ -884,8 +889,12 @@ object PgDatabase extends Migratory, SelfLogging:
           (0 until media.size).foreach: i =>
             LatestSchema.Table.BskyPostableMedia.insert( conn, newId, i, media(i) )
         false
+      case t : Throwable =>  
+        WARNING.log(s"A fatal error occurred attempting to post BlueSky postable. Rethrowing! Content ${bskyPostable.finalContent}", t)
+        throw t
 
   def notifyAllBskyPosts( ds : DataSource, appSetup : AppSetup ) =
+    FINE.log( "Notifying all queued BlueSky posts." )
     val fetchAllPostables = (conn : Connection) => LatestSchema.Table.BskyPostable.all(conn)
     val accountDiscriminator = ( bskyPostable : BskyPostable ) => Tuple2(bskyPostable.entrywayUrl, bskyPostable.identifier)
     val findSpacing = ( conn: Connection ) => MinBskyPostSpacing
