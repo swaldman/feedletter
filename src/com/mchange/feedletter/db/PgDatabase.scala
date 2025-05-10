@@ -19,6 +19,8 @@ import MLevel.*
 
 import audiofluidity.rss.util.formatPubDate
 
+import com.mchange.sc.sqlutil.*
+
 import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}
 

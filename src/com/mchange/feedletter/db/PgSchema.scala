@@ -6,20 +6,17 @@ import scala.util.Using
 
 import com.mchange.cryptoutil.{Hash, given}
 
+import com.mchange.sc.sqlutil.*
+
 import com.mchange.feedletter.*
 import com.mchange.feedletter.Destination.Key
 
 import MLevel.*
 
 object PgSchema extends SelfLogging:
-  trait Creatable:
-    protected def Create : String
-    def create( stmt : Statement ) : Int = stmt.executeUpdate( this.Create )
-    def create( conn : Connection ) : Int = Using.resource( conn.createStatement() )( stmt => create(stmt) )
-
   object Unversioned:
     object Table:
-      object Metadata extends Creatable:
+      object Metadata extends Creatable: // Creatable is now defined in sqlutil
         val Name = "metadata"
         protected val Create = "CREATE TABLE metadata( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
         private val Insert = "INSERT INTO metadata(key, value) VALUES( ?, ? )"

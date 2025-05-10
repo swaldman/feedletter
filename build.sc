@@ -20,13 +20,14 @@ import com.mchange.milldaemon.DaemonModule
 import scala.util.control.NonFatal
 
 object `package` extends RootModule with DaemonModule with UntemplateModule with PublishModule with BuildInfo {
-  def scalaVersion = "3.3.4"
+  def scalaVersion = "3.3.6"
 
   override def scalacOptions = T{ Seq("-deprecation") }
 
   val TapirVersion = "1.11.7"
 
   def ivyDeps = Agg(
+  ivy"com.mchange::sqlutil-scala:0.0.2-SNAPSHOT",
     ivy"com.mchange::audiofluidity-rss:0.1.0",
     ivy"com.mchange::conveniences:0.0.5",
     ivy"com.mchange:c3p0:0.10.2",
