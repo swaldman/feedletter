@@ -24,19 +24,19 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
 
   override def scalacOptions = T{ Seq("-deprecation") }
 
-  val TapirVersion = "1.11.7"
+  val TapirVersion = "1.11.29"
 
   def ivyDeps = Agg(
     ivy"com.mchange::sqlutil-scala:0.0.2-SNAPSHOT",
     ivy"com.mchange::audiofluidity-rss:0.1.0",
     ivy"com.mchange::conveniences:0.0.5",
-    ivy"com.mchange:c3p0:0.10.2",
-    ivy"com.mchange::mlog-scala:0.3.15",
+    ivy"com.mchange:c3p0:0.11.0",
+    ivy"com.mchange::mlog-scala-zio:0.4.0-SNAPSHOT",
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.5",
     ivy"com.mchange::cryptoutil:0.0.2",
     ivy"com.mchange::untemplate:0.1.4",
-    ivy"dev.zio::zio:2.1.11",
+    ivy"dev.zio::zio:2.1.18",
     ivy"com.monovore::decline:2.4.1",
     ivy"org.postgresql:postgresql:42.7.3",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",

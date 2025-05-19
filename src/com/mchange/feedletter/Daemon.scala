@@ -7,6 +7,8 @@ import com.mchange.feedletter.api.ApiLinkGenerator
 import com.mchange.mailutil.*
 
 import MLevel.*
+import com.mchange.sc.v1.zlog.*
+
 import com.mchange.feedletter.db.withConnectionTransactional
 
 import com.mchange.feedletter.BuildInfo

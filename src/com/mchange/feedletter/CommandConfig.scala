@@ -19,6 +19,7 @@ import com.mchange.mailutil.*
 import untemplate.Untemplate
 
 import MLevel.*
+import com.mchange.sc.v1.zlog.*
 
 object CommandConfig extends SelfLogging:
   case class AddFeed( nf : NascentFeed ) extends CommandConfig:
