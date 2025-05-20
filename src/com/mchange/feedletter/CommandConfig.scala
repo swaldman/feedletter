@@ -21,6 +21,8 @@ import untemplate.Untemplate
 import MLevel.*
 import com.mchange.sc.v1.zlog.*
 
+import com.mchange.sc.zsqlutil.*
+
 object CommandConfig extends SelfLogging:
   case class AddFeed( nf : NascentFeed ) extends CommandConfig:
     override def zcommand : ZCommand =
@@ -484,7 +486,7 @@ object CommandConfig extends SelfLogging:
           dig      =  digest( fu )
           g        =  guid( dig )
           un       = untemplateNameCompose(overrideUntemplateName, sman, subscribableName)
-          tz       <- db.withConnectionTransactional(ds)( conn => sman.bestTimeZone( conn ) )
+          tz       <- withConnectionTransactional(ds)( conn => sman.bestTimeZone( conn ) )
           _        <- serveOrMailComposeSingleUntemplate(
                         un,
                         subscribableName,
@@ -536,7 +538,7 @@ object CommandConfig extends SelfLogging:
           gs       =  guids( dig )
           _        <- if gs.isEmpty then ZIO.fail( new NoExampleItems( s"${selection} yields no example items to render. Feed size: ${dig.fileOrderedGuids.size}" ) ) else ZIO.unit
           un       =  untemplateNameCompose(overrideUntemplateName, sman, subscribableName)
-          tz       <- db.withConnectionTransactional(ds)( conn => sman.bestTimeZone( conn ) )
+          tz       <- withConnectionTransactional(ds)( conn => sman.bestTimeZone( conn ) )
           _        <- serveOrMailComposeMultipleUntemplate(
                         un,
                         subscribableName,

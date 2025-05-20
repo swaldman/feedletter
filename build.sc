@@ -27,7 +27,7 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
   val TapirVersion = "1.11.29"
 
   def ivyDeps = Agg(
-    ivy"com.mchange::sqlutil-scala:0.0.2-SNAPSHOT",
+    ivy"com.mchange::sqlutil-scala-zio:0.0.2-SNAPSHOT",
     ivy"com.mchange::audiofluidity-rss:0.1.0",
     ivy"com.mchange::conveniences:0.0.5",
     ivy"com.mchange:c3p0:0.11.0",

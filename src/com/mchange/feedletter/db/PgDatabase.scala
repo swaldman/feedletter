@@ -21,6 +21,7 @@ import com.mchange.sc.v1.zlog.*
 import audiofluidity.rss.util.formatPubDate
 
 import com.mchange.sc.sqlutil.*
+import com.mchange.sc.zsqlutil.*
 
 import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}

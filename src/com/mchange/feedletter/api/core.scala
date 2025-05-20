@@ -23,9 +23,11 @@ import javax.sql.DataSource
 import scala.io.Codec
 import scala.collection.immutable
 
-import com.mchange.feedletter.db.withConnectionTransactional
+
 import com.mchange.feedletter.AppSetup
 import com.mchange.feedletter.SubscriptionManager
+
+import com.mchange.sc.zsqlutil.withConnectionTransactional
 
 import upickle.default.*
 import sttp.tapir.json.upickle.*
