@@ -25,7 +25,7 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
   override def scalacOptions = T{ Seq("-deprecation", "-explain-cyclic") }
 
   val TapirVersion      = "1.11.29"
-  val LogadapterVersion = "0.0.1-SNAPSHOT"
+  val LogadapterVersion = "0.0.1"
 
   def ivyDeps = Agg(
     ivy"com.mchange::logadapter-scala:${LogadapterVersion}",
