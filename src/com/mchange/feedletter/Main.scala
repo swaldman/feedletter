@@ -7,7 +7,7 @@ import com.monovore.decline.*
 import cats.implicits.* // for mapN
 import cats.data.{NonEmptyList,Validated,ValidatedNel}
 
-import MLevel.*
+import LoggingApi.*
 
 import java.nio.file.{Path as JPath}
 import java.time.{Instant,ZoneId}

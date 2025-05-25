@@ -7,13 +7,15 @@ import audiofluidity.rss.{Element,Namespace}
 import audiofluidity.rss.util.*
 import com.mchange.conveniences.collection.*
 import com.mchange.conveniences.string.*
-import com.mchange.sc.v1.log.*
-import MLevel.*
 import com.mchange.mailutil.Smtp
 import scala.util.control.NonFatal
 
+import LoggingApi.*
+
+given itemContentLogAdapter : LogAdapter = logAdapterFor( "com.mchange.feedletter.ItemContent")
+
+
 object ItemContent:
-  private lazy given logger : MLogger = MLogger(this)
 
   private def whitespaceSignificant( elem : Elem ) : Boolean =
     elem.label match
@@ -48,7 +50,6 @@ case class ItemContent private (
   overrideMedia                : Option[Seq[Media]]                     = None,
   overrideHintAnnounceParsings : Option[Seq[Element.Iffy.HintAnnounce]] = None
 ):
-  import ItemContent.logger
 
   def withTitle( title : String )      : ItemContent = this.copy( overrideTitle = Some( title ) )
   def withAuthor( author : String )    : ItemContent = this.copy( overrideAuthor = Some( author ) )

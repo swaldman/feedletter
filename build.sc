@@ -22,16 +22,18 @@ import scala.util.control.NonFatal
 object `package` extends RootModule with DaemonModule with UntemplateModule with PublishModule with BuildInfo {
   def scalaVersion = "3.3.6"
 
-  override def scalacOptions = T{ Seq("-deprecation") }
+  override def scalacOptions = T{ Seq("-deprecation", "-explain-cyclic") }
 
-  val TapirVersion = "1.11.29"
+  val TapirVersion      = "1.11.29"
+  val LogadapterVersion = "0.0.1-SNAPSHOT"
 
   def ivyDeps = Agg(
+    ivy"com.mchange::logadapter-scala:${LogadapterVersion}",
+    ivy"com.mchange::logadapter-scala-zio:${LogadapterVersion}",
     ivy"com.mchange::sqlutil-scala-zio:0.0.2",
     ivy"com.mchange::audiofluidity-rss:0.1.0",
     ivy"com.mchange::conveniences:0.0.5",
     ivy"com.mchange:c3p0:0.11.0",
-    ivy"com.mchange::mlog-scala-zio:0.4.0",
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.5",
     ivy"com.mchange::cryptoutil:0.0.2",

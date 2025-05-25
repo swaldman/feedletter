@@ -6,8 +6,8 @@ import javax.sql.DataSource
 import java.time.temporal.ChronoUnit
 import com.mchange.feedletter.db.Migratory.lastHourDumpFileExists
 import com.mchange.feedletter.BuildInfo.version
-import com.mchange.sc.v1.log.*
-import MLevel.*
+
+import com.mchange.feedletter.LoggingApi.*
 
 object Migratory:
   private val DumpTimestampFormatter = java.time.format.DateTimeFormatter.ISO_INSTANT
@@ -41,8 +41,7 @@ object Migratory:
     else
       false
     
-trait Migratory:
-  private lazy given logger : MLogger = mlogger( this )
+trait Migratory extends SelfLogging:
 
   def targetDbVersion : Int
 

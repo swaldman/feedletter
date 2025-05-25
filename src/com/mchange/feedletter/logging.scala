@@ -1,8 +1,6 @@
 package com.mchange.feedletter
 
-type SelfLogging = com.mchange.sc.v1.log.SelfLogging
-val  MLevel      = com.mchange.sc.v1.log.MLevel
-type MLevel      = com.mchange.sc.v1.log.MLevel
-val  MLogger     = com.mchange.sc.v1.log.MLogger
-type MLogger     = com.mchange.sc.v1.log.MLogger
-
+object LoggingApi: // workaround of nonexporting of SelfLogging from logadapter, due to a compiler bug. hopefully unnecessary soon
+  val raw = logadapter.zio.ZApi( logadapter.jul.Api )
+  type SelfLogging = raw.inner.SelfLogging
+  export raw.*

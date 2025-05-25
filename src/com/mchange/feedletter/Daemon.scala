@@ -6,8 +6,7 @@ import com.mchange.feedletter.db.PgDatabase
 import com.mchange.feedletter.api.ApiLinkGenerator
 import com.mchange.mailutil.*
 
-import MLevel.*
-import com.mchange.sc.v1.zlog.*
+import LoggingApi.*
 
 import com.mchange.sc.zsqlutil.withConnectionTransactional
 

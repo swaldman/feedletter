@@ -23,7 +23,6 @@ import javax.sql.DataSource
 import scala.io.Codec
 import scala.collection.immutable
 
-
 import com.mchange.feedletter.AppSetup
 import com.mchange.feedletter.SubscriptionManager
 
@@ -32,13 +31,14 @@ import com.mchange.sc.zsqlutil.withConnectionTransactional
 import upickle.default.*
 import sttp.tapir.json.upickle.*
 
+import LoggingApi.*
+
 trait ApiLinkGenerator:
   def createGetLink( subscribableName : SubscribableName, destination : Destination ) : String
   def confirmGetLink( sid : SubscriptionId ) : String
   def removeGetLink( sid : SubscriptionId ) : String
 
 object V0 extends SelfLogging:
-  import MLevel.*
 
   given ReadWriter[RequestPayload.Subscription.Create]  = ReadWriter.derived
   given ReadWriter[RequestPayload.Subscription.Confirm] = ReadWriter.derived

@@ -20,7 +20,7 @@ import com.mchange.conveniences.collection.*
 import com.mchange.feedletter.db.PgDatabase
 import scala.util.control.NonFatal
 
-import MLevel.*
+import LoggingApi.*
 
 import upickle.default.*
 import java.time.ZoneId
@@ -29,8 +29,7 @@ import com.mchange.feedletter.db.PgDatabase.Config.timeZone
 
 import audiofluidity.rss.Element
 
-object SubscriptionManager:
-  private lazy given logger : MLogger = MLogger(this)
+object SubscriptionManager extends SelfLogging:
 
   val  Json = SubscriptionManagerJson
   type Json = SubscriptionManagerJson
@@ -593,7 +592,7 @@ object SubscriptionManager:
   given ReadWriter[SubscriptionManager] = readwriter[ujson.Value].bimap[SubscriptionManager]( toUJsonV1, fromUJsonV1 )
 
 sealed trait SubscriptionManager extends Jsonable:
-  import SubscriptionManager.logger
+  import SubscriptionManager.logAdapter
 
   type D  <: Destination
 

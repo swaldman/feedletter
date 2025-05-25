@@ -11,9 +11,10 @@ import audiofluidity.rss.{Element,Namespace}
 
 import com.mchange.conveniences.string.*
 
-import MLevel.*
 import scala.xml.UnprefixedAttribute
 import scala.xml.TopScope
+
+import LoggingApi.*
 
 object FeedDigest extends SelfLogging:
   // we should err on the side of the timestamp being slightly early, so there's no risk

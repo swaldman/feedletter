@@ -14,8 +14,7 @@ import javax.sql.DataSource
 
 import com.mchange.mailutil.*
 
-import MLevel.*
-import com.mchange.sc.v1.zlog.*
+import LoggingApi.*
 
 trait AbstractMain extends SelfLogging:
   object CommonOpts:

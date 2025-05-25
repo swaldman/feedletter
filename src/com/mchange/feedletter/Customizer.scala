@@ -10,7 +10,7 @@ import scala.annotation.targetName
 
 import java.time.ZoneId
 
-import MLevel.*
+import LoggingApi.*
 
 object Customizer extends SelfLogging:
   type Subject                 = ( SubscribableName, SubscriptionManager, FeedUrl, Seq[ItemContent], ZoneId )            => String

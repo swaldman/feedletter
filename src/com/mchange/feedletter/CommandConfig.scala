@@ -18,8 +18,7 @@ import com.mchange.mailutil.*
 
 import untemplate.Untemplate
 
-import MLevel.*
-import com.mchange.sc.v1.zlog.*
+import LoggingApi.*
 
 import com.mchange.sc.zsqlutil.*
 

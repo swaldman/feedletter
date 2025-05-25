@@ -11,7 +11,7 @@ import scala.jdk.CollectionConverters.*
 import com.mchange.mailutil.Smtp
 import com.mchange.conveniences.javautil.*
 
-import MLevel.*
+import LoggingApi.*
 
 object AppSetup extends SelfLogging:
 

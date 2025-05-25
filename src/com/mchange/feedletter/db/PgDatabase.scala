@@ -15,8 +15,8 @@ import java.time.{Duration as JDuration,Instant,ZonedDateTime,ZoneId}
 import java.time.temporal.ChronoUnit
 
 import com.mchange.feedletter.*
-import MLevel.*
-import com.mchange.sc.v1.zlog.*
+
+import LoggingApi.*
 
 import audiofluidity.rss.util.formatPubDate
 
@@ -686,7 +686,7 @@ object PgDatabase extends Migratory, SelfLogging:
       if deleted then
         val skipFailedMedia = mastoPostable.retried == maxRetries // iff this is our last attempt, skip media that fail to retrieve or post
         TRACE.log(s"Deleted masto-postable with id ${mastoPostable.id}. Attempting post.")
-        mastoPost( appSetup, mastoPostable, skipFailedMedia )
+        Masto.post( appSetup, mastoPostable, skipFailedMedia )
         true
       else
         WARNING.log(s"While attempting to post Mastodon postable with id ${mastoPostable.id}, found it was no longer in the database, has apparently already been handled. Skipping post.")
@@ -731,10 +731,8 @@ object PgDatabase extends Migratory, SelfLogging:
                 withConnectionTransactional(ds): postConn =>
                   val succeeded = attemptPost(postConn, appSetup, retries, postable)
                   if succeeded then
-                    if logger.isLoggable(MLevel.TRACE) then
-                      TRACE.log(s"Posted ${serviceName} notification to ${discriminator}. Postable: ${postable}")
-                    else
                       INFO.log(s"Posted ${serviceName} notification to ${discriminator}")
+                      TRACE.log(s"Postable: ${postable}")
                   else
                     WARNING.log(s"Attempt to post ${serviceName} notification to ${discriminator} failed or was skipped. Postable: ${postable}")
                   succeeded
@@ -878,7 +876,7 @@ object PgDatabase extends Migratory, SelfLogging:
     try
       if deleted then
         TRACE.log(s"Deleted bsky-postable with id ${bskyPostable.id}. Attempting post.")
-        bskyPost( appSetup, bskyPostable )
+        Bsky.post( appSetup, bskyPostable )
         true
       else
         WARNING.log(s"While attempting to post BlueSky postable with id ${bskyPostable.id}, found it was no longer in the database, has apparently already been handled. Skipping post.")

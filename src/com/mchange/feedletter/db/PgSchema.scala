@@ -11,7 +11,7 @@ import com.mchange.sc.sqlutil.*
 import com.mchange.feedletter.*
 import com.mchange.feedletter.Destination.Key
 
-import MLevel.*
+import LoggingApi.*
 
 object PgSchema extends SelfLogging:
   object Unversioned:
