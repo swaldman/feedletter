@@ -4,8 +4,10 @@ import com.mchange.feedletter.style.*
 
 import zio.*
 
-import com.mchange.feedletter.db.{DbVersionStatus,PgDatabase}
+import com.mchange.feedletter.db.PgDatabase
 import com.mchange.feedletter.style.AllUntemplates
+
+import com.mchange.sc.sqlutil.migrate.DbVersionStatus
 
 import java.nio.file.{Path as JPath}
 import javax.sql.DataSource

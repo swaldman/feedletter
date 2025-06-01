@@ -16,7 +16,8 @@ import javax.sql.DataSource
 
 import com.mchange.conveniences.javanio.*
 
-import com.mchange.feedletter.db.DbVersionStatus
+import com.mchange.sc.sqlutil.migrate.DbVersionStatus
+
 import com.mchange.feedletter.style.AllUntemplates
 
 object Main extends AbstractMain, SelfLogging:

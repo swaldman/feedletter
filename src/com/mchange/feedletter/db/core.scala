@@ -11,10 +11,6 @@ import java.lang.System
 
 import com.mchange.cryptoutil.*
 
-enum MetadataKey:
-  case SchemaVersion
-  case CreatorAppVersion
-
 object MailSpec:
   final case class WithHash(
     seqnum       : Long,

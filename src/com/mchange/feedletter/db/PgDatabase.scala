@@ -21,7 +21,9 @@ import LoggingApi.*
 import audiofluidity.rss.util.formatPubDate
 
 import com.mchange.sc.sqlutil.*
+import com.mchange.sc.sqlutil.migrate.*
 import com.mchange.sc.zsqlutil.*
+import com.mchange.sc.zsqlutil.zmigrate.*
 
 import com.mchange.mailutil.*
 import com.mchange.cryptoutil.{*, given}
@@ -29,77 +31,25 @@ import com.mchange.cryptoutil.{*, given}
 import com.mchange.feedletter.BuildInfo
 import com.mchange.feedletter.api.ApiLinkGenerator
 
-object PgDatabase extends Migratory, SelfLogging:
-  val LatestSchema = PgSchema.V2
-  override val targetDbVersion = LatestSchema.Version
-
+object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
   val MinMastoPostSpacing = 2.minutes // should be configurable, but for now...
   val MinBskyPostSpacing  = 2.minutes // should be configurable, but for now...
 
-  private def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Option[String] =
+  override val AppDbTag          = "feedletter-pg"
+  override val LatestSchema      = PgSchema.V2
+  override val MetadataTableName = PgSchema.Unversioned.Table.Metadata.Name
+
+  lazy val targetDbVersion : Int = LatestSchema.Version
+
+  override def getRunningAppVersionIfAvailable() : Option[String] = Some( BuildInfo.version )
+
+  override def fetchMetadataValue( conn : Connection, key : MetadataKey ) : Option[String] =
     PgSchema.Unversioned.Table.Metadata.select( conn, key )
 
-  private def zfetchMetadataValue( conn : Connection, key : MetadataKey ) : Task[Option[String]] =
-    ZIO.attemptBlocking( PgSchema.Unversioned.Table.Metadata.select( conn, key ) )
+  override def hasMetadataTable( conn : Connection ) : Boolean =
+    Using.resource( conn.getMetaData().getTables(null,null,PgSchema.Unversioned.Table.Metadata.Name,null) )( _.next() )
 
-  private def fetchDbName(conn : Connection) : Task[String] =
-    ZIO.attemptBlocking:
-      Using.resource(conn.createStatement()): stmt =>
-        Using.resource(stmt.executeQuery("SELECT current_database()")): rs =>
-          uniqueResult("select-current-database-name", rs)( _.getString(1) )
-
-  private def fetchDumpDir(conn : Connection) : Task[os.Path] =
-    for
-      mbDumpDir <- Config.zfetchValue(conn, ConfigKey.DumpDbDir)
-    yield
-      os.Path( mbDumpDir.getOrElse( throw new ConfigurationMissing(ConfigKey.DumpDbDir) ) )
-
-  override def fetchDumpDir( ds : DataSource ) : Task[os.Path] =
-    withConnectionZIO(ds)( fetchDumpDir )
-
-  override def dump(ds : DataSource) : Task[os.Path] =
-    def runDump( dbName : String, dumpFile : os.Path ) : Task[Unit] =
-      ZIO.attemptBlocking:
-        val parsedCommand = List("pg_dump", dbName)
-        os.proc( parsedCommand ).call( stdout = dumpFile )
-    withConnectionZIO( ds ): conn =>
-      for
-        dbName   <- fetchDbName(conn)
-        dumpDir  <- fetchDumpDir(conn)
-        dumpFile <- Migratory.prepareDumpFileForInstant(dumpDir, java.time.Instant.now)
-        _        <- runDump( dbName, dumpFile )
-      yield dumpFile
-
-  override def dbVersionStatus(ds : DataSource) : Task[DbVersionStatus] =
-    withConnectionZIO( ds ): conn =>
-      val okeyDokeyIsh =
-        for
-          mbDbVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion)
-          mbCreatorAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
-        yield
-          try
-            mbDbVersion.map( _.toInt ) match
-              case Some( version ) if version == LatestSchema.Version => DbVersionStatus.Current( version )
-              case Some( version ) if version < LatestSchema.Version => DbVersionStatus.OutOfDate( version, LatestSchema.Version )
-              case Some( version ) => DbVersionStatus.UnexpectedVersion( Some(version.toString), mbCreatorAppVersion, Some( BuildInfo.version ), Some(LatestSchema.Version.toString()) )
-              case None => DbVersionStatus.SchemaMetadataDisordered( s"Expected key '${MetadataKey.SchemaVersion}' was not found in schema metadata!" )
-          catch
-            case nfe : NumberFormatException =>
-              DbVersionStatus.UnexpectedVersion( mbDbVersion, mbCreatorAppVersion, Some( BuildInfo.version ), Some(LatestSchema.Version.toString()) )
-      okeyDokeyIsh.catchSome:
-        case sqle : SQLException =>
-          val dbmd = conn.getMetaData()
-          try
-            val rs = dbmd.getTables(null,null,PgSchema.Unversioned.Table.Metadata.Name,null)
-            if !rs.next() then // the metadata table does not exist
-              ZIO.succeed( DbVersionStatus.SchemaMetadataNotFound )
-            else
-              ZIO.succeed( DbVersionStatus.SchemaMetadataDisordered(s"Metadata table found, but an Exception occurred while accessing it: ${sqle.toString()}") )
-          catch
-            case t : SQLException =>
-              WARNING.log("Exception while connecting to database.", t)
-              ZIO.succeed( DbVersionStatus.ConnectionFailed )
-  end dbVersionStatus
+  override def fetchDumpDir(conn : Connection) : Task[Option[os.Path]] = Config.zfetchValue(conn, ConfigKey.DumpDbDir).map( opt => opt.map(os.Path(_)) )
 
   override def upMigrate(ds : DataSource, from : Option[Int]) : Task[Unit] =
     def upMigrateFrom_New() : Task[Unit] =
@@ -167,10 +117,10 @@ object PgDatabase extends Migratory, SelfLogging:
       case Some( other ) =>
         ZIO.fail( new CannotUpMigrate( s"Cannot upmigrate from unknown DB version: V${other}" ) )
 
-  private def insertMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
+  override def insertMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
     pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.insert(conn, mdkey, value) )
 
-  private def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
+  override def updateMetadataKeys( conn : Connection, pairs : (MetadataKey,String)* ) : Unit =
     pairs.foreach( ( mdkey, value ) => PgSchema.Unversioned.Table.Metadata.update(conn, mdkey, value) )
 
   private def insertConfigKeys( conn : Connection, pairs : (ConfigKey,String)* ) : Unit =
@@ -560,41 +510,6 @@ object PgDatabase extends Migratory, SelfLogging:
   def mailNextGroup( ds : DataSource, smtpContext : Smtp.Context ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
       mailNextGroup( conn, smtpContext )
-
-  def hasMetadataTable( conn : Connection ) : Boolean =
-    Using.resource( conn.getMetaData().getTables(null,null,PgSchema.Unversioned.Table.Metadata.Name,null) )( _.next() )
-
-  def ensureMetadataTable( conn : Connection ) : Task[Unit] =
-    ZIO.attemptBlocking:
-      if !hasMetadataTable(conn) then throw new DbNotInitialized("Please initialize the database. (No metadata table found.)")
-
-  def ensureDb( ds : DataSource ) : Task[Unit] =
-    withConnectionZIO( ds ): conn =>
-      for
-        _ <- ensureMetadataTable(conn)
-        mbSchemaVersion <- zfetchMetadataValue(conn, MetadataKey.SchemaVersion).map( option => option.map( _.toInt ) )
-        mbAppVersion <- zfetchMetadataValue(conn, MetadataKey.CreatorAppVersion)
-      yield
-        mbSchemaVersion match
-          case Some( schemaVersion ) =>
-            if schemaVersion > LatestSchema.Version then
-              throw new MoreRecentFeedletterVersionRequired(
-                s"The database schema version is ${schemaVersion}. " +
-                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
-                s"The latest version known by this version of the app is ${LatestSchema.Version}. " +
-                s"You are running app version '${BuildInfo.version}'."
-              )
-            else if schemaVersion < LatestSchema.Version then
-              throw new SchemaMigrationRequired(
-                s"The database schema version is ${schemaVersion}. " +
-                mbAppVersion.fold("")( appVersion => s"It was created by app version '${appVersion}'. " ) +
-                s"The current schema this version of the app (${BuildInfo.version}) is ${LatestSchema.Version}. " +
-                "Please migrate."
-              )
-            // else schemaVersion == LatestSchema.version and we're good
-          case None =>
-            throw new DbNotInitialized("Please initialize the database.")
-  end ensureDb
 
   def feedUrl( conn : Connection, feedId : FeedId ) : Option[FeedUrl] =
     LatestSchema.Table.Feed.selectUrl(conn, feedId)

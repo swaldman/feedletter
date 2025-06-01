@@ -7,6 +7,7 @@ import scala.util.Using
 import com.mchange.cryptoutil.{Hash, given}
 
 import com.mchange.sc.sqlutil.*
+import com.mchange.sc.sqlutil.migrate.*
 
 import com.mchange.feedletter.*
 import com.mchange.feedletter.Destination.Key
@@ -38,11 +39,9 @@ object PgSchema extends SelfLogging:
             Using.resource( ps.executeQuery() ): rs =>
               zeroOrOneResult("select-metadata", rs)( _.getString(1) )
 
-  trait Base:
-    def Version : Int
-  object V0 extends Base: // contains unversioned schema only
+  object V0 extends Schema: // contains unversioned schema only
     override val Version = 0
-  object V1 extends Base:
+  object V1 extends Schema:
     override val Version = 1
     object Table:
       // careful updating this one, as new versions of the app need to be able to set --dump-db-dir even against old schemas
@@ -977,7 +976,7 @@ object PgSchema extends SelfLogging:
       end SubscribableSubscription
     end Join
 
-  object V2 extends Base:
+  object V2 extends Schema:
     override val Version = 2
     object Table:
       val Config              = V1.Table.Config
