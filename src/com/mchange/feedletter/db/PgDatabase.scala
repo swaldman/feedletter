@@ -51,6 +51,8 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
 
   override def fetchDumpDir(conn : Connection) : Task[Option[os.Path]] = Config.zfetchValue(conn, ConfigKey.DumpDbDir).map( opt => opt.map(os.Path(_)) )
 
+  override def runDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit] = simpleLocalRunDump( ds, mbDbName, dumpFile )
+
   override def upMigrate(ds : DataSource, from : Option[Int]) : Task[Unit] =
     def upMigrateFrom_New() : Task[Unit] =
       TRACE.log( "upMigrateFrom_New()" )
