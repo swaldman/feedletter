@@ -35,7 +35,7 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
   val MinMastoPostSpacing = 2.minutes // should be configurable, but for now...
   val MinBskyPostSpacing  = 2.minutes // should be configurable, but for now...
 
-  override val AppDbTag          = "feedletter-pg"
+  override val DumpFileAppDbTag  = "feedletter-pg"
   override val LatestSchema      = PgSchema.V2
   override val MetadataTableName = PgSchema.Unversioned.Table.Metadata.Name
 
