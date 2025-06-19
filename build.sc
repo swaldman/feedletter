@@ -33,7 +33,7 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
     ivy"com.mchange::sqlutil-scala-zio:0.0.4-SNAPSHOT",
     ivy"com.mchange::audiofluidity-rss:0.1.0",
     ivy"com.mchange::conveniences:0.0.5",
-    ivy"com.mchange:c3p0:0.11.1",
+    ivy"com.mchange:c3p0:0.11.2-SNAPSHOT",
     ivy"com.mchange::texttable:0.0.3",
     ivy"com.mchange::mailutil:0.0.5",
     ivy"com.mchange::cryptoutil:0.0.2",
