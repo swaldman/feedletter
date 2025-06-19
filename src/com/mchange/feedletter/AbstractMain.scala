@@ -14,6 +14,10 @@ import javax.sql.DataSource
 
 import com.mchange.mailutil.*
 
+import com.mchange.conveniences.javautil.*
+
+import com.mchange.v2.c3p0.DataSources
+
 import LoggingApi.*
 
 trait AbstractMain extends SelfLogging:
@@ -90,23 +94,8 @@ trait AbstractMain extends SelfLogging:
     import scala.jdk.CollectionConverters.*
 
     def createDataSource( appSetup : AppSetup ) : DataSource =
-      val c3p0PropsJMap =
-        appSetup.secrets
-          .filter( (k, _) => k.startsWith("c3p0.") )
-          .map( (k, v) => (k.substring(5), v) )
-          .asJava
-
       val nascent = new ComboPooledDataSource()
-      BeansUtils.overwriteAccessiblePropertiesFromMap(
-        c3p0PropsJMap, // sourceMap
-        nascent,       // destination bean
-        true,          // skip nulls
-        null,          // props to ignore, null means none
-        true,          // do coerce strings
-        null,          // null means log to default (WARNING) level if can't write
-        null,          // null means log to default (WARNING) level if can't coerce
-        false          // don't die on failures, continue
-      )
+      DataSources.overwriteC3P0PrefixedProperties( nascent, appSetup.secrets.toProperties )
       appSetup.secrets.get( SecretsKey.FeedletterJdbcUrl ).foreach( nascent.setJdbcUrl )
       appSetup.secrets.get( SecretsKey.FeedletterJdbcUser ).foreach( nascent.setUser )
       appSetup.secrets.get( SecretsKey.FeedletterJdbcPassword ).foreach( nascent.setPassword )
