@@ -12,6 +12,7 @@ import com.mchange.mailutil.Smtp
 import com.mchange.conveniences.javautil.*
 
 import LoggingApi.*
+import com.mchange.milldaemon.util.PidFileManager
 
 object AppSetup extends SelfLogging:
 
@@ -37,28 +38,10 @@ object AppSetup extends SelfLogging:
       java.util.logging.LogManager.getLogManager().readConfiguration( is )
     source
 
-  def setupAutoremovePidFile() : UIO[Unit] =
-    val risky =
-      ZIO.attempt:
-        sys.env.get("MILL_DAEMON_PID_FILE").foreach: pidFileLoc =>
-          val pidFilePath = os.Path( pidFileLoc )
-          val onShutdown =
-            new Thread:
-              override def run() : Unit =
-                try
-                  if os.exists(pidFilePath) then
-                    val myPid = ProcessHandle.current().pid()
-                    val fromFilePid = os.read(pidFilePath).trim().toLong
-                    if myPid == fromFilePid then
-                      INFO.log(s"Shutdown Hook: Removing PID file '${pidFilePath}'")
-                      os.remove( pidFilePath )
-                catch
-                  case NonFatal(t) => WARNING.log("Throwable while executing autoremove PID file shutdown hook.", t)
-          java.lang.Runtime.getRuntime().addShutdownHook(onShutdown)
-    risky.catchAll: t =>
+  def setupAutoremovePidFile() : Task[Unit] =
+    ZIO.attempt( PidFileManager.installShutdownHookCarefulDelete() ).catchSome: t =>
       t match
         case NonFatal(t) => ZIO.succeed(WARNING.log("Throwable while setting up autoremove PID file shutdown hook.", t))
-        case other => throw other
 
   def live( secrets : Option[JPath] ) : ZLayer[Any, Throwable, AppSetup] = ZLayer.fromZIO:
     for

@@ -11,7 +11,7 @@ import mill.contrib.buildinfo.BuildInfo
 import $ivy.`de.tototec::de.tobiasroeser.mill.vcs.version::0.4.0`
 import de.tobiasroeser.mill.vcs.version.VcsVersion
 
-import $ivy.`com.mchange::mill-daemon:0.1.1`
+import $ivy.`com.mchange::mill-daemon:0.1.2-SNAPSHOT` // don't forget to also update mill-daemon-util below
 
 import $ivy.`com.mchange::untemplate-mill:0.1.4`
 import untemplate.mill._
@@ -31,6 +31,7 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
     ivy"com.mchange::logadapter-scala:${LogadapterVersion}",
     ivy"com.mchange::logadapter-scala-zio:${LogadapterVersion}",
     ivy"com.mchange::sqlutil-scala-zio:0.0.4-SNAPSHOT",
+    ivy"com.mchange::mill-daemon-util:0.1.2-SNAPSHOT",  // don't forget to also update mill-daemon above
     ivy"com.mchange::audiofluidity-rss:0.1.0",
     ivy"com.mchange::conveniences:0.0.5",
     ivy"com.mchange:c3p0:0.11.2-SNAPSHOT",
