@@ -29,6 +29,8 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
 
   override def scalacOptions = T{ Seq("-deprecation", "-explain-cyclic") }
 
+  override def sonatypeCentralShouldRelease: T[Boolean] = Task { false }
+
   val TapirVersion      = "1.11.29"
   val LogadapterVersion = "0.0.1"
 
