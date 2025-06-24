@@ -32,13 +32,11 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
   override def sonatypeCentralShouldRelease: T[Boolean] = Task { false }
 
   val TapirVersion      = "1.11.29"
-  val LogadapterVersion = "0.0.1"
 
   def ivyDeps = Agg(
-    ivy"com.mchange::logadapter-scala:${LogadapterVersion}",
-    ivy"com.mchange::logadapter-scala-zio:${LogadapterVersion}",
-    ivy"com.mchange::sqlutil-scala-zio:0.0.4",
-    ivy"com.mchange::mill-daemon-util:0.1.2",  // don't forget to also update mill-daemon above
+    ivy"com.mchange::logadapter-scala-zio:0.0.1",
+    ivy"com.mchange::sqlutil-scala-zio:0.0.5-SNAPSHOT",
+    ivy"com.mchange::mill-daemon-util:0.1.2",  // don't forget to also update mill-daemon 'import $ivy' above
     ivy"com.mchange::audiofluidity-rss:0.1.0",
     ivy"com.mchange::conveniences:0.0.5",
     ivy"com.mchange:c3p0:0.11.2",
@@ -48,7 +46,7 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
     ivy"com.mchange::untemplate:0.1.4",
     ivy"dev.zio::zio:2.1.18",
     ivy"com.monovore::decline:2.4.1",
-    ivy"org.postgresql:postgresql:42.7.3",
+    ivy"org.postgresql:postgresql:42.7.7",
     ivy"org.scala-lang.modules::scala-xml:2.2.0",
     ivy"com.lihaoyi::os-lib:0.11.2",
     ivy"com.lihaoyi::requests:0.8.3", // holding back on upgrade to 0.9.0 because of HttpClient hangs observed in unify-rss, similar to https://developer.jboss.org/thread/274758, only under pre-21 JVMs

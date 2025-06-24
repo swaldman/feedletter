@@ -53,10 +53,10 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
 
   override def runDump( ds : DataSource, mbDbName : Option[String], dumpFile : os.Path ) : Task[Unit] = simpleLocalRunDump( ds, mbDbName, dumpFile )
 
-  override def upMigrate(ds : DataSource, from : Option[Int]) : Task[Unit] =
+  override def upMigrate(conn : Connection, from : Option[Int]) : Task[Unit] =
     def upMigrateFrom_New() : Task[Unit] =
-      TRACE.log( "upMigrateFrom_New()" )
-      withConnectionTransactional( ds ): conn =>
+      ZIO.attemptBlocking:
+        TRACE.log( "upMigrateFrom_New()" )
         PgSchema.Unversioned.Table.Metadata.create( conn )
         insertMetadataKeys(
           conn,
@@ -65,8 +65,8 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
         )
 
     def upMigrateFrom_0() : Task[Unit] =
-      TRACE.log( "upMigrateFrom_0()" )
-      withConnectionTransactional( ds ): conn =>
+      ZIO.attemptBlocking:
+        TRACE.log( "upMigrateFrom_0()" )
         Using.resource( conn.createStatement() ): stmt =>
           PgSchema.V1.Table.Config.create( stmt )
           PgSchema.V1.Table.Flags.create( stmt )
@@ -97,8 +97,8 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
         )
 
     def upMigrateFrom_1() : Task[Unit] =
-      TRACE.log( "upMigrateFrom_1()" )
-      withConnectionTransactional( ds ): conn =>
+      ZIO.attemptBlocking:
+        TRACE.log( "upMigrateFrom_1()" )
         Using.resource( conn.createStatement() ): stmt =>
           PgSchema.V2.Table.BskyPostable.create( stmt )
           PgSchema.V2.Table.BskyPostable.Sequence.BskyPostableSeq.create( stmt )

@@ -92,8 +92,8 @@ object CommandConfig extends SelfLogging:
     end zcommand
   case object DbInit extends CommandConfig:
     override def zcommand : ZCommand =
-      def doInit( ds : DataSource, status : DbVersionStatus ) : Task[Unit] =
-        if status == DbVersionStatus.SchemaMetadataNotFound then PgDatabase.migrate(ds)
+      def doInit( conn : DataSource, status : DbVersionStatus ) : Task[Unit] =
+        if status == DbVersionStatus.SchemaMetadataNotFound then PgDatabase.migrate(conn)
         else
           status match
             case DbVersionStatus.Current(_) => ZIO.succeed( INFO.log("The database is already initialized and up-to-date." ) )
@@ -101,7 +101,8 @@ object CommandConfig extends SelfLogging:
             case other => throw new FeedletterException(s"""${other}: ${other.errMessage.getOrElse("<no message available>")}""")
       for
         ds     <- ZIO.service[DataSource]
-        status <- PgDatabase.dbVersionStatus(ds)
+        conn   =  ds.getConnection()
+        status <- PgDatabase.dbVersionStatus(conn)
         _      <- doInit( ds, status )
       yield ()
     end zcommand
