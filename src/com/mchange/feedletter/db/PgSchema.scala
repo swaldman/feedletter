@@ -1056,11 +1056,11 @@ object PgSchema extends SelfLogging:
         object Sequence:
           object BskyPostableSeq extends Creatable:
             protected val Create = "CREATE SEQUENCE bsky_postable_seq AS BIGINT"
-              private val SelectNext = "SELECT nextval('bsky_postable_seq')"
-              def selectNext( conn : Connection ) : BskyPostableId =
-                Using.resource( conn.prepareStatement(SelectNext) ): ps =>
-                  Using.resource( ps.executeQuery() ): rs =>
-                    uniqueResult("select-next-bsky-postable-seq", rs)( rs => BskyPostableId( rs.getLong(1) ) )
+            private val SelectNext = "SELECT nextval('bsky_postable_seq')"
+            def selectNext( conn : Connection ) : BskyPostableId =
+              Using.resource( conn.prepareStatement(SelectNext) ): ps =>
+                Using.resource( ps.executeQuery() ): rs =>
+                  uniqueResult("select-next-bsky-postable-seq", rs)( rs => BskyPostableId( rs.getLong(1) ) )
       object BskyPostableMedia extends Creatable:
         protected val Create =
           """|CREATE TABLE bsky_postable_media (
