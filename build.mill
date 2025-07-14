@@ -1,62 +1,54 @@
-//| mill-version: 0.12.14
-//+----------------------
+//| mill-version: 1.0.0
+//| mill-jvm-version: 17
+//| mvnDeps: ["com.lihaoyi::mill-contrib-buildinfo:$MILL_VERSION","com.mchange::mill-daemon:0.2.0-SNAPSHOT","com.mchange::untemplate-mill:0.2.0-SNAPSHOT"]
+//+---------------------------------------------------------------------------------------------------------
 
 package build
 
-import $meta._
+import mill.*, scalalib.*, publish.*
 
-import mill._, scalalib._, publish._
+import mill.api.BuildCtx
 
-import $ivy.`com.lihaoyi::mill-contrib-bloop:$MILL_VERSION`
-
-import $ivy.`com.lihaoyi::mill-contrib-buildinfo:`
 import mill.contrib.buildinfo.BuildInfo
 
-// see https://github.com/lefou/mill-vcs-version
-import $ivy.`de.tototec::de.tobiasroeser.mill.vcs.version::0.4.0`
-import de.tobiasroeser.mill.vcs.version.VcsVersion
-
-import $ivy.`com.mchange::mill-daemon:0.1.2` // don't forget to also update mill-daemon-util below
-
-import $ivy.`com.mchange::untemplate-mill:0.1.4`
 import untemplate.mill._
 import com.mchange.milldaemon.DaemonModule
 
 import scala.util.control.NonFatal
 
-object `package` extends RootModule with DaemonModule with UntemplateModule with SonatypeCentralPublishModule with BuildInfo {
-  def scalaVersion = "3.3.6"
+object `package` extends DaemonModule with UntemplateModule with SonatypeCentralPublishModule with BuildInfo {
+  override def scalaVersion = "3.3.6"
 
-  override def scalacOptions = T{ Seq("-deprecation", "-explain-cyclic") }
+  override def scalacOptions = Task { Seq("-deprecation", "-explain-cyclic") }
 
   override def sonatypeCentralShouldRelease: T[Boolean] = Task { false }
 
-  val TapirVersion      = "1.11.29"
+  val TapirVersion = "1.11.29"
 
-  def ivyDeps = Agg(
-    ivy"com.mchange::logadapter-scala-zio:0.0.1",
-    ivy"com.mchange::sqlutil-scala-zio:0.0.5-SNAPSHOT",
-    ivy"com.mchange::mill-daemon-util:0.1.2",  // don't forget to also update mill-daemon 'import $ivy' above
-    ivy"com.mchange::audiofluidity-rss:0.1.0",
-    ivy"com.mchange::conveniences:0.0.5",
-    ivy"com.mchange:c3p0:0.11.2",
-    ivy"com.mchange::texttable:0.0.3",
-    ivy"com.mchange::mailutil:0.0.5",
-    ivy"com.mchange::cryptoutil:0.0.2",
-    ivy"com.mchange::untemplate:0.1.4",
-    ivy"dev.zio::zio:2.1.18",
-    ivy"com.monovore::decline:2.4.1",
-    ivy"org.postgresql:postgresql:42.7.7",
-    ivy"org.scala-lang.modules::scala-xml:2.2.0",
-    ivy"com.lihaoyi::os-lib:0.11.2",
-    ivy"com.lihaoyi::requests:0.8.3", // holding back on upgrade to 0.9.0 because of HttpClient hangs observed in unify-rss, similar to https://developer.jboss.org/thread/274758, only under pre-21 JVMs
-    ivy"com.lihaoyi::upickle:3.2.0",
-    ivy"com.softwaremill.sttp.tapir::tapir-zio:${TapirVersion}",
-    ivy"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
-    ivy"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
+  def mvnDeps = Seq(
+    mvn"com.mchange::logadapter-scala-zio:0.0.1",
+    mvn"com.mchange::sqlutil-scala-zio:0.0.5-SNAPSHOT",
+    mvn"com.mchange::mill-daemon-util:0.2.0-SNAPSHOT",  // don't forget to also update mill-daemon in build-level 'mvnDeps' above
+    mvn"com.mchange::audiofluidity-rss:0.1.0",
+    mvn"com.mchange::conveniences:0.0.5",
+    mvn"com.mchange:c3p0:0.11.2",
+    mvn"com.mchange::texttable:0.0.3",
+    mvn"com.mchange::mailutil:0.0.5",
+    mvn"com.mchange::cryptoutil:0.0.2",
+    mvn"com.mchange::untemplate:0.1.4",
+    mvn"dev.zio::zio:2.1.18",
+    mvn"com.monovore::decline:2.4.1",
+    mvn"org.postgresql:postgresql:42.7.7",
+    mvn"org.scala-lang.modules::scala-xml:2.2.0",
+    mvn"com.lihaoyi::os-lib:0.11.2",
+    mvn"com.lihaoyi::requests:0.8.3", // holding back on upgrade to 0.9.0 because of HttpClient hangs observed in unify-rss, similar to https://developer.jboss.org/thread/274758, only under pre-21 JVMs
+    mvn"com.lihaoyi::upickle:3.2.0",
+    mvn"com.softwaremill.sttp.tapir::tapir-zio:${TapirVersion}",
+    mvn"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
+    mvn"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
   )
 
-  val pidFilePathFile = mill.api.WorkspaceRoot.workspaceRoot / ".feedletter-pid-file-path"
+  val pidFilePathFile = BuildCtx.workspaceRoot / ".feedletter-pid-file-path"
 
   override def runDaemonPidFile = {
     if ( os.exists( pidFilePathFile ) )
@@ -66,11 +58,11 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
           throw new Exception( s"Could not parse absolute path of desired PID file from contents of ${pidFilePathFile}. Please repair or remove this file.", t )
       }
     else
-      Some( mill.api.WorkspaceRoot.workspaceRoot / "feedletter.pid" )
+      Some( BuildCtx.workspaceRoot / "feedletter.pid" )
   }
 
   def buildInfoMembers = Seq(
-    BuildInfo.Value("version", VcsVersion.vcsState().format())
+    BuildInfo.Value("version", publishVersion())
   )
   def buildInfoPackageName = "com.mchange.feedletter"
 
@@ -90,23 +82,9 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
     out
   }
 
-  /**
-   * Update the millw script.
-   * modified from https://github.com/lefou/millw
-   */
-  def overwriteLatestMillw() = T.command {
-    import java.nio.file.attribute.PosixFilePermission._
-    val target = mill.util.Util.download("https://raw.githubusercontent.com/com-lihaoyi/mill/refs/heads/main/mill")
-    val millw = Task.workspace / "millw"
-    os.copy.over(target.path, millw)
-    os.perms.set(millw, os.perms(millw) + OWNER_EXECUTE + GROUP_EXECUTE + OTHERS_EXECUTE)
-    target
-  }
-
   override def artifactName = "feedletter"
-  override def publishVersion =  T{ VcsVersion.vcsState().format() }
-  //override def publishVersion =  T{ "0.0.1-SNAPSHOT" }
-  override def pomSettings    = T{
+  override def publishVersion =  Task { "0.2.0-SNAPSHOT" }
+  override def pomSettings    = Task {
     PomSettings(
       description = "A service that carefully watches RSS feeds and mails newsletters or sends notifications based on items that stablely appear.",
       organization = "com.mchange",
@@ -114,7 +92,7 @@ object `package` extends RootModule with DaemonModule with UntemplateModule with
       licenses = Seq(License.`AGPL-3.0-only`),
       versionControl = VersionControl.github("swaldman", "feedletter"),
       developers = Seq(
-	Developer("swaldman", "Steve Waldman", "https://github.com/swaldman")
+        Developer("swaldman", "Steve Waldman", "https://github.com/swaldman")
       )
     )
   }
