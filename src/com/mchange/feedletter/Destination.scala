@@ -1,6 +1,6 @@
 package com.mchange.feedletter
 
-import upickle.default._
+import upickle.default.*
 
 import com.mchange.conveniences.www.*
 import com.mchange.mailutil.Smtp

@@ -23,7 +23,7 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
 
   override def sonatypeCentralShouldRelease: T[Boolean] = Task { false }
 
-  val TapirVersion = "1.11.29"
+  val TapirVersion = "1.11.35"
 
   def mvnDeps = Seq(
     mvn"com.mchange::logadapter-scala-zio:0.0.1",
@@ -31,18 +31,18 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
     mvn"com.mchange::mill-daemon-util:0.2.0-SNAPSHOT",  // don't forget to also update mill-daemon in build-level 'mvnDeps' above
     mvn"com.mchange::audiofluidity-rss:0.1.0",
     mvn"com.mchange::conveniences:0.0.5",
-    mvn"com.mchange:c3p0:0.11.2",
     mvn"com.mchange::texttable:0.0.3",
     mvn"com.mchange::mailutil:0.0.5",
     mvn"com.mchange::cryptoutil:0.0.2",
     mvn"com.mchange::untemplate:0.1.4",
-    mvn"dev.zio::zio:2.1.18",
+    mvn"com.mchange:c3p0:0.11.2",
+    mvn"dev.zio::zio:2.1.19",
     mvn"com.monovore::decline:2.4.1",
     mvn"org.postgresql:postgresql:42.7.7",
     mvn"org.scala-lang.modules::scala-xml:2.2.0",
-    mvn"com.lihaoyi::os-lib:0.11.2",
+    mvn"com.lihaoyi::os-lib:0.11.4",
     mvn"com.lihaoyi::requests:0.8.3", // holding back on upgrade to 0.9.0 because of HttpClient hangs observed in unify-rss, similar to https://developer.jboss.org/thread/274758, only under pre-21 JVMs
-    mvn"com.lihaoyi::upickle:3.2.0",
+    mvn"com.lihaoyi::upickle:4.2.1",
     mvn"com.softwaremill.sttp.tapir::tapir-zio:${TapirVersion}",
     mvn"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
     mvn"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
