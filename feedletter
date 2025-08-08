@@ -2,9 +2,9 @@
 
 # Choose between
 
-#./millw --no-server runMainLocal com.mchange.feedletter.Main "$@"
-#./millw --no-server runMainBackground com.mchange.feedletter.Main "$@"
-#./millw --no-server runMain com.mchange.feedletter.Main "$@"
+#./mill --no-server runMainLocal com.mchange.feedletter.Main "$@"
+#./mill --no-server runMainBackground com.mchange.feedletter.Main "$@"
+#./mill --no-server runMain com.mchange.feedletter.Main "$@"
 
 # Style commands need to be run with the -w flag, but are managed
 # by the separate script feedletter-style
@@ -27,11 +27,11 @@ fi
 
 if [[ "$EXECNAME" == "feedletter" ]]; then
     if [[ "$SUBCMD" == "edit-subscribable" ]]; then  # we need native streams...
-        ./millw --no-server --disable-prompt --ticker=false runMainLocal com.mchange.feedletter.Main "$@"
+        ./mill --no-server --disable-prompt --ticker=false runMainLocal com.mchange.feedletter.Main "$@"
     elif [[  "$SUBCMD" == "daemon" && "$FIRSTARG" == "--fork" ]]; then
-        ./millw --no-server --disable-prompt --ticker=false runMainDaemon com.mchange.feedletter.Main "$@"
+        ./mill --no-server --disable-prompt --ticker=false runMainDaemon com.mchange.feedletter.Main "$@"
     else
-        ./millw --no-server --disable-prompt --ticker=false runMain com.mchange.feedletter.Main "$@"
+        ./mill --no-server --disable-prompt --ticker=false runMain com.mchange.feedletter.Main "$@"
     fi
 else
     echo "Expected this command to be 'feedletter'."
