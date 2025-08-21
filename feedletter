@@ -35,11 +35,11 @@ esac
 
 if [[ "$EXECNAME" == "feedletter" ]]; then
     if [[ "$SUBCMD" == "edit-subscribable" ]]; then  # we need native streams...
-        ./mill --no-server --ticker=false runMainLocal com.mchange.feedletter.Main "$@"
+        ./mill --no-daemon --ticker=false runMainLocal com.mchange.feedletter.Main "$@"
     elif [[  "$SUBCMD" == "daemon" && "$FIRSTARG" == "--fork" ]]; then
-        ./mill --no-server --ticker=false runMainDaemon com.mchange.feedletter.Main "$@"
+        ./mill --no-daemon --ticker=false runMainDaemon com.mchange.feedletter.Main "$@"
     else
-        ./mill --no-server --ticker=false runMain com.mchange.feedletter.Main "$@"
+        ./mill --no-daemon --ticker=false runMain com.mchange.feedletter.Main "$@"
     fi
 else
     echo "Expected this command to be 'feedletter'."
