@@ -17,21 +17,29 @@ EXECNAME="$(basename $MAINCMD)"
 
 cd "$FEEDLETTER_DIR"
 
-if [[ "$1" == "--secrets" ]]; then
-    SUBCMD="$3"
-    FIRSTARG="$4"
-else
-    SUBCMD="$1"
-    FIRSTARG="$2"
-fi
+case $1 in
+    --secrets)
+        SUBCMD="$3"
+        FIRSTARG="$4"
+        ;;
+    --secrets*)
+        SUBCMD="$2"
+        FIRSTARG="$3"
+        ;;
+    *)
+        SUBCMD="$1"
+        FIRSTARG="$2"
+        return "$1 $2"
+        ;;
+esac
 
 if [[ "$EXECNAME" == "feedletter" ]]; then
     if [[ "$SUBCMD" == "edit-subscribable" ]]; then  # we need native streams...
-        ./mill --no-server --disable-prompt --ticker=false runMainLocal com.mchange.feedletter.Main "$@"
+        ./mill --no-server --ticker=false runMainLocal com.mchange.feedletter.Main "$@"
     elif [[  "$SUBCMD" == "daemon" && "$FIRSTARG" == "--fork" ]]; then
-        ./mill --no-server --disable-prompt --ticker=false runMainDaemon com.mchange.feedletter.Main "$@"
+        ./mill --no-server --ticker=false runMainDaemon com.mchange.feedletter.Main "$@"
     else
-        ./mill --no-server --disable-prompt --ticker=false runMain com.mchange.feedletter.Main "$@"
+        ./mill --no-server --ticker=false runMain com.mchange.feedletter.Main "$@"
     fi
 else
     echo "Expected this command to be 'feedletter'."
