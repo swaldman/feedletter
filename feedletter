@@ -29,7 +29,6 @@ case $1 in
     *)
         SUBCMD="$1"
         FIRSTARG="$2"
-        return "$1 $2"
         ;;
 esac
 
