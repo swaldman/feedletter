@@ -17,6 +17,9 @@ import com.mchange.milldaemon.DaemonModule
 import scala.util.control.NonFatal
 
 object `package` extends DaemonModule with UntemplateModule with SonatypeCentralPublishModule with BuildInfo {
+
+  val FeedletterVersion = "0.2.1-SNAPSHOT"
+  
   override def scalaVersion = "3.3.6"
 
   override def scalacOptions = Task { Seq("-deprecation", "-explain-cyclic") }
@@ -83,7 +86,7 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
   }
 
   override def artifactName = "feedletter"
-  override def publishVersion =  Task { "0.2.0" }
+  override def publishVersion =  Task { FeedletterVersion }
   override def pomSettings    = Task {
     PomSettings(
       description = "A service that carefully watches RSS feeds and mails newsletters or sends notifications based on items that stablely appear.",
