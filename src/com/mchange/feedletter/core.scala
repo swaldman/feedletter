@@ -15,7 +15,7 @@ import scala.collection.{immutable,mutable}
 import com.mchange.conveniences.www.*
 import com.mchange.codegenutil.*
 
-import trivialtemplate.TrivialTemplate
+import com.mchange.trivialtemplate.TrivialTemplate
 
 private lazy val Dingbat = s"${LineSep}-*-*-*-${LineSep}" // lazy so LineSep surely initializes first
 
