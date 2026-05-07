@@ -18,7 +18,7 @@ import scala.util.control.NonFatal
 
 object `package` extends DaemonModule with UntemplateModule with SonatypeCentralPublishModule with BuildInfo {
 
-  val FeedletterVersion = "0.2.2"
+  val FeedletterVersion = "0.2.3-SNAPSHOT"
 
   override def scalaVersion = "3.3.6"
 
@@ -29,6 +29,7 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
   val TapirVersion = "1.11.35"
 
   def mvnDeps = Seq(
+    mvn"com.mchange::trivial-template:0.0.1-SNAPSHOT",
     mvn"com.mchange::logadapter-scala-zio:0.0.1",
     mvn"com.mchange::sqlutil-scala-zio:0.0.5",
     mvn"com.mchange::mill-daemon-util:0.2.1", // don't forget to also update mill-daemon in build-level 'mvnDeps' above
