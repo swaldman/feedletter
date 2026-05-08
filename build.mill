@@ -26,27 +26,27 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
 
   override def sonatypeCentralShouldRelease: T[Boolean] = Task { false }
 
-  val TapirVersion = "1.11.35"
+  val TapirVersion = "1.13.18"
 
   def mvnDeps = Seq(
     mvn"com.mchange::trivial-template:0.0.1",
-    mvn"com.mchange::logadapter-scala-zio:0.0.1",
+    mvn"com.mchange::logadapter-scala-zio:0.0.4",
     mvn"com.mchange::sqlutil-scala-zio:0.0.5",
     mvn"com.mchange::mill-daemon-util:0.2.1", // don't forget to also update mill-daemon in build-level 'mvnDeps' above
-    mvn"com.mchange::audiofluidity-rss:0.1.0",
-    mvn"com.mchange::conveniences:0.0.5",
+    mvn"com.mchange::audiofluidity-rss:0.1.3",
+    mvn"com.mchange::conveniences:0.0.6",
     mvn"com.mchange::texttable:0.0.3",
     mvn"com.mchange::mailutil:0.0.5",
-    mvn"com.mchange::cryptoutil:0.0.2",
+    mvn"com.mchange::cryptoutil:0.0.4",
     mvn"com.mchange::untemplate:0.3.0", // don't forget to also update untemplate in build-level 'mvnDeps' above
     mvn"com.mchange:c3p0:0.13.0",
-    mvn"dev.zio::zio:2.1.19",
-    mvn"com.monovore::decline:2.4.1",
-    mvn"org.postgresql:postgresql:42.7.7",
-    mvn"org.scala-lang.modules::scala-xml:2.2.0",
-    mvn"com.lihaoyi::os-lib:0.11.4",
-    mvn"com.lihaoyi::requests:0.9.0",
-    mvn"com.lihaoyi::upickle:4.2.1",
+    mvn"dev.zio::zio:2.1.26",
+    mvn"com.monovore::decline:2.6.2",
+    mvn"org.postgresql:postgresql:42.7.11",
+    mvn"org.scala-lang.modules::scala-xml:2.4.0",
+    mvn"com.lihaoyi::os-lib:0.11.8",
+    mvn"com.lihaoyi::requests:0.9.3",
+    mvn"com.lihaoyi::upickle:4.4.3",
     mvn"com.softwaremill.sttp.tapir::tapir-zio:${TapirVersion}",
     mvn"com.softwaremill.sttp.tapir::tapir-zio-http-server:${TapirVersion}",
     mvn"com.softwaremill.sttp.tapir::tapir-json-upickle:${TapirVersion}",
