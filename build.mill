@@ -18,9 +18,9 @@ import scala.util.control.NonFatal
 
 object `package` extends DaemonModule with UntemplateModule with SonatypeCentralPublishModule with BuildInfo {
 
-  val FeedletterVersion = "0.2.3-SNAPSHOT"
+  val FeedletterVersion = "0.2.3"
 
-  override def scalaVersion = "3.3.6"
+  override def scalaVersion = "3.3.7"
 
   override def scalacOptions = Task { Seq("-deprecation", "-explain-cyclic") }
 
