@@ -39,7 +39,7 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
     mvn"com.mchange::mailutil:0.0.5",
     mvn"com.mchange::cryptoutil:0.0.4",
     mvn"com.mchange::untemplate:0.3.0", // don't forget to also update untemplate in build-level 'mvnDeps' above
-    mvn"com.mchange:c3p0:0.13.0",
+    mvn"com.mchange:c3p0:0.14.0",
     mvn"dev.zio::zio:2.1.26",
     mvn"com.monovore::decline:2.6.2",
     mvn"org.postgresql:postgresql:42.7.11",
