@@ -238,7 +238,7 @@ However, what untemplates render goes to all subscribers of a subscribable. We g
 for all recipients, and store it only once.
 
 But since we may want to customize our notifications in a per-recipient basis, the _output_ of the untemplates
-can take the form of a [trivial template](https://github.com/swaldman/feedletter/blob/main/src/com/mchange/feedletter/trivialtemplate/TrivialTemplate.scala)
+can take the form of a [trivial template](https://github.com/swaldman/trivial-template)
 with case-insensitive, percentage-delimited `%Fields%` that get filled in separately for each recipient.
 
 We try to refer to the former, initial, shared templates as _untemplates_ (because that's the technology
