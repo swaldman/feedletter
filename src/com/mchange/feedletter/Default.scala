@@ -1,5 +1,7 @@
 package com.mchange.feedletter
 
+import com.mchange.feedletter.style.AllUntemplates
+
 object Default:
   object Feed:
     val MinDelayMinutes           = 30
@@ -26,9 +28,44 @@ object Default:
     val WebApiPort            : Option[Int] = None
 
   object Email:
-    val ComposeUntemplateSingle       = "com.mchange.feedletter.default.email.composeUniversal_html"
-    val ComposeUntemplateMultiple     = "com.mchange.feedletter.default.email.composeUniversal_html"
-    val ConfirmUntemplate             = "com.mchange.feedletter.default.email.confirm_html"
-    val StatusChangeUntemplate        = "com.mchange.feedletter.default.email.statusChange_html"
-    val RemovalNotificationUntemplate = "com.mchange.feedletter.default.email.removalNotification_html"
+    object LocalName:
+       val Prefix = "local.subscription.email."
+       val ComposeUntemplateSingle       = Prefix + "composeSingle_html"
+       val ComposeUntemplateMultiple     = Prefix + "composeMultiple_html"
+       val ComposeUntemplateUniversal    = Prefix + "composeUniversal_html"
+       val ConfirmUntemplate             = Prefix + "confirm_html"
+       val StatusChangeUntemplate        = Prefix + "statusChange_html"
+       val RemovalNotificationUntemplate = Prefix + "removalNotification_html"
+    object BuiltIn:
+       val ComposeUntemplateSingle       = "com.mchange.feedletter.default.email.composeUniversal_html"
+       val ComposeUntemplateMultiple     = "com.mchange.feedletter.default.email.composeUniversal_html"
+       val ConfirmUntemplate             = "com.mchange.feedletter.default.email.confirm_html"
+       val StatusChangeUntemplate        = "com.mchange.feedletter.default.email.statusChange_html"
+       val RemovalNotificationUntemplate = "com.mchange.feedletter.default.email.removalNotification_html"
+
+
+    private def isDefined( fqn : String ) : Boolean = AllUntemplates.isDefined(fqn)
+
+    def composeUntemplateSingle() : String =
+      if isDefined( LocalName.ComposeUntemplateSingle ) then LocalName.ComposeUntemplateSingle
+      else if isDefined( LocalName.ComposeUntemplateUniversal ) then LocalName.ComposeUntemplateUniversal
+      else BuiltIn.ComposeUntemplateSingle
+
+    def composeUntemplateMultiple() : String =
+      if isDefined( LocalName.ComposeUntemplateMultiple ) then LocalName.ComposeUntemplateMultiple
+      else if isDefined( LocalName.ComposeUntemplateUniversal ) then LocalName.ComposeUntemplateUniversal
+      else BuiltIn.ComposeUntemplateMultiple
+
+    def confirmUntemplate() : String =
+      if isDefined( LocalName.ConfirmUntemplate ) then LocalName.ConfirmUntemplate
+      else BuiltIn.ConfirmUntemplate
+
+    def statusChangeUntemplate() : String =
+      if isDefined( LocalName.StatusChangeUntemplate ) then LocalName.StatusChangeUntemplate
+      else BuiltIn.StatusChangeUntemplate
+
+    def removalNotificationUntemplate() : String =
+      if isDefined( LocalName.RemovalNotificationUntemplate ) then LocalName.RemovalNotificationUntemplate
+      else BuiltIn.RemovalNotificationUntemplate
+
 

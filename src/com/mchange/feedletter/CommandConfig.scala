@@ -24,6 +24,9 @@ import LoggingApi.*
 
 import com.mchange.sc.zsqlutil.*
 
+import scala.io.{Codec,Source}
+import scala.util.Using
+
 object CommandConfig extends SelfLogging:
   case class AddFeed( nf : NascentFeed ) extends CommandConfig:
     override def zcommand : ZCommand =
@@ -142,15 +145,15 @@ object CommandConfig extends SelfLogging:
     extraParams                          : Map[String,String]
   ) extends CommandConfig:
     override def zcommand : ZCommand =
-      val confirmUntemplateName             = mbConfirmUntemplateName.getOrElse( Default.Email.ConfirmUntemplate )
-      val statusChangeUntemplateName        = mbStatusChangeUntemplateName.getOrElse( Default.Email.StatusChangeUntemplate )
-      val removalNotificationUntemplateName = mbRemovalNotificationUntemplateName.getOrElse( Default.Email.RemovalNotificationUntemplate )
+      val confirmUntemplateName             = mbConfirmUntemplateName.getOrElse( Default.Email.confirmUntemplate() )
+      val statusChangeUntemplateName        = mbStatusChangeUntemplateName.getOrElse( Default.Email.statusChangeUntemplate() )
+      val removalNotificationUntemplateName = mbRemovalNotificationUntemplateName.getOrElse( Default.Email.removalNotificationUntemplate() )
 
       val subscriptionManager =
         import SubscriptionManager.{Email as SMEM}
         emailCompanionAndArg match
           case (SMEM.Each, None) =>
-            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateSingle )
+            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateSingle() )
             SMEM.Each (
               from = Destination.Email(from),
               replyTo = replyTo.map( Destination.Email.apply ),
@@ -162,7 +165,7 @@ object CommandConfig extends SelfLogging:
             )
           case (SMEM.Weekly, tz : Option[ZoneId @unchecked]) => // we'll check ourselves
             tz.foreach( z => assert( z.isInstanceOf[ZoneId], "Only an Option[ZoneId] should be passed as the extra argument for Email.Weekly. Found '$z'." ) )
-            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
+            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateMultiple() )
             SMEM.Weekly (
               from = Destination.Email(from),
               replyTo = replyTo.map( Destination.Email.apply ),
@@ -175,7 +178,7 @@ object CommandConfig extends SelfLogging:
             )
           case (SMEM.Daily, tz : Option[ZoneId @unchecked]) => // we'll check ourselves
             tz.foreach( z => assert( z.isInstanceOf[ZoneId], "Only an Option[ZoneId] should be passed as the extra argument for Email.Daily. Found '$z'." ) )
-            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
+            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateMultiple() )
             SMEM.Daily (
               from = Destination.Email(from),
               replyTo = replyTo.map( Destination.Email.apply ),
@@ -187,7 +190,7 @@ object CommandConfig extends SelfLogging:
               extraParams = extraParams
             )
           case (SMEM.Fixed, Some(nipl : Int)) =>
-            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.ComposeUntemplateMultiple )
+            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateMultiple() )
             SMEM.Fixed (
               from = Destination.Email(from),
               replyTo = replyTo.map( Destination.Email.apply ),
@@ -277,6 +280,47 @@ object CommandConfig extends SelfLogging:
         sman <- PgDatabase.subscriptionManagerForSubscribableName( ds, subscribableName )
         tups <- PgDatabase.subscriptionsForSubscribableName(ds, subscribableName)
         _    <- printSubscriptionsCsv( sman, tups.map( _(1) ) )
+      yield ()
+    end zcommand
+  case class GenerateStarterUntemplates(p : os.Path) extends CommandConfig:
+    private val StarterUntemplatesPrefix    = "/starter-untemplates"
+    private val StarterUntemplatesPrefixLen = StarterUntemplatesPrefix.length
+    private def getResourcePaths : List[String] =
+      val listResourcePath = "/starter-untemplates-list.txt"
+      val listUrl = this.getClass.getResource(listResourcePath)
+      if listUrl == null then 
+        java.lang.System.err.println(s"Starter untemplates list expected as a classloader resource as '${listResourcePath}'. Not found.");
+        Nil
+      else
+        Using.resource( Source.fromURL( listUrl )( Codec.UTF8 ) )( _.getLines().map( _.trim ).filter( _.nonEmpty) ).toList
+    private def contentsFromResourcePath( rp : String ) : String = Using.resource(Source.fromURL(this.getClass.getResource(rp))(Codec.UTF8))( _.mkString )
+    private def destinationPathFromResourcePath( rp : String ) : os.Path =
+      assert(rp.startsWith(StarterUntemplatesPrefix), s"Starter untemplate resource paths are expected to begin with '${StarterUntemplatesPrefix}'")
+      p / rp.substring(StarterUntemplatesPrefixLen + 1) // We add one to get rid of what would be a leading slash
+    private def ensureNotPresentAndDifferentAndDirectoryExists( rp : String, p : os.Path ) : Task[Unit] =
+      def mkdirs = ZIO.attempt(os.makeDir.all(p / os.up))
+      if os.exists(p) then
+        val newContents = contentsFromResourcePath(rp).trim
+        val existingContents = os.read(p).trim
+        if newContents != existingContents then
+          ZIO.fail(
+            new StarterUntemplatesExist(
+              s"A starter untemplates already exists at $p and differs from what would be written. We don't overwrite existing untemplates. Please remove the file first if you want a fresh version" 
+            )
+          )
+        else
+          mkdirs
+      else
+        mkdirs
+    private def writeResource( rp : String, p : os.Path ) : Task[Unit] =
+      if os.exists(p) then Console.printLine( s"$p already exists, unchanged." )
+      else Console.printLine(s"Writing $p") *> ZIO.attempt( os.write( p, contentsFromResourcePath(rp) ) )
+    override def zcommand : ZCommand =
+      for
+        tups <- ZIO.attempt( getResourcePaths.map( rp => (rp, destinationPathFromResourcePath(rp)) ) )
+        _    <- ZIO.foreachDiscard( tups )( ensureNotPresentAndDifferentAndDirectoryExists ) 
+        _    <- ZIO.foreachDiscard( tups )( writeResource )
+        _    <- if tups.isEmpty then Console.printLine("Expected list of starter untemplates empty or not found") else ZIO.unit
       yield ()
     end zcommand
   case object ListConfig extends CommandConfig:

@@ -191,6 +191,13 @@ object Main extends AbstractMain, SelfLogging:
       val subscribableName = CommonOpts.SubscribableNameDefined
       subscribableName.map( sn => CommandConfig.ExportSubscribers( sn ) )
     Command("export-subscribers",header=header)( opts )
+  val generateStarterUntemplates =
+    val header = "Generate basic untemplates used by current subscription types, in a form that is easy to modify."
+    val opts =
+      val help = "An untemplates source directory whose contents your installation will have access to."
+      val untemplatesSourceDir = Opts.option[String]("untemplates-source-dir",help=help,metavar="dir").map( os.Path(_, os.pwd) ).withDefault( os.pwd / "untemplate" )
+      untemplatesSourceDir.map( usd => CommandConfig.GenerateStarterUntemplates( usd ) )
+    Command("generate-starter-untemplates",header=header)( opts )
   val listConfig =
     val header = "List all configuration parameters."
     val opts = Opts( CommandConfig.ListConfig )
@@ -373,6 +380,7 @@ object Main extends AbstractMain, SelfLogging:
           dropSubscribable,
           editSubscribable,
           exportSubscribers,
+          generateStarterUntemplates,
           listConfig,
           listFeeds,
           listItemsExcluded,

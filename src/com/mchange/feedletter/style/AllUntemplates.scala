@@ -45,6 +45,9 @@ object AllUntemplates:
   def all : Map[String,Untemplate.AnyUntemplate] = this.synchronized:
     Map.from( _untemplates )
 
+  def isDefined( fqn : String ) = this.synchronized:
+    _untemplates.contains(fqn)
+
   def findComposeUntemplateSingle( fqn : String ) : untemplate.Untemplate[ComposeInfo.Single,Nothing] =
     findComposeUntemplate(fqn, single=true).asInstanceOf[untemplate.Untemplate[ComposeInfo.Single,Nothing]]
 

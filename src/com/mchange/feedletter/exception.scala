@@ -19,3 +19,4 @@ class DuplicateKey( msg : String, cause : Throwable = null ) extends FeedletterE
 class LeakySecrets( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class WouldDropSubscriptions( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
 class UnexpectedDaemonTermination( msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )
+class StarterUntemplatesExist(  msg : String, cause : Throwable = null ) extends FeedletterException( msg, cause )

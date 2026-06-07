@@ -18,7 +18,7 @@ import scala.util.control.NonFatal
 
 object `package` extends DaemonModule with UntemplateModule with SonatypeCentralPublishModule with BuildInfo {
 
-  val FeedletterVersion = "0.2.3"
+  val FeedletterVersion = "0.2.4-SNAPSHOT"
 
   override def scalaVersion = "3.3.7"
 
@@ -89,5 +89,23 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
       )
     )
   }
+
+  def prepareStarterUntemplates = Task {
+    val starterUntemplatesPathEmail = Task.dest / "starter-untemplates" / "local" / "subscription" / "email"
+
+    // this is a bit fragile, we're relying upon any alterations to untemplateSources() to be appends.
+    // we don't anticipate any alterations at all in this build, but you never know
+    val emailUntemplatesSourceDir = untemplateSources().head.path / "com" / "mchange" / "feedletter" / "default" / "email"
+
+    os.makeDir.all(starterUntemplatesPathEmail)
+    os.copy.over(from=emailUntemplatesSourceDir, to=starterUntemplatesPathEmail)
+    val prefixLen = Task.dest.toString.length
+    val starterUntemplatesList = os.walk(Task.dest).filter(os.isFile).map( _.toString.substring(prefixLen) ).mkString("\n") // String is encoded as UTF-8 by os-lib
+    val starterUntemplatesListPath = Task.dest / "starter-untemplates-list.txt"
+    os.write.over(starterUntemplatesListPath,starterUntemplatesList)
+    PathRef(Task.dest)
+  }
+
+  override def resources = super.resources() :+ prepareStarterUntemplates()
 }
 
