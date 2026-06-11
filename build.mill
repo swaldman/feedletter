@@ -91,7 +91,8 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
   }
 
   def prepareStarterUntemplates = Task {
-    val starterUntemplatesPathEmail = Task.dest / "starter-untemplates" / "local" / "subscription" / "email"
+    // if you change this, change it also in Default.scala, Default.Config.Email.LocalName.Prefix
+    val starterUntemplatesPathEmail = Task.dest / "starter-untemplates" / "default" / "subscription" / "email"
 
     // this is a bit fragile, we're relying upon any alterations to untemplateSources() to be appends.
     // we don't anticipate any alterations at all in this build, but you never know

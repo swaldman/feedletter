@@ -29,7 +29,7 @@ object Default:
 
   object Email:
     object LocalName:
-       val Prefix = "local.subscription.email."
+       val Prefix = "default.subscription.email." // if you change this, change it also in build.mill, prepareStarterUntemplates 
        val ComposeUntemplateSingle       = Prefix + "composeSingle_html"
        val ComposeUntemplateMultiple     = Prefix + "composeMultiple_html"
        val ComposeUntemplateUniversal    = Prefix + "composeUniversal_html"
