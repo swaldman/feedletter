@@ -292,7 +292,7 @@ object CommandConfig extends SelfLogging:
         java.lang.System.err.println(s"Starter untemplates list expected as a classloader resource as '${listResourcePath}'. Not found.");
         Nil
       else
-        Using.resource( Source.fromURL( listUrl )( Codec.UTF8 ) )( _.getLines().map( _.trim ).filter( _.nonEmpty) ).toList
+        Using.resource( Source.fromURL( listUrl )( Codec.UTF8 ) )( _.getLines().map( _.trim ).filter( _.nonEmpty).toList )
     private def contentsFromResourcePath( rp : String ) : String = Using.resource(Source.fromURL(this.getClass.getResource(rp))(Codec.UTF8))( _.mkString )
     private def destinationPathFromResourcePath( rp : String ) : os.Path =
       assert(rp.startsWith(StarterUntemplatesPrefix), s"Starter untemplate resource paths are expected to begin with '${StarterUntemplatesPrefix}'")
