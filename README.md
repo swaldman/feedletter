@@ -14,7 +14,7 @@
    * Over different media
      - e-mail
      - Post to Mastodon
-     - SMS (coming soon!)
+     - Post to Bluesky
      - etc
    * In different arrangements
      - each item as newsletter
