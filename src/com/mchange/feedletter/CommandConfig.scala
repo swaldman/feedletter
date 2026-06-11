@@ -296,7 +296,7 @@ object CommandConfig extends SelfLogging:
     private def contentsFromResourcePath( rp : String ) : String = Using.resource(Source.fromURL(this.getClass.getResource(rp))(Codec.UTF8))( _.mkString )
     private def destinationPathFromResourcePath( rp : String ) : os.Path =
       assert(rp.startsWith(StarterUntemplatesPrefix), s"Starter untemplate resource paths are expected to begin with '${StarterUntemplatesPrefix}'")
-      p / rp.substring(StarterUntemplatesPrefixLen + 1) // We add one to get rid of what would be a leading slash
+      p / os.SubPath(rp.substring(StarterUntemplatesPrefixLen + 1)) // We add one to get rid of what would be a leading slash
     private def ensureNotPresentAndDifferentAndDirectoryExists( rp : String, p : os.Path ) : Task[Unit] =
       def mkdirs = ZIO.attempt(os.makeDir.all(p / os.up))
       if os.exists(p) then
