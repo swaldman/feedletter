@@ -18,7 +18,7 @@ import scala.util.control.NonFatal
 
 object `package` extends DaemonModule with UntemplateModule with SonatypeCentralPublishModule with BuildInfo {
 
-  val FeedletterVersion = "0.2.4-SNAPSHOT"
+  val FeedletterVersion = "0.2.4"
 
   override def scalaVersion = "3.3.7"
 
@@ -26,7 +26,7 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
 
   override def sonatypeCentralShouldRelease: T[Boolean] = Task { false }
 
-  val TapirVersion = "1.13.18"
+  val TapirVersion = "1.13.20"
 
   def mvnDeps = Seq(
     mvn"com.mchange::trivial-template:0.0.1",
@@ -39,7 +39,7 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
     mvn"com.mchange::mailutil:0.0.5",
     mvn"com.mchange::cryptoutil:0.0.4",
     mvn"com.mchange::untemplate:0.3.0", // don't forget to also update untemplate in build-level 'mvnDeps' above
-    mvn"com.mchange:c3p0:0.14.0",
+    mvn"com.mchange:c3p0:0.14.1",
     mvn"dev.zio::zio:2.1.26",
     mvn"com.monovore::decline:2.6.2",
     mvn"org.postgresql:postgresql:42.7.11",
