@@ -7,11 +7,11 @@ val (info, contents) = tup
 
 val images = contents.media.filter( _.mimeType.map( _.startsWith("image") ).getOrElse(false) )
 
-val (topImageUrl, bottomImageUrls) =
+val (topImageMedia, bottomImageMedia) =
   images.size match
-    case 0 => (None, List.empty[String])
-    case 1 => (Some(images.head.url), List.empty[String])
-    case n => (None, images.map(_.url))
+    case 0 => (None, List.empty[ItemContent.Media])
+    case 1 => (Some(images.head), List.empty[ItemContent.Media])
+    case n => (None, images)
 end val
 
 ( tup : (ComposeInfo.Universal, ItemContent) )[]~()>
@@ -33,10 +33,10 @@ end val
       </div>
 <()
   }
-  topImageUrl.foreach { url =>
+  topImageMedia.foreach { media =>
 ()>
       <div class="media-image top-image">
-        <img src="<( url )>">
+        <img src="<( media.url )>" <( media.alt.map(scala.xml.Utility.escape).fold("")(a => s"""alt="$a"""") )>>
       </div>
 <()
   }
@@ -54,14 +54,14 @@ end val
       </div>
 <()
   }
-  if bottomImageUrls.nonEmpty then {
+  if bottomImageMedia.nonEmpty then {
 ()>
       <div class="bottom-images">
 <()
-    bottomImageUrls.foreach { url =>
+    bottomImageMedia.foreach { media =>
 ()>
         <div class="media-image bottom-image">
-          <img src="<( url )>">
+          <img src="<( media.url )>" <( media.alt.map(scala.xml.Utility.escape).fold("")(a => s"""alt="$a"""") )>>
         </div>
 <()
     }
