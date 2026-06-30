@@ -163,14 +163,14 @@ case class ItemContent private (
       case NonFatal( t ) => text
 
   private def lenientRdfContentNamespace(node : Node ) : Boolean =
-    node.namespace.contains("://purl.org/rss/1.0/modules/content")
+    node.namespace != null && node.namespace.contains("://purl.org/rss/1.0/modules/content")
 
   private def lenientDublinCoreNamespace(node : Node ) : Boolean =
-    node.namespace.contains("://purl.org/dc/elements/1.1")
+    node.namespace != null && node.namespace.contains("://purl.org/dc/elements/1.1")
 
   private def lenientAtomNamespace(node : Node ) : Boolean =
-    node.namespace.contains("://www.w3.org/2005/Atom")
+    node.namespace != null && node.namespace.contains("://www.w3.org/2005/Atom")
 
   private def lenientMediaNamespace(node : Node ) : Boolean =
-    node.namespace.contains("://search.yahoo.com/mrss")
+    node.namespace != null && node.namespace.contains("://search.yahoo.com/mrss")
 
