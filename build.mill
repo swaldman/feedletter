@@ -18,15 +18,15 @@ import scala.util.control.NonFatal
 
 object `package` extends DaemonModule with UntemplateModule with SonatypeCentralPublishModule with BuildInfo {
 
-  val FeedletterVersion = "0.2.6-SNAPSHOT"
+  val FeedletterVersion = "0.2.6"
 
-  override def scalaVersion = "3.3.7"
+  override def scalaVersion = "3.3.8"
 
   override def scalacOptions = Task { Seq("-deprecation", "-explain-cyclic") }
 
   override def sonatypeCentralShouldRelease: T[Boolean] = Task { false }
 
-  val TapirVersion = "1.13.20"
+  val TapirVersion = "1.13.25"
 
   def mvnDeps = Seq(
     mvn"com.mchange::trivial-template:0.0.1",
@@ -42,7 +42,7 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
     mvn"com.mchange:c3p0:0.14.1",
     mvn"dev.zio::zio:2.1.26",
     mvn"com.monovore::decline:2.6.2",
-    mvn"org.postgresql:postgresql:42.7.11",
+    mvn"org.postgresql:postgresql:42.7.12",
     mvn"org.scala-lang.modules::scala-xml:2.4.0",
     mvn"com.lihaoyi::os-lib:0.11.8",
     mvn"com.lihaoyi::requests:0.9.3",
