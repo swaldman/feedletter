@@ -31,12 +31,12 @@ import com.mchange.cryptoutil.{*, given}
 import com.mchange.feedletter.BuildInfo
 import com.mchange.feedletter.api.ApiLinkGenerator
 
-object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
+object PgDatabase extends ZMigratory.Postgres[PgSchema.V3.type], SelfLogging:
   val MinMastoPostSpacing = 2.minutes // should be configurable, but for now...
   val MinBskyPostSpacing  = 2.minutes // should be configurable, but for now...
 
   override val DumpFileAppDbTag  = "feedletter-pg"
-  override val LatestSchema      = PgSchema.V2
+  override val LatestSchema      = PgSchema.V3
   override val MetadataTableName = PgSchema.Unversioned.Table.Metadata.Name
 
   lazy val targetDbVersion : Int = LatestSchema.Version
@@ -109,11 +109,23 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
           (MetadataKey.CreatorAppVersion, BuildInfo.version)
         )
 
+    def upMigrateFrom_2() : Task[Unit] =
+      ZIO.attemptBlocking:
+        TRACE.log( "upMigrateFrom_2()" )
+        Using.resource( conn.createStatement() ): stmt =>
+          PgSchema.V3.Table.Item.Index.FeedLink.create( stmt )
+        updateMetadataKeys(
+          conn,
+          (MetadataKey.SchemaVersion, "3"),
+          (MetadataKey.CreatorAppVersion, BuildInfo.version)
+        )
+
     TRACE.log( s"upMigrate( from=${from} )" )
     from match
       case None      => upMigrateFrom_New()
       case Some( 0 ) => upMigrateFrom_0()
       case Some( 1 ) => upMigrateFrom_1()
+      case Some( 2 ) => upMigrateFrom_2()
       case Some( `targetDbVersion` ) =>
         ZIO.fail( new CannotUpMigrate( s"Cannot upmigrate from current target DB version: V${targetDbVersion}" ) )
       case Some( other ) =>
@@ -194,30 +206,45 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
     LatestSchema.Table.Item.updateLastCheckedAssignability( conn, feedId, guid, status.lastChecked, ItemAssignability.Assigned )
     DEBUG.log( s"Item with GUID '${guid}' from feed with ID ${feedId} has been assigned (or refused assignment) in all subscribables to that feed." )
 
+  private def linkAlreadyHandledByOtherItem( conn : Connection, feedId : FeedId, guid : Guid, mbLink : Option[String] ) : Set[Guid] =
+    mbLink match
+      case Some( link ) =>
+        val linkBasedStatus = LatestSchema.Table.Item.linkBasedStatus(conn, feedId, link)
+        val otherGuidLinkBasedStatus = linkBasedStatus - guid
+        if otherGuidLinkBasedStatus.isEmpty then Set.empty[Guid]
+        else otherGuidLinkBasedStatus.filter( (k,v) => v == ItemAssignability.Assigned || v == ItemAssignability.Cleared ).keys.toSet
+      case None =>
+        Set.empty[Guid]
+
   private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : Guid, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     TRACE.log( s"updateAssignItem( $conn, $fi, $guid, $dbStatus, $freshContent, $now )" )
     dbStatus match
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Unassigned ) ) =>
-        val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.SECONDS ) / 60     // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
-        val stableMinutes = JDuration.between(stableSince, now).get( ChronoUnit.SECONDS ) / 60 // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
-        def afterMinDelay = seenMinutes > fi.minDelayMinutes
-        def sufficientlyStable = stableMinutes > fi.awaitStabilizationMinutes
-        def pastMaxDelay = seenMinutes > fi.maxDelayMinutes
-        val newContentHash = freshContent.contentHash
-        /* don't update empty over actual content, treat empty content (rare, since guid would still have been found) as just stability */
-        if newContentHash == contentHash then
-          val newLastChecked = now
-          LatestSchema.Table.Item.updateStable( conn, fi.feedId, guid, newLastChecked )
-          DEBUG.log( s"Updated last checked time on stable unassigned item, feed ID ${fi.feedId}, guid '${guid}'." )
-          if (afterMinDelay && sufficientlyStable) || pastMaxDelay then
-            assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
+        val linkAlreadyHandledBy = linkAlreadyHandledByOtherItem(conn,fi.feedId,guid,freshContent.link)
+        if linkAlreadyHandledBy.nonEmpty then
+          INFO.log(s"Excluding already-added item. Link '${freshContent.link}' in item with guid '${guid}' appears already to have been handled under items with GUID(s) " + linkAlreadyHandledBy.mkString(", "))
+          LatestSchema.Table.Item.updateToExcluded(conn,fi.feedId, guid) // we don't assign, we exclude, because this link has been announced already in another item of the feed
         else
-          val newStableSince = now
-          val newLastChecked = now
-          LatestSchema.Table.Item.updateChanged( conn, fi.feedId, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
-          DEBUG.log( s"Updated stable since and last checked times, and content cache, on modified unassigned item, feed ID ${fi.feedId}, guid '${guid}'." )
-          if pastMaxDelay then
-            assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
+          val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.SECONDS ) / 60     // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
+          val stableMinutes = JDuration.between(stableSince, now).get( ChronoUnit.SECONDS ) / 60 // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
+          def afterMinDelay = seenMinutes > fi.minDelayMinutes
+          def sufficientlyStable = stableMinutes > fi.awaitStabilizationMinutes
+          def pastMaxDelay = seenMinutes > fi.maxDelayMinutes
+          val newContentHash = freshContent.contentHash
+          /* don't update empty over actual content, treat empty content (rare, since guid would still have been found) as just stability */
+          if newContentHash == contentHash then
+            val newLastChecked = now
+            LatestSchema.Table.Item.updateStable( conn, fi.feedId, guid, newLastChecked )
+            DEBUG.log( s"Updated last checked time on stable unassigned item, feed ID ${fi.feedId}, guid '${guid}'." )
+            if (afterMinDelay && sufficientlyStable) || pastMaxDelay then
+              assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
+          else
+            val newStableSince = now
+            val newLastChecked = now
+            LatestSchema.Table.Item.updateChanged( conn, fi.feedId, guid, freshContent, ItemStatus( newContentHash, firstSeen, newLastChecked, newStableSince, ItemAssignability.Unassigned ) )
+            DEBUG.log( s"Updated stable since and last checked times, and content cache, on modified unassigned item, feed ID ${fi.feedId}, guid '${guid}'." )
+            if pastMaxDelay then
+              assign( conn, fi.feedId, guid, freshContent, prev.copy( lastChecked = newLastChecked ) )
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Assigned ) ) =>
         val newContentHash = freshContent.contentHash
         if newContentHash != contentHash then
@@ -237,17 +264,22 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
             throw new AssertionError("Just inserted row is not found???")
           if fi.minDelayMinutes <= 0 && fi.awaitStabilizationMinutes <= 0 then // if eligible for immediate assignment...
             assign( conn, fi.feedId, guid, freshContent, dbStatus )
-        def doExcludingInsert( pd : Instant ) =
-          WARNING.log(s"Excluding item found with parseable publication date '${pd}', which is prior to time of initial subscription, feed ID ${fi.feedId}, guid '${guid}'." )
+        def doExcludingInsert() =
           LatestSchema.Table.Item.insertNew( conn, fi.feedId, guid, None, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
-        freshContent.pubDate match
-          case Some( pd ) =>
-            if pd > fi.added then
-              doUnassignedInsert() // skip items known to be published prior to subscription
-            else
-              doExcludingInsert( pd )
-          case None =>
-            doUnassignedInsert()
+        val linkAlreadyHandledBy = linkAlreadyHandledByOtherItem(conn,fi.feedId,guid,freshContent.link)
+        if linkAlreadyHandledBy.nonEmpty then
+          INFO.log(s"Excluding never-added item. Link ${freshContent.link} in item with guid '${guid}' appears already to have been handled under items with GUID(s) " + linkAlreadyHandledBy.mkString(", "))
+          doExcludingInsert()
+        else
+          freshContent.pubDate match
+            case Some( pd ) =>
+              if pd > fi.added then
+                doUnassignedInsert() // skip items known to be published prior to subscription
+              else
+                WARNING.log(s"Excluding item found with parseable publication date '${pd}', which is prior to time of initial subscription, feed ID ${fi.feedId}, guid '${guid}'." )
+                doExcludingInsert()
+            case None =>
+              doUnassignedInsert()
 
   private def updateAssignItems( conn : Connection, fi : FeedInfo ) : Unit =
     val nextAssign = fi.lastAssigned.plusSeconds( fi.assignEveryMinutes * 60 )
@@ -321,7 +353,7 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V2.type], SelfLogging:
     val retrying = simple.retry( Schedule.exponential( 10.seconds, 1.5f ) && Schedule.upTo( 3.minutes ) ) // XXX: hard-coded
     val delaying =
       for
-        _ <- ZIO.sleep( math.round(math.random * 20).seconds ) // XXX: hard-coded
+        _ <- ZIO.sleep( math.round(math.random() * 20).seconds ) // XXX: hard-coded
         _ <- retrying
       yield()
     delaying.zlogErrorDefect( WARNING, s"Update/assign for feed ${fi.feedId} (${fi.feedUrl})" )

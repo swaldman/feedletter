@@ -208,7 +208,7 @@ object PgSchema extends SelfLogging:
         object Index:
           object ItemAssignability extends Creatable:
             protected val Create = "CREATE INDEX item_assignability ON item(assignability)"
-        protected val Create =
+        override /* protected */ val Create =
           """|CREATE TABLE item(
              |  feed_id          INTEGER,
              |  guid             VARCHAR(1024),
@@ -892,7 +892,7 @@ object PgSchema extends SelfLogging:
               val builder = Seq.newBuilder[ItemContent.Media]
               while rs.next do
                 builder += ItemContent.Media( rs.getString(1), Option( rs.getString(2) ), Option( rs.getLong(3) ), Option( rs.getString(4) ) )
-              builder.result  
+              builder.result()
         def deleteById( conn : Connection, id : MastoPostableId ) =
           Using.resource( conn.prepareStatement( DeleteById ) ): ps =>
             ps.setLong(1, id.toLong )
@@ -1100,9 +1100,65 @@ object PgSchema extends SelfLogging:
               val builder = Seq.newBuilder[ItemContent.Media]
               while rs.next do
                 builder += ItemContent.Media( rs.getString(1), Option( rs.getString(2) ), Option( rs.getLong(3) ), Option( rs.getString(4) ) )
-              builder.result  
+              builder.result()
         def deleteById( conn : Connection, id : BskyPostableId ) =
           Using.resource( conn.prepareStatement( DeleteById ) ): ps =>
             ps.setLong(1, id.toLong )
             ps.executeUpdate()
-    val Join = V1.Join  
+    val Join = V1.Join
+
+  object V3 extends Schema:
+    override val Version = 3
+    object Table:
+      object Item extends Creatable:
+        object Type:
+          val ItemAssignability = V2.Table.Item.Type.ItemAssignability
+        object Index:
+          val ItemAssignability = V2.Table.Item.Index.ItemAssignability
+          object FeedLink extends Creatable:
+            protected val Create = "CREATE INDEX item_feed_link ON item(feed_id, link)"
+        override val Create = V2.Table.Item.Create
+        private val SelectLinkBasedStatus = "SELECT guid, assignability FROM item WHERE feed_id = ? AND link = ?"
+        private val UpdateToExcluded =
+          s"""|UPDATE item
+              |SET single_item_rss = NULL,
+              |    content_hash    = NULL,
+              |    assignability   = '${ItemAssignability.Excluded}'
+              |WHERE feed_id = ? AND guid = ?""".stripMargin
+        def deleteByFeed( conn : Connection, feedId : FeedId )                                                                                          = V2.Table.Item.deleteByFeed( conn, feedId )
+        def deleteDisappearedUnassignedForFeed( conn : Connection, feedId : FeedId, current : Set[Guid] ) : Int                                         = V2.Table.Item.deleteDisappearedUnassignedForFeed( conn, feedId, current )
+        def checkStatus( conn : Connection, feedId : FeedId, guid : Guid ) : Option[ItemStatus]                                                         = V2.Table.Item.checkStatus( conn, feedId, guid )
+        def selectExcluded( conn : Connection ) : Set[ExcludedItem]                                                                                     = V2.Table.Item.selectExcluded( conn )
+        def updateStable( conn : Connection, feedId : FeedId, guid : Guid, lastChecked : Instant )                                                      = V2.Table.Item.updateStable( conn, feedId, guid, lastChecked )
+        def updateChanged( conn : Connection, feedId : FeedId, guid : Guid, newContent : ItemContent, newStatus : ItemStatus )                          = V2.Table.Item.updateChanged( conn, feedId, guid, newContent, newStatus )
+        def updateLastCheckedAssignability( conn : Connection, feedId : FeedId, guid : Guid, lastChecked : Instant, assignability : ItemAssignability ) = V2.Table.Item.updateLastCheckedAssignability( conn, feedId, guid, lastChecked, assignability )
+        def insertNew( conn : Connection, feedId : FeedId, guid : Guid, itemContent : Option[ItemContent], assignability : ItemAssignability ) : Int    = V2.Table.Item.insertNew( conn, feedId, guid, itemContent, assignability )
+        def linkBasedStatus( conn : Connection, feedId : FeedId, link : String ) : Map[Guid,ItemAssignability] =
+          Using.resource( conn.prepareStatement(SelectLinkBasedStatus) ): ps =>
+            ps.setInt(1, feedId.toInt)
+            ps.setString(2, link)
+            Using.resource( ps.executeQuery() ): rs =>
+              toSet(rs)( rs => ( Guid(rs.getString(1)), ItemAssignability.valueOf(rs.getString(2)) ) ).toMap
+        def updateToExcluded( conn : Connection, feedId : FeedId, guid : Guid ) =
+          Using.resource( conn.prepareStatement(UpdateToExcluded) ): ps =>
+            ps.setInt(1, feedId.toInt)
+            ps.setString(2, guid.str)
+            ps.executeUpdate()
+      end Item
+
+      // everything else is unchanged
+      val Config              = V2.Table.Config
+      val Flags               = V2.Table.Flags
+      val Feed                = V2.Table.Feed
+      val Subscribable        = V2.Table.Subscribable
+      val Assignable          = V2.Table.Assignable
+      val Assignment          = V2.Table.Assignment
+      val Subscription        = V2.Table.Subscription
+      val MailableTemplate    = V2.Table.MailableTemplate
+      val Mailable            = V2.Table.Mailable
+      val ImmediatelyMailable = V2.Table.ImmediatelyMailable
+      val MastoPostable       = V2.Table.MastoPostable
+      val MastoPostableMedia  = V2.Table.MastoPostableMedia
+      val BskyPostable        = V2.Table.BskyPostable
+      val BskyPostableMedia   = V2.Table.BskyPostableMedia
+    val Join = V2.Join
