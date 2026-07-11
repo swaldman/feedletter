@@ -105,7 +105,7 @@ object PgSchema extends SelfLogging:
             ps.executeUpdate()
 
       object Feed extends Creatable:
-        protected val Create =
+        override /* protected */ val Create =
           """|CREATE TABLE feed(
              |  id                          INTEGER,
              |  url                         VARCHAR(1024),
@@ -167,6 +167,8 @@ object PgSchema extends SelfLogging:
             ps.setTimestamp (7, Timestamp.from(added) )
             ps.setTimestamp (8, Timestamp.from(lastAssigned) )
             ps.executeUpdate()
+        /* Methods below are replaced in V3 */
+        /*
         def selectAll( conn : Connection ) : Set[FeedInfo] =
           Using.resource( conn.prepareStatement( this.SelectAll ) ): ps =>
             Using.resource( ps.executeQuery() ): rs =>
@@ -177,6 +179,7 @@ object PgSchema extends SelfLogging:
             Using.resource( ps.executeQuery() ): rs =>
               uniqueResult("feed-select-by-id", rs): rs =>
                 FeedInfo(FeedId(rs.getInt(1)), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6), rs.getTimestamp(7).toInstant, rs.getTimestamp(8).toInstant)
+         */
         def selectUrl( conn : Connection, feedId : FeedId ) : Option[FeedUrl] =
           Using.resource(conn.prepareStatement(this.SelectUrl)): ps =>
             ps.setInt(1, feedId.toInt)
@@ -1110,6 +1113,62 @@ object PgSchema extends SelfLogging:
   object V3 extends Schema:
     override val Version = 3
     object Table:
+      object Feed extends Creatable:
+        object Alteration:
+          private val AlterReannounceDuplicatedLinks = "ALTER TABLE feed ADD reannounce_duplicated_links BOOLEAN NOT NULL DEFAULT FALSE";
+          def addReannounceDuplicatedLinksColumn(stmt : Statement) = stmt.executeUpdate(AlterReannounceDuplicatedLinks)
+        override val Create = V2.Table.Feed.Create
+        private val Insert =
+          """|INSERT INTO feed(id, url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, assign_every_minutes, added, last_assigned, reannounce_duplicated_links)
+             |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
+        private val SelectAll =
+          "SELECT id, url, min_delay_minutes, await_stabilization_minutes, max_delay_minutes, assign_every_minutes, added, last_assigned, reannounce_duplicated_links FROM feed"
+        private val SelectById = SelectAll + " WHERE id = ?"
+        private val UpdateFeedModifiables =
+          """|UPDATE feed
+             |SET min_delay_minutes = ?, await_stabilization_minutes = ?, max_delay_minutes = ?, assign_every_minutes = ?, reannounce_duplicated_links = ?
+             |WHERE id = ?""".stripMargin
+        def delete( conn : Connection, feedId : FeedId )                                     = V2.Table.Feed.delete( conn, feedId )
+        def selectUrl( conn : Connection, feedId : FeedId ) : Option[FeedUrl]                = V2.Table.Feed.selectUrl( conn, feedId )
+        def selectLastAssigned( conn : Connection, feedId : FeedId ) : Option[Instant]       = V2.Table.Feed.selectLastAssigned( conn, feedId )
+        def updateLastAssigned( conn : Connection, feedId : FeedId, lastAssigned : Instant ) = V2.Table.Feed.updateLastAssigned( conn, feedId, lastAssigned )
+
+        def updateFeedModifiables( conn : Connection, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, reannounceDuplicatedLinks : Boolean ) =
+          Using.resource( conn.prepareStatement(UpdateFeedModifiables) ): ps =>
+            ps.setInt    ( 1, minDelayMinutes )
+            ps.setInt    ( 2, awaitStabilizationMinutes )
+            ps.setInt    ( 3, maxDelayMinutes )
+            ps.setInt    ( 4, assignEveryMinutes )
+            ps.setBoolean( 5, reannounceDuplicatedLinks )
+            ps.setInt    ( 6, feedId.toInt )
+            ps.executeUpdate()
+        def insert( conn : Connection, newFeedId : FeedId, nf : NascentFeed ) : Int =
+          insert(conn, newFeedId, nf.feedUrl, nf.minDelayMinutes, nf.awaitStabilizationMinutes, nf.maxDelayMinutes, nf.assignEveryMinutes, nf.added, nf.lastAssigned, nf.reannounceDuplicatedLinks)
+        def insert( conn : Connection, feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant, reannounceDuplicatedLinks : Boolean ) : Int =
+          Using.resource(conn.prepareStatement(this.Insert)): ps =>
+            ps.setInt       (1, feedId.toInt)
+            ps.setString    (2, feedUrl.str)
+            ps.setInt       (3, minDelayMinutes )
+            ps.setInt       (4, awaitStabilizationMinutes)
+            ps.setInt       (5, maxDelayMinutes )
+            ps.setInt       (6, assignEveryMinutes )
+            ps.setTimestamp (7, Timestamp.from(added) )
+            ps.setTimestamp (8, Timestamp.from(lastAssigned) )
+            ps.setBoolean   (9, reannounceDuplicatedLinks)
+            ps.executeUpdate()
+        def selectAll( conn : Connection ) : Set[FeedInfo] =
+          Using.resource( conn.prepareStatement( this.SelectAll ) ): ps =>
+            Using.resource( ps.executeQuery() ): rs =>
+              toSet(rs)( rs => FeedInfo(FeedId(rs.getInt(1)), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6), rs.getTimestamp(7).toInstant, rs.getTimestamp(8).toInstant, rs.getBoolean(9)) )
+        def selectById( conn : Connection, id : FeedId ) : FeedInfo =
+          Using.resource( conn.prepareStatement( this.SelectById ) ): ps =>
+            ps.setInt(1, id.toInt)
+            Using.resource( ps.executeQuery() ): rs =>
+              uniqueResult("feed-select-by-id", rs): rs =>
+                FeedInfo(FeedId(rs.getInt(1)), FeedUrl(rs.getString(2)), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6), rs.getTimestamp(7).toInstant, rs.getTimestamp(8).toInstant, rs.getBoolean(9))
+        object Sequence:
+          val FeedSeq = V2.Table.Feed.Sequence.FeedSeq
+
       object Item extends Creatable:
         object Type:
           val ItemAssignability = V2.Table.Item.Type.ItemAssignability
@@ -1149,7 +1208,6 @@ object PgSchema extends SelfLogging:
       // everything else is unchanged
       val Config              = V2.Table.Config
       val Flags               = V2.Table.Flags
-      val Feed                = V2.Table.Feed
       val Subscribable        = V2.Table.Subscribable
       val Assignable          = V2.Table.Assignable
       val Assignment          = V2.Table.Assignment

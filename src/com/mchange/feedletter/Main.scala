@@ -51,13 +51,16 @@ object Main extends AbstractMain, SelfLogging:
         val help = "Check feed as often as possible, notify as soon as possible, regardless of (in)stability."
         Opts.flag("ping",help=help).map( _ => (0,0,0,0) )
       val timings = ping orElse setTimings
+      val reannounceDuplicatedLinks =
+        val help = "Determines whether, if multiple items in a feed share the same link, the items should be reannounced, or later announcements should be suppressed."
+        Opts.flag("reannounce-duplicated-links", help=help).orFalse
       val feedUrl = Opts.argument[String](metavar="feed-url")
-      (timings, feedUrl) mapN: (t, fu) =>
-        val nf = NascentFeed(FeedUrl(fu), t(0), t(1), t(2), t(3) )
+      (timings, reannounceDuplicatedLinks, feedUrl) mapN: (t, rdl, fu) =>
+        val nf = NascentFeed(FeedUrl(fu), t(0), t(1), t(2), t(3), rdl )
         CommandConfig.AddFeed( nf )
     Command("add-feed",header=header)( opts )
   val alterFeed =
-    val header = "Alter the timings of an already-defined feed."
+    val header = "Alter settings of an already-defined feed."
     val opts =
       val feedId =
         val help = "The ID of the RSS feed to be watched."
@@ -65,9 +68,13 @@ object Main extends AbstractMain, SelfLogging:
       val minDelayMinutes = CommonOpts.MinDelayMinutes.orNone
       val awaitStabilizationMinutes = CommonOpts.AwaitStabilizationMinutes.orNone
       val maxDelayMinutes = CommonOpts.MaxDelayMinutes.orNone
+      val modifyReannounceDuplicatedLinks : Opts[Option[Boolean]] =
+        val on  = Opts.flag("reannounce-duplicated-links", help="Announce items even when their links duplicate already-announced items.").map(_ => true)
+        val off = Opts.flag("suppress-duplicated-links", help="Exclude items whose links duplicate already-announced items (the default for new feeds).").map(_ => false)
+        ( on orElse off ).orNone
       val recheckEveryMinutes = CommonOpts.RecheckEveryMinutes.orNone
-      ( feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, recheckEveryMinutes ) mapN: (fi, mindm, asm, maxdm, rem) =>
-        CommandConfig.AlterFeed( FeedTimings( fi, mindm, asm, maxdm, rem ) )
+      ( feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, recheckEveryMinutes, modifyReannounceDuplicatedLinks ) mapN: (fi, mindm, asm, maxdm, rem, mrdl) =>
+        CommandConfig.AlterFeed( FeedModifiables( fi, mindm, asm, maxdm, rem, mrdl ) )
     Command("alter-feed",header=header)( opts )    
   val daemon =
     val header = "Run daemon that watches feeds and sends notifications."

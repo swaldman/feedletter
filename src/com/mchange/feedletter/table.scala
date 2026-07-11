@@ -20,11 +20,12 @@ val FeedInfoColumns = Seq(
   texttable.Column("Max Delay Mins"),
   texttable.Column("Recheck Every Mins"),
   texttable.Column("Added"),
-  texttable.Column("Last Assigned")
+  texttable.Column("Last Assigned"),
+  texttable.Column("Reannounce Duplicated Links"),
 )
 
 def printFeedInfoTable( fis: Set[FeedInfo] ) : Task[Unit] =
-  val ordering = Ordering.by( (fi : FeedInfo) => ( fi.feedId.toInt, fi.feedUrl.str, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.assignEveryMinutes, fi.added, fi.lastAssigned ) )
+  val ordering = Ordering.by( (fi : FeedInfo) => ( fi.feedId.toInt, fi.feedUrl.str, fi.minDelayMinutes, fi.awaitStabilizationMinutes, fi.maxDelayMinutes, fi.assignEveryMinutes, fi.added, fi.lastAssigned, fi.reannounceDuplicatedLinks ) )
   val sorted = immutable.SortedSet.from( fis )( using ordering )
   ZIO.attempt( texttable.printProductTable( FeedInfoColumns )( sorted.toList.map( texttable.Row.apply ) ) )
 

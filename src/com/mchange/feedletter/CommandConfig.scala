@@ -37,13 +37,13 @@ object CommandConfig extends SelfLogging:
         _   <- printFeedInfoTable(fis)
       yield ()
     end zcommand
-  case class AlterFeed( fts : FeedTimings ) extends CommandConfig:
+  case class AlterFeed( fms : FeedModifiables ) extends CommandConfig:
     def ifSomethingToDo( ds : DataSource ) =
-      val timings = fts._2 :: fts._3 :: fts._4 :: fts._5 :: Nil
-      if timings.actuals.isEmpty then
-        ZIO.attempt( println( s"Nothing to do, feed ${fts.feedId} is unchanged." ) )
+      val modifiables = fms._2 :: fms._3 :: fms._4 :: fms._5 :: fms._6 :: Nil
+      if modifiables.actuals.isEmpty then
+        ZIO.attempt( println( s"Nothing to do, feed ${fms.feedId} is unchanged." ) )
       else
-        PgDatabase.mergeFeedTimings( ds, fts ) *> ZIO.attempt( println( s"Feed ${fts.feedId} has been updated." ) )
+        PgDatabase.mergeFeedModifiables( ds, fms ) *> ZIO.attempt( println( s"Feed ${fms.feedId} has been updated." ) )
     override def zcommand : ZCommand =
       for
         ds  <- ZIO.service[DataSource]

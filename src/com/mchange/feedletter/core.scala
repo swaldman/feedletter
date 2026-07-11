@@ -66,9 +66,9 @@ enum ConfigKey:
 
 final case class ExcludedItem( feedId : FeedId, guid : Guid, link : Option[String] )
 
-final case class FeedInfo( feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant )
+final case class FeedInfo( feedId : FeedId, feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant, reannounceDuplicatedLinks : Boolean )
 
-final case class FeedTimings( feedId : FeedId, minDelayMinutes : Option[Int], awaitStabilizationMinutes : Option[Int], maxDelayMinutes : Option[Int], assignEveryMinutes : Option[Int] )
+final case class FeedModifiables( feedId : FeedId, minDelayMinutes : Option[Int], awaitStabilizationMinutes : Option[Int], maxDelayMinutes : Option[Int], assignEveryMinutes : Option[Int], reannounceDuplicatedLinks : Option[Boolean] )
 
 enum Flag:
   case ImmediateMailQueued
@@ -106,10 +106,10 @@ enum LoggingConfig:
 final case class MastoPostable( id : MastoPostableId, finalContent : String, instanceUrl : MastoInstanceUrl, name : MastoName, retried : Int, media : Seq[ItemContent.Media] )
 
 object NascentFeed:
-  def apply( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) : NascentFeed =
+  def apply( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, reannounceDuplicatedLinks : Boolean ) : NascentFeed =
     val now = Instant.now
-    NascentFeed( feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes, now, now )
-final case class NascentFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant )
+    NascentFeed( feedUrl, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes, now, now, reannounceDuplicatedLinks )
+final case class NascentFeed( feedUrl : FeedUrl, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, added : Instant, lastAssigned : Instant, reannounceDuplicatedLinks : Boolean )
 
 object SecretsKey:
   val FeedletterJdbcUrl      = "feedletter.jdbc.url"

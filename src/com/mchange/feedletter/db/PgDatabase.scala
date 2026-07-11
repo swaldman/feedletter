@@ -113,6 +113,7 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V3.type], SelfLogging:
       ZIO.attemptBlocking:
         TRACE.log( "upMigrateFrom_2()" )
         Using.resource( conn.createStatement() ): stmt =>
+          PgSchema.V3.Table.Feed.Alteration.addReannounceDuplicatedLinksColumn( stmt )
           PgSchema.V3.Table.Item.Index.FeedLink.create( stmt )
         updateMetadataKeys(
           conn,
@@ -216,13 +217,16 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V3.type], SelfLogging:
       case None =>
         Set.empty[Guid]
 
+  private def noReannounceAndLinkAlreadyHandledByOtherItem( conn : Connection, feedInfo : FeedInfo, guid : Guid, mbLink : Option[String] ) : Set[Guid] =
+    if feedInfo.reannounceDuplicatedLinks then Set.empty[Guid] else linkAlreadyHandledByOtherItem( conn, feedInfo.feedId, guid, mbLink )
+
   private def updateAssignItem( conn : Connection, fi : FeedInfo, guid : Guid, dbStatus : Option[ItemStatus], freshContent : ItemContent, now : Instant ) : Unit =
     TRACE.log( s"updateAssignItem( $conn, $fi, $guid, $dbStatus, $freshContent, $now )" )
     dbStatus match
       case Some( prev @ ItemStatus( contentHash, firstSeen, lastChecked, stableSince, ItemAssignability.Unassigned ) ) =>
-        val linkAlreadyHandledBy = linkAlreadyHandledByOtherItem(conn,fi.feedId,guid,freshContent.link)
-        if linkAlreadyHandledBy.nonEmpty then
-          INFO.log(s"Excluding already-added item. Link '${freshContent.link}' in item with guid '${guid}' appears already to have been handled under items with GUID(s) " + linkAlreadyHandledBy.mkString(", "))
+        val noReannounceAndLinkAlreadyHandledBy = noReannounceAndLinkAlreadyHandledByOtherItem(conn,fi,guid,freshContent.link)
+        if noReannounceAndLinkAlreadyHandledBy.nonEmpty then
+          INFO.log(s"Excluding already-added item. Link '${freshContent.link}' in item with guid '${guid}' appears already to have been handled under items with GUID(s) " + noReannounceAndLinkAlreadyHandledBy.mkString(", "))
           LatestSchema.Table.Item.updateToExcluded(conn,fi.feedId, guid) // we don't assign, we exclude, because this link has been announced already in another item of the feed
         else
           val seenMinutes = JDuration.between(firstSeen, now).get( ChronoUnit.SECONDS ) / 60     // ChronoUnite.Minutes fails, "UnsupportedTemporalTypeException: Unsupported unit: Minutes"
@@ -266,9 +270,9 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V3.type], SelfLogging:
             assign( conn, fi.feedId, guid, freshContent, dbStatus )
         def doExcludingInsert() =
           LatestSchema.Table.Item.insertNew( conn, fi.feedId, guid, None, ItemAssignability.Excluded ) // don't cache items we're excluding anyway
-        val linkAlreadyHandledBy = linkAlreadyHandledByOtherItem(conn,fi.feedId,guid,freshContent.link)
-        if linkAlreadyHandledBy.nonEmpty then
-          INFO.log(s"Excluding never-added item. Link ${freshContent.link} in item with guid '${guid}' appears already to have been handled under items with GUID(s) " + linkAlreadyHandledBy.mkString(", "))
+        val noReannounceAndLinkAlreadyHandledBy = noReannounceAndLinkAlreadyHandledByOtherItem(conn,fi,guid,freshContent.link)
+        if noReannounceAndLinkAlreadyHandledBy.nonEmpty then
+          INFO.log(s"Excluding never-added item. Link ${freshContent.link} in item with guid '${guid}' appears already to have been handled under items with GUID(s) " + noReannounceAndLinkAlreadyHandledBy.mkString(", "))
           doExcludingInsert()
         else
           freshContent.pubDate match
@@ -764,24 +768,25 @@ object PgDatabase extends ZMigratory.Postgres[PgSchema.V3.type], SelfLogging:
     withConnectionTransactional( ds ): conn =>
       removeFeedAndSubscribables(conn,feedId,removeSubscriptionsIfNecessary)
 
-  def updateFeedTimings( conn : Connection, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) : Unit =
-    LatestSchema.Table.Feed.updateFeedTimings(conn, feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes)
+  def updateFeedModifiables( conn : Connection, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, reannounceDuplicatedLinks : Boolean ) : Unit =
+    LatestSchema.Table.Feed.updateFeedModifiables(conn, feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes, reannounceDuplicatedLinks)
 
-  def updateFeedTimings( ds : DataSource, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int ) : Task[Unit] =
+  def updateFeedModifiables( ds : DataSource, feedId : FeedId, minDelayMinutes : Int, awaitStabilizationMinutes : Int, maxDelayMinutes : Int, assignEveryMinutes : Int, reannounceDuplicatedLinks : Boolean ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
-      updateFeedTimings( conn, feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes )
+      updateFeedModifiables( conn, feedId, minDelayMinutes, awaitStabilizationMinutes, maxDelayMinutes, assignEveryMinutes, reannounceDuplicatedLinks )
 
-  def mergeFeedTimings( conn : Connection, fts : FeedTimings ) : Unit =
-    val fi = LatestSchema.Table.Feed.selectById( conn, fts.feedId )
-    val nextMinDelayMinutes = fts.minDelayMinutes.getOrElse( fi.minDelayMinutes )
-    val nextAwaitStabilizationMinutes = fts.awaitStabilizationMinutes.getOrElse( fi.awaitStabilizationMinutes )
-    val nextMaxDelayMinutes = fts.maxDelayMinutes.getOrElse( fi.maxDelayMinutes )
-    val nextAssignEveryMinutes = fts.assignEveryMinutes.getOrElse( fi.assignEveryMinutes )
-    updateFeedTimings( conn, fts.feedId, nextMinDelayMinutes, nextAwaitStabilizationMinutes, nextMaxDelayMinutes, nextAssignEveryMinutes )
+  def mergeFeedModifiables( conn : Connection, fms : FeedModifiables ) : Unit =
+    val fi = LatestSchema.Table.Feed.selectById( conn, fms.feedId )
+    val nextMinDelayMinutes = fms.minDelayMinutes.getOrElse( fi.minDelayMinutes )
+    val nextAwaitStabilizationMinutes = fms.awaitStabilizationMinutes.getOrElse( fi.awaitStabilizationMinutes )
+    val nextMaxDelayMinutes = fms.maxDelayMinutes.getOrElse( fi.maxDelayMinutes )
+    val nextAssignEveryMinutes = fms.assignEveryMinutes.getOrElse( fi.assignEveryMinutes )
+    val reannounceDuplicatedLinks = fms.reannounceDuplicatedLinks.getOrElse( fi.reannounceDuplicatedLinks )
+    updateFeedModifiables( conn, fms.feedId, nextMinDelayMinutes, nextAwaitStabilizationMinutes, nextMaxDelayMinutes, nextAssignEveryMinutes, reannounceDuplicatedLinks )
 
-  def mergeFeedTimings( ds : DataSource, fts : FeedTimings ) : Task[Unit] =
+  def mergeFeedModifiables( ds : DataSource, fms : FeedModifiables ) : Task[Unit] =
     withConnectionTransactional( ds ): conn =>
-      mergeFeedTimings( conn, fts )
+      mergeFeedModifiables( conn, fms )
 
   def sendNextImmediatelyMailable( conn : Connection, as : AppSetup ) : Boolean =
     val mbim = LatestSchema.Table.ImmediatelyMailable.selectNext( conn )
