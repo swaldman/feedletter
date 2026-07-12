@@ -108,5 +108,12 @@ object `package` extends DaemonModule with UntemplateModule with SonatypeCentral
   }
 
   override def resources = super.resources() :+ prepareStarterUntemplates()
+
+  object test extends ScalaTests with TestModule.Munit {
+    def mvnDeps = Seq(
+      mvn"org.scalameta::munit:1.1.1",
+      mvn"org.scalameta::munit-scalacheck:1.1.0",
+    )
+  }
 }
 
