@@ -16,13 +16,13 @@ object Destination:
   trait TypeMetaInfo[T <: Destination]:
     def csvRowHeaders : Seq[String]
 
-  private def q(s : String) = s""""$s""""
+  private def csvq(s : String) = com.mchange.v2.csv.FastCsvUtils.generateQuotedCsvItem(s)
 
   object CsvRowHeaders:
-    val Email    = Seq(q("E-Mail"), q("Display Name"))
-    val Mastodon = Seq(q("Instance URL"), q("Name"))
-    val Sms      = Seq(q("Phone Number"))
-    val BlueSky  = Seq(q("Entryway URL"), q("Identifier"))
+    val Email    = Seq(csvq("E-Mail"), csvq("Display Name"))
+    val Mastodon = Seq(csvq("Instance URL"), csvq("Name"))
+    val Sms      = Seq(csvq("Phone Number"))
+    val BlueSky  = Seq(csvq("Entryway URL"), csvq("Identifier"))
   given TypeMetaInfo[Email] = new TypeMetaInfo[Email] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Email }
   given TypeMetaInfo[Mastodon] = new TypeMetaInfo[Mastodon] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Mastodon }
   given TypeMetaInfo[Sms] = new TypeMetaInfo[Sms] { def csvRowHeaders : Seq[String] = CsvRowHeaders.Sms }
@@ -51,7 +51,7 @@ object Destination:
     override def shortDesc : String = this.addressPart 
     override def fullDesc : String = this.rendered
     override def defaultDesc : String = fullDesc
-    override def toCsvRow : Seq[String] = Seq( addressPart, q(displayNamePart.getOrElse("")) )
+    override def toCsvRow : Seq[String] = Seq( csvq(addressPart), csvq(displayNamePart.getOrElse("")) )
     override lazy val whyInvalid : Option[Throwable] = this.toAddress.whyInvalid
   case class Mastodon( name : String, instanceUrl : String ) extends Destination:
     override def unique = "mastodon:" + wwwFormEncodeUTF8((Key.name.s,name),(Key.instanceUrl.s,instanceUrl))
@@ -59,21 +59,21 @@ object Destination:
     override def shortDesc : String = this.instanceUrl
     override def fullDesc : String = s"Mastodon instance nicknamed '${name}' at ${instanceUrl}"
     override def defaultDesc : String = shortDesc
-    override def toCsvRow : Seq[String] = Seq( instanceUrl, q(name) )
+    override def toCsvRow : Seq[String] = Seq( csvq(instanceUrl), csvq(name) )
   case class Sms( number : String ) extends Destination:
     override def unique = s"sms:${number}"
     override def toFields = Seq( Key.destinationType.s -> Tag.Sms.toString, Key.number.s -> this.number )
     override def shortDesc : String = this.number
     override def fullDesc : String = s"SMS destination '${number}'"
     override def defaultDesc : String = shortDesc
-    override def toCsvRow : Seq[String] = Seq( q(number) )
+    override def toCsvRow : Seq[String] = Seq( csvq(number) )
   case class BlueSky( entrywayUrl : String, identifier : String  ) extends Destination:
     override def unique = "bluesky:" + wwwFormEncodeUTF8((Key.entrywayUrl.s,entrywayUrl),(Key.identifier.s,identifier))
     override def toFields = Seq( Key.destinationType.s -> Tag.BlueSky.toString, Key.entrywayUrl.s -> this.entrywayUrl, Key.identifier.s -> this.identifier )
     override def shortDesc : String = s"${identifier} at ${entrywayUrl}"
     override def fullDesc : String = s"Bluesky account identified as '${identifier}' at entryway '${entrywayUrl}'"
     override def defaultDesc : String = shortDesc
-    override def toCsvRow : Seq[String] = Seq( entrywayUrl, identifier )
+    override def toCsvRow : Seq[String] = Seq( csvq(entrywayUrl), csvq(identifier) )
 
   def materialize( json : Destination.Json ) : Destination = read[Destination]( json.toString )
 
