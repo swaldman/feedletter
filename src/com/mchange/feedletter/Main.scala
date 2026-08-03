@@ -111,7 +111,7 @@ object Main extends AbstractMain, SelfLogging:
         CommandConfig.DefineBlueSkySubscribable( fi, n, ep )
     Command("define-bluesky-subscribable",header=header)( opts )
   val defineEmailSubscribable =
-    val header = "Define a new email subscribable, a mailing lost to which users can subscribe."
+    val header = "Define a new email subscribable, a mailing list to which users can subscribe."
     val opts =
       val feedId =
         val help = "The ID of the RSS feed to be watched."
