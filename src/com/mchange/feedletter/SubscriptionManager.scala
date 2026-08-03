@@ -3,36 +3,191 @@ package com.mchange.feedletter
 import com.mchange.feedletter.style.*
 
 import java.sql.Connection
-import java.time.{LocalDate,Instant}
+import java.time.{LocalDate,Instant,ZoneId}
 import java.time.format.DateTimeFormatter
-import java.time.temporal.{ChronoField,WeekFields}
+import java.time.temporal.ChronoField
 
 import DateTimeFormatter.ISO_LOCAL_DATE
 
-import scala.collection.immutable
-
-import com.mchange.feedletter.api.ApiLinkGenerator
-
-import scala.collection.immutable
-
 import com.mchange.conveniences.string.*
 import com.mchange.conveniences.collection.*
+
+import com.mchange.feedletter.api.ApiLinkGenerator
 import com.mchange.feedletter.db.PgDatabase
-import scala.util.control.NonFatal
+
+import audiofluidity.rss.Element
+
+import upickle.default.*
 
 import LoggingApi.*
 
-import upickle.default.*
-import java.time.ZoneId
-import com.mchange.feedletter.Destination.Key
-import com.mchange.feedletter.db.PgDatabase.Config.timeZone
+/**
+  * The root of the subscription-manager hierarchy.
+  *
+  * This trait and everything that extends it are `sealed`, so the whole hierarchy is
+  * necessarily declared in this one file -- Scala 3 requires a sealed type's direct
+  * children to share its source file. That is what keeps the exhaustive match in
+  * SubscriptionManagerCodec.toUJsonV1 compiler-checked.
+  */
+sealed trait SubscriptionManager extends Jsonable:
+  import SubscriptionManager.logAdapter
 
-import audiofluidity.rss.Element
+  type D  <: Destination
+
+  def extraParams : Map[String,String]
+  def withExtraParams( extraParams : Map[String,String] ) : SubscriptionManager
+
+  def sampleWithinTypeId : String
+  def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
+
+  /*
+   *  We used to let Iffy.HintAnnounce.Policy.Never prevent assignment, as well as explicit filters.
+   *  We've removed that, so that content customizers potentially can override Iffy.HintAnnounce.Policy,
+   *  or do whatever they like with the full content except as explicitly filtered via a customizer
+   */
+  final def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
+    if checkFilter( subscribableName, content ) then
+      assignWithinTypeId( conn, subscribableName, feedId, guid, content, status )
+    else
+      INFO.log( s"Not assigning item due to a user-provided filter returning false. [subscribableName: ${subscribableName}, guid: ${guid}, content: ${content}]" )
+      None
+
+  protected def assignWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
+
+  def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean
+
+  def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
+    if fromExternalApi && !supportsExternalSubscriptionApi then
+      throw new ExternalApiForibidden( s"[${subscribableName}]: Subscriptions must be made by an administrator, rather than via the public API." )
+    else
+      narrowDestination( destination ) match
+        case Right( d ) => d.assertValid
+        case Left ( _ ) =>
+          throw new InvalidDestination( s"[${subscribableName}] Incorrect destination type. We expect a ${sampleDestination.getClass.getName()}. Destination '${destination}' is not. Rejecting." )
+
+  def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams =
+    TemplateParams(
+      defaultComposeTemplateParams(subscribableName, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) ++
+      Customizer.TemplateParams.retrieve( subscribableName ).fold(Nil)( customizer => customizer( subscribableName, this, feedUrl, destination, subscriptionId, removeLink ) )
+    )
+
+  def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
+
+  def customizeContents( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : Seq[ItemContent] =
+    val customizer = Customizer.Contents.retrieve(subscribableName)
+    customizer match
+      case Some( c ) => c( subscribableName, this, feedUrl, contents, tz )
+      case None => contents
+
+  def checkFilter( subscribableName : SubscribableName, content : ItemContent ) : Boolean =
+    val filter = Customizer.Filter.retrieve(subscribableName)
+    filter match
+      case Some( f ) => f( subscribableName, this, content )
+      case None      => true
+
+  final def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
+    val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
+    val timeZone = bestTimeZone( conn )
+    val transformedContents = transformContentsForRoute( assignableKey, feedUrl, contents, timeZone )
+    if transformedContents.nonEmpty then doRoute(conn, assignableKey, feedId, feedUrl, transformedContents, destinations, timeZone, apiLinkGenerator)
+
+  def hintAnnouncePolicy( subscribableName : SubscribableName, content : ItemContent ) : Element.Iffy.HintAnnounce.Policy =
+    val restrictionFinder = Customizer.HintAnnounceRestriction.retrieve( subscribableName ).getOrElse( ( _, _, _ ) => None )
+    restrictionFinder( subscribableName, this, content ).getOrElse( content.iffyHintAnnounceUnrestrictedPolicy )
+
+  // XXX: this can filter or reorder, but if we ever add, we'll have to be careful about SubscriptionManagers that expect single-item contents
+  def transformContentsForRoute( assignableKey : AssignableKey, feedUrl : FeedUrl, contents : Seq[ItemContent], timeZone : ZoneId ) : Seq[ItemContent] =
+    val withCustomizedContents =
+      customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
+    val withHintAnnounce =
+      if this.respectHintAnnounce then
+        applyHintAnnounceForRoute( assignableKey.subscribableName, assignableKey.withinTypeId, withCustomizedContents )
+      else
+        withCustomizedContents
+    withHintAnnounce
+
+  def respectHintAnnounce : Boolean = true
+
+  def applyHintAnnounceForRoute( subscribableName : SubscribableName, withinTypeId : String, contents : Seq[ItemContent] ) : Seq[ItemContent] =
+    def policy( content : ItemContent ) : Element.Iffy.HintAnnounce.Policy = hintAnnouncePolicy( subscribableName, content )
+    val (never, notNever) = contents.partition( c => policy(c) == Element.Iffy.HintAnnounce.Policy.Never )
+    // we now never even assign nevers, so never should always be empty
+    def handleNotNevers =
+      if notNever.forall( c => policy(c) == Element.Iffy.HintAnnounce.Policy.Piggyback) then
+        if notNever.nonEmpty then INFO.log( s"""Skipping announcement entirely, due to hint-announce all Piggyback [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${notNever.mkString(", ")}]""" )
+        Nil
+      else
+        notNever
+    (never.nonEmpty, notNever.nonEmpty) match
+      case ( true, true   ) =>
+        INFO.log( s"""Skipping announcement of some items, due to hint-announce policy 'Never' [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${never.mkString(", ")}]""" )
+        handleNotNevers
+      case ( false, true  ) =>
+        handleNotNevers
+      case ( true, false  ) =>
+        INFO.log( s"""Skipping announcement of all items, due to hint-announce policy 'Never' [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${never.mkString(", ")}]""" )
+        Nil
+      case ( false, false ) =>
+        Nil
+
+  protected def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit
+
+  def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )
+  def jsonPretty : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this, indent=4) )
+
+  def materializeDestination( destinationJson : Destination.Json ) : D = Destination.materialize( destinationJson ).asInstanceOf[D]
+
+  def narrowDestinationOrThrow( destination : Destination ) : D =
+    if destination.getClass == sampleDestination.getClass then
+      destination.asInstanceOf[D]
+    else
+      throw new InvalidDestination(s"Destination '$destination' is not valid for SubscriptionManager '$this'.")
+
+  def narrowDestination( destination : Destination ) : Either[Destination,D] =
+    if destination.getClass == sampleDestination.getClass then
+      Right(destination.asInstanceOf[D])
+    else
+      Left(destination)
+
+  def narrowIdentifiedDestinationOrThrow( idestination : IdentifiedDestination[Destination] ) : IdentifiedDestination[D] =
+    if idestination.destination.getClass == sampleDestination.getClass then
+      idestination.asInstanceOf[IdentifiedDestination[D]]
+    else
+      throw new InvalidDestination(s"Identified destination '$idestination' is not valid for SubscriptionManager '$this'.")
+
+  def narrowIdentifiedDestination( idestination : IdentifiedDestination[Destination] ) : Either[IdentifiedDestination[Destination],IdentifiedDestination[D]] =
+    if idestination.destination.getClass == sampleDestination.getClass then
+      Right( idestination.asInstanceOf[IdentifiedDestination[D]] )
+    else
+      Left( idestination )
+
+  final def descShort( destination : D ) : String = destination.shortDesc
+  final def descFull( destination : D ) : String  = destination.fullDesc
+
+  // these we override as convenient
+  def displayShort( destination : D ) : String = destination.shortDesc
+  def displayFull( destination : D ) : String  = destination.fullDesc
+
+  // this we defer until D is concrete
+  def destinationCsvRowHeaders : Seq[String]
+  final def destinationCsvRow( destination : D ) : Seq[String] = destination.toCsvRow
+
+  def supportsExternalSubscriptionApi : Boolean = this.isInstanceOf[SubscriptionManager.SupportsExternalSubscriptionApi]
+
+  def bestTimeZone( conn : Connection ) : ZoneId = PgDatabase.Config.timeZone( conn ) // SubscriptionManagers that allow locally-specified time zones should override
+
+end SubscriptionManager
 
 object SubscriptionManager extends SelfLogging:
 
   val  Json = SubscriptionManagerJson
   type Json = SubscriptionManagerJson
+
+  def materialize( json : Json ) : SubscriptionManager = read[SubscriptionManager]( json.toString() )
+
+  // ---------------------------------------------------------------------------
+  // capability traits
+  // ---------------------------------------------------------------------------
 
   sealed trait UntemplatedCompose extends SubscriptionManager:
     def composeUntemplateName : String
@@ -59,7 +214,7 @@ object SubscriptionManager extends SelfLogging:
       *
       * OR
       *
-      * * Update the the confirmed field of the subscription to already `true`, and then return false
+      * * Update the confirmed field of the subscription to already `true`, and then return `false`
       *
       * @param conn
       * @param destination
@@ -86,88 +241,105 @@ object SubscriptionManager extends SelfLogging:
           case (None,        Some(author), Some(link)) => Some( s"[${subscribableName}] New Untitled Post, by ${author} ${link}" )
           case (None,        None,         Some(link)) => Some( s"[${subscribableName}] New Untitled Post at ${link}" )
           case (_,           _,            None      ) =>
-            WARNING.log( s"No link found, skipping masto announcement. withinTypeId: ${withinTypeId}" ) 
+            WARNING.log( s"No link found, skipping masto announcement. withinTypeId: ${withinTypeId}" )
             None
 
-  object Mastodon:
-    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon, SubscriptionManager.AbstractAnnounce:
+  // ---------------------------------------------------------------------------
+  // e-mail
+  // ---------------------------------------------------------------------------
 
-      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
+  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, UntemplatedRemovalNotification, SupportsExternalSubscriptionApi:
+    def from                              : Destination.Email
+    def replyTo                           : Option[Destination.Email]
+    def composeUntemplateName             : String
+    def confirmUntemplateName             : String
+    def statusChangeUntemplateName        : String
+    def removalNotificationUntemplateName : String
+    def extraParams                       : Map[String,String]
 
-      override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
+    type D = Destination.Email
 
-      def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
-        Customizer.MastoAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
-          customizer( subscribableName, this, feedUrl, content, tz )
+    override def sampleDestination : Destination.Email = Destination.Email("user@example.com", Some("Some User"))
 
-      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        val uniqueContent = contents.uniqueOr: (c, nu) =>
-          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
-        val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent, timeZone )
-        mbTemplate.foreach: template =>
-          val mastoDestinationsWithTemplateParams =
-            idestinations.map: idestination =>
-              val destination = idestination.destination
-              val sid = idestination.subscriptionId
-              val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
-              ( destination, templateParams )
-          mastoDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
-            val fullContent = templateParams.fill( template )
-            PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
+    protected def findTosWithTemplateParams( assignableKey : AssignableKey, feedUrl : FeedUrl, idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Set[(AddressHeader[To],TemplateParams)] =
+      idestinations.map: idestination =>
+        val to = idestination.destination.rendered
+        val sid = idestination.subscriptionId
+        val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, idestination.destination, sid, apiLinkGenerator.removeGetLink(sid) )
+        ( AddressHeader[To](to), templateParams )
 
-      override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
-        Map(
-          "instanceUrl" -> destination.instanceUrl,
-          "destinationName" -> destination.name
-        )
+    protected def doRouteSingle( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      val uniqueContent = contents.uniqueOr: (c, nu) =>
+        throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
+      val fullTemplate =
+        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, timeZone, uniqueContent )
+        val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
+        compose( info ).text
+      val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
+      PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
-  sealed trait Mastodon extends SubscriptionManager:
-    override type D = Destination.Mastodon
+    protected def doRouteMultiple( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
+      val fullTemplate =
+        val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, timeZone, contents )
+        val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
+        compose( info ).text
+      val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
+      PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
 
-    override val sampleDestination = Destination.Mastodon( name = "mothership", instanceUrl = "https://mastodon.social/" )
+    def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
+      Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents, tz : ZoneId ) ): customizer =>
+        customizer( subscribableName, this, feedUrl, contents, tz )
+
+    def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String
+
+    override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
+      val toAddress = destination.toAddress
+      val toFull = toAddress.rendered
+      val toNickname = toAddress.displayName
+      val toEmail  = toAddress.email
+      extraParams.toMap ++ Map(
+        "from"              -> from.rendered,
+        "replyTo"           -> replyTo.map( _.rendered ).getOrElse(""),
+        "to"                -> toFull,
+        "toFull"            -> toFull,
+        "toNickname"        -> toNickname.getOrElse(""),
+        "toEmail"           -> toEmail,
+        "toNicknameOrEmail" -> toNickname.getOrElse( toEmail ),
+        "removeLink"        -> removeLink
+      ).filter( _._2.nonEmpty )
+
+    // the destination should already be validated before we get to this point.
+    // we won't revalidate
+    override def maybePromptConfirmation( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String, removeGetLink : String ) : Boolean =
+      val subject = s"[${subscribableName}] Please confirm your new subscription" // XXX: Hardcoded subject, revisit someday
+      val confirmHours = PgDatabase.Config.confirmHours( conn )
+      val mailText =
+        val confirmUntemplate = AllUntemplates.findConfirmUntemplate( confirmUntemplateName )
+        val confirmInfo = ConfirmInfo( destination, subscribableName, this, confirmGetLink, removeGetLink, confirmHours )
+        confirmUntemplate( confirmInfo ).text
+      PgDatabase.mailImmediately( conn, as, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
+      true
+
+    override def maybeSendRemovalNotification( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean =
+      val subject = s"[${subscribableName}] Unsubscribed! We are sorry to see you go." // XXX: Hardcoded subject, revisit someday
+      val mailText =
+        val removalNotificationUntemplate = AllUntemplates.findRemovalNotificationUntemplate( removalNotificationUntemplateName )
+        val removalNotificationInfo = RemovalNotificationInfo( subscribableName, this, destination, createGetLink )
+        removalNotificationUntemplate( removalNotificationInfo ).text
+      PgDatabase.mailImmediately( conn, as, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
+      true
+
+    override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String =
+      val untemplate = AllUntemplates.findStatusChangeUntemplate(statusChangeUntemplateName)
+      untemplate( statusChangeInfo ).text
+
+    override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
 
     override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
-  end Mastodon
 
-  object BlueSky:
-    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.BlueSky, SubscriptionManager.AbstractAnnounce:
-
-      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
-
-      override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
-
-      def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
-        Customizer.BskyAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
-          customizer( subscribableName, this, feedUrl, content, tz )
-
-      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
-        val uniqueContent = contents.uniqueOr: (c, nu) =>
-          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
-        val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent, timeZone )
-        mbTemplate.foreach: template =>
-          val bskyDestinationsWithTemplateParams =
-            idestinations.map: idestination =>
-              val destination = idestination.destination
-              val sid = idestination.subscriptionId
-              val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
-              ( destination, templateParams )
-          bskyDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
-            val fullContent = templateParams.fill( template )
-            PgDatabase.queueForBskyPost( conn, fullContent, BskyEntrywayUrl( destination.entrywayUrl ), BskyIdentifier( destination.identifier ), uniqueContent.media )
-
-      override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
-        Map(
-          "entrywayUrl" -> destination.entrywayUrl,
-          "identifier" -> destination.identifier
-        )
-
-  sealed trait BlueSky extends SubscriptionManager:
-    override type D = Destination.BlueSky
-
-    override val sampleDestination = Destination.BlueSky( entrywayUrl = "https://bsky.social/", identifier = "interfluidity.com" )
-
-    override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
-  end BlueSky
+  end Email
 
   object Email:
     type Companion = Each.type | Daily.type | Weekly.type | Fixed.type
@@ -310,7 +482,7 @@ object SubscriptionManager extends SelfLogging:
         val tz = bestTimeZone( conn )
         Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
 
-      // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first 
+      // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first
       private def extractYearAndDay( withinTypeId : String ) : (Int, Int) =
         val ( yearStr, restStr ) = withinTypeId.span( Character.isDigit )
         val dayStr = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
@@ -346,8 +518,6 @@ object SubscriptionManager extends SelfLogging:
       numItemsPerLetter                 : Int,
       extraParams                       : Map[String,String]
     ) extends Email:
-      private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
-
       override val sampleWithinTypeId = "1"
 
       override def withExtraParams( extraParams : Map[String,String] ) : Fixed = this.copy( extraParams = extraParams )
@@ -387,101 +557,108 @@ object SubscriptionManager extends SelfLogging:
       override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
         s"[${subscribableName}] ${numItemsPerLetter} new items"
 
-
-  sealed trait Email extends SubscriptionManager, UntemplatedCompose, UntemplatedConfirm, UntemplatedStatusChange, UntemplatedRemovalNotification, SupportsExternalSubscriptionApi:
-    def from                              : Destination.Email
-    def replyTo                           : Option[Destination.Email]
-    def composeUntemplateName             : String
-    def confirmUntemplateName             : String
-    def statusChangeUntemplateName        : String
-    def removalNotificationUntemplateName : String
-    def extraParams                       : Map[String,String]
-
-    type D = Destination.Email
-
-    override def sampleDestination : Destination.Email = Destination.Email("user@example.com", Some("Some User"))
-
-    protected def findTosWithTemplateParams( assignableKey : AssignableKey, feedUrl : FeedUrl, idestinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Set[(AddressHeader[To],TemplateParams)] =
-      idestinations.map: idestination =>
-        val to = idestination.destination.rendered
-        val sid = idestination.subscriptionId
-        val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, idestination.destination, sid, apiLinkGenerator.removeGetLink(sid) )
-        ( AddressHeader[To](to), templateParams )
-
-    protected def doRouteSingle( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
-      val uniqueContent = contents.uniqueOr: (c, nu) =>
-        throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
-      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
-      val fullTemplate =
-        val info = ComposeInfo.Single( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, timeZone, uniqueContent )
-        val compose = AllUntemplates.findComposeUntemplateSingle(composeUntemplateName)
-        compose( info ).text
-      val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
-      PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
-
-    protected def doRouteMultiple( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
-      val computedSubject = subject( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
-      val fullTemplate =
-        val info = ComposeInfo.Multiple( feedUrl, assignableKey.subscribableName, this, assignableKey.withinTypeId, timeZone, contents )
-        val compose = AllUntemplates.findComposeUntemplateMultiple(composeUntemplateName)
-        compose( info ).text
-      val tosWithTemplateParams = findTosWithTemplateParams( assignableKey, feedUrl, idestinations, apiLinkGenerator )
-      PgDatabase.queueForMailing( conn, fullTemplate, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), tosWithTemplateParams, computedSubject)
-
-    def subject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
-      Customizer.Subject.retrieve( subscribableName ).fold( defaultSubject( subscribableName, withinTypeId, feedUrl, contents, tz : ZoneId ) ): customizer =>
-        customizer( subscribableName, this, feedUrl, contents, tz )
-
-    def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String
-
-    override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
-      val toAddress = destination.toAddress
-      val toFull = toAddress.rendered
-      val toNickname = toAddress.displayName
-      val toEmail  = toAddress.email
-      extraParams.toMap ++ Map(
-        "from"              -> from.rendered,
-        "replyTo"           -> replyTo.map( _.rendered ).getOrElse(""),
-        "to"                -> toFull,
-        "toFull"            -> toFull,
-        "toNickname"        -> toNickname.getOrElse(""),
-        "toEmail"           -> toEmail,
-        "toNicknameOrEmail" -> toNickname.getOrElse( toEmail ),
-        "removeLink"        -> removeLink
-      ).filter( _._2.nonEmpty )
-
-    // the destination should already be validated before we get to this point.
-    // we won't revalidate
-    override def maybePromptConfirmation( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : D, confirmGetLink : String, removeGetLink : String ) : Boolean =
-      val subject = s"[${subscribableName}] Please confirm your new subscription" // XXX: Hardcoded subject, revisit someday
-      val confirmHours = PgDatabase.Config.confirmHours( conn )
-      val mailText =
-        val confirmUntemplate = AllUntemplates.findConfirmUntemplate( confirmUntemplateName )
-        val confirmInfo = ConfirmInfo( destination, subscribableName, this, confirmGetLink, removeGetLink, confirmHours )
-        confirmUntemplate( confirmInfo ).text
-      PgDatabase.mailImmediately( conn, as, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
-      true
-
-    override def maybeSendRemovalNotification( conn : Connection, as : AppSetup, subscriptionId : SubscriptionId, subscribableName : SubscribableName, destination : this.D, createGetLink : String ) : Boolean =
-      val subject = s"[${subscribableName}] Unsubscribed! We are sorry to see you go." // XXX: Hardcoded subject, revisit someday
-      val mailText =
-        val removalNotificationUntemplate = AllUntemplates.findRemovalNotificationUntemplate( removalNotificationUntemplateName )
-        val removalNotificationInfo = RemovalNotificationInfo( subscribableName, this, destination, createGetLink )
-        removalNotificationUntemplate( removalNotificationInfo ).text
-      PgDatabase.mailImmediately( conn, as, mailText, AddressHeader[From](from), replyTo.map(AddressHeader.apply[ReplyTo]), AddressHeader[To](destination.toAddress),TemplateParams.empty,subject)
-      true
-
-    override def htmlForStatusChange( statusChangeInfo : StatusChangeInfo ) : String =
-      val untemplate = AllUntemplates.findStatusChangeUntemplate(statusChangeUntemplateName)
-      untemplate( statusChangeInfo ).text
-
-    override def displayShort( destination : D ) : String = destination.displayNamePart.getOrElse( destination.addressPart )
-
-    override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
-
   end Email
 
-  def materialize( json : Json ) : SubscriptionManager = read[SubscriptionManager]( json.toString() )
+  // ---------------------------------------------------------------------------
+  // mastodon
+  // ---------------------------------------------------------------------------
+
+  sealed trait Mastodon extends SubscriptionManager:
+    override type D = Destination.Mastodon
+
+    override val sampleDestination = Destination.Mastodon( name = "mothership", instanceUrl = "https://mastodon.social/" )
+
+    override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
+  end Mastodon
+
+  object Mastodon:
+    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.Mastodon, SubscriptionManager.AbstractAnnounce:
+
+      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
+
+      override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
+
+      def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
+        Customizer.MastoAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
+          customizer( subscribableName, this, feedUrl, content, tz )
+
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        val uniqueContent = contents.uniqueOr: (c, nu) =>
+          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+        val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent, timeZone )
+        mbTemplate.foreach: template =>
+          val mastoDestinationsWithTemplateParams =
+            idestinations.map: idestination =>
+              val destination = idestination.destination
+              val sid = idestination.subscriptionId
+              val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
+              ( destination, templateParams )
+          mastoDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
+            val fullContent = templateParams.fill( template )
+            PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
+
+      override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
+        Map(
+          "instanceUrl" -> destination.instanceUrl,
+          "destinationName" -> destination.name
+        )
+
+  end Mastodon
+
+  // ---------------------------------------------------------------------------
+  // bluesky
+  // ---------------------------------------------------------------------------
+
+  sealed trait BlueSky extends SubscriptionManager:
+    override type D = Destination.BlueSky
+
+    override val sampleDestination = Destination.BlueSky( entrywayUrl = "https://bsky.social/", identifier = "interfluidity.com" )
+
+    override def destinationCsvRowHeaders : Seq[String] = Destination.csvRowHeaders[D]
+  end BlueSky
+
+  object BlueSky:
+    final case class Announce( extraParams : Map[String,String] ) extends SubscriptionManager.BlueSky, SubscriptionManager.AbstractAnnounce:
+
+      override val sampleWithinTypeId = "https://www.someblog.com/post/1111.html"
+
+      override def withExtraParams( extraParams : Map[String,String] ) : Announce = this.copy( extraParams = extraParams )
+
+      def formatTemplate( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, content : ItemContent, tz : ZoneId ) : Option[String] =
+        Customizer.BskyAnnouncement.retrieve( subscribableName ).fold( defaultFormatTemplate( subscribableName, withinTypeId, feedUrl, content, tz ) ): customizer =>
+          customizer( subscribableName, this, feedUrl, content, tz )
+
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        val uniqueContent = contents.uniqueOr: (c, nu) =>
+          throw new WrongContentsMultiplicity(s"${this}: We expect exactly one item to render, found $nu: " + contents.map( ci => (ci.title orElse ci.link).getOrElse("<item>") ).mkString(", "))
+        val mbTemplate = formatTemplate( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, uniqueContent, timeZone )
+        mbTemplate.foreach: template =>
+          val bskyDestinationsWithTemplateParams =
+            idestinations.map: idestination =>
+              val destination = idestination.destination
+              val sid = idestination.subscriptionId
+              val templateParams = composeTemplateParams( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, destination, sid, apiLinkGenerator.removeGetLink(sid) )
+              ( destination, templateParams )
+          bskyDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
+            val fullContent = templateParams.fill( template )
+            PgDatabase.queueForBskyPost( conn, fullContent, BskyEntrywayUrl( destination.entrywayUrl ), BskyIdentifier( destination.identifier ), uniqueContent.media )
+
+      override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
+        Map(
+          "entrywayUrl" -> destination.entrywayUrl,
+          "identifier" -> destination.identifier
+        )
+
+  end BlueSky
+
+  // ---------------------------------------------------------------------------
+  // wire format
+  //
+  // Tag.jsonVal strings are a persisted contract -- they appear in the
+  // subscription_manager_json column of the subscribable table. The codec
+  // mechanics live in SubscriptionManagerCodec; the given must stay here, where
+  // upickle's implicit resolution looks for it.
+  // ---------------------------------------------------------------------------
 
   object Tag:
     def forJsonVal( jsonVal : String ) : Option[Tag] = Tag.values.find( _.jsonVal == jsonVal )
@@ -493,247 +670,7 @@ object SubscriptionManager extends SelfLogging:
     case Masto_Announce extends Tag("Mastodon.Announce")
     case Bsky_Announce  extends Tag("BlueSky.Announce")
 
-  private def toUJsonV1( subscriptionManager : SubscriptionManager ) : ujson.Value =
-    def esf( emailsub : Email.Instance ) : ujson.Obj = // "email shared fields"
-      val values = Seq(
-        "from" -> writeJs[Destination]( emailsub.from ),
-        "composeUntemplateName" -> ujson.Str( emailsub.composeUntemplateName ),
-        "confirmUntemplateName" -> ujson.Str( emailsub.confirmUntemplateName ),
-        "statusChangeUntemplateName" -> ujson.Str( emailsub.statusChangeUntemplateName ),
-        "removalNotificationUntemplateName" -> ujson.Str( emailsub.removalNotificationUntemplateName ),
-        "extraParams" -> writeJs( emailsub.extraParams ) 
-      ) ++ emailsub.replyTo.map( rt => ("replyTo" -> writeJs[Destination](rt) ) )
-      ujson.Obj.from( values )
-    def epbsf( pbsm : Email.Instance & PeriodBased ) : ujson.Obj = // "email period-based shared fields"
-      pbsm.timeZone match
-        case Some( tz ) => ujson.Obj.from( esf( pbsm ).obj addOne( ("timeZone" -> tz.getId()) ) )
-        case None       => esf( pbsm )
-    def eef( each : Email.Each ) : ujson.Obj = esf( each )
-    def edf( daily : Email.Daily ) : ujson.Obj = epbsf( daily )
-    def ewf( weekly : Email.Weekly ) : ujson.Obj = epbsf( weekly )
-    def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj addOne( ("numItemsPerLetter" -> fixed.numItemsPerLetter) ) )
-    def maf( announce : Mastodon.Announce ) : ujson.Obj = ujson.Obj( // "mastodon announce fields"
-      "extraParams" -> writeJs( announce.extraParams )
-    )
-    def bsf( announce : BlueSky.Announce ) : ujson.Obj = ujson.Obj(
-      "extraParams" -> writeJs( announce.extraParams )
-    )
-    val (fields, tpe) =
-      subscriptionManager match
-        case each        : Email.Each        => ( eef(each),        Tag.Email_Each     )
-        case daily       : Email.Daily       => ( edf(daily),       Tag.Email_Daily    )
-        case weekly      : Email.Weekly      => ( ewf(weekly),      Tag.Email_Weekly   )
-        case fixed       : Email.Fixed       => ( eff(fixed),       Tag.Email_Fixed    )
-        case m_announce  : Mastodon.Announce => ( maf(m_announce),  Tag.Masto_Announce )
-        case bs_announce : BlueSky.Announce  => ( bsf(bs_announce), Tag.Bsky_Announce  )
-    val headerFields =
-       ujson.Obj(
-         "version" -> 1,
-         "type" -> tpe.jsonVal
-       )
-    ujson.Obj.from(headerFields.obj ++ fields.obj)
+  given ReadWriter[SubscriptionManager] =
+    readwriter[ujson.Value].bimap[SubscriptionManager]( SubscriptionManagerCodec.toUJsonV1, SubscriptionManagerCodec.fromUJsonV1 )
 
-  private def fromUJsonV1( jsonValue : ujson.Value ) : SubscriptionManager =
-    val obj = jsonValue.obj
-    val version = obj.get("version").map( _.num.toInt )
-    if version.nonEmpty && version != Some(1) then
-      throw new InvalidSubscriptionManager(s"Unpickling SubscriptionManager, found version ${version.get}, expected version 1: " + obj.mkString(", "))
-    else
-      val tpe = obj("type").str
-      val tag = Tag.forJsonVal(tpe).getOrElse:
-        throw new InvalidSubscriptionManager(s"While unpickling a subscription manager, found unknown tag '$tpe': " + jsonValue)
-      tag match
-        case Tag.Email_Each => Email.Each(
-          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
-          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
-          composeUntemplateName             = obj("composeUntemplateName").str,
-          confirmUntemplateName             = obj("confirmUntemplateName").str,
-          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
-          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
-          extraParams                       = read[Map[String,String]](obj("extraParams"))
-        )
-        case Tag.Email_Daily => Email.Daily(
-          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
-          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
-          composeUntemplateName             = obj("composeUntemplateName").str,
-          confirmUntemplateName             = obj("confirmUntemplateName").str,
-          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
-          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
-          timeZone                          = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
-          extraParams                       = read[Map[String,String]](obj("extraParams"))
-        )
-        case Tag.Email_Weekly => Email.Weekly(
-          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
-          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
-          composeUntemplateName             = obj("composeUntemplateName").str,
-          confirmUntemplateName             = obj("confirmUntemplateName").str,
-          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
-          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
-          timeZone                          = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
-          extraParams                       = read[Map[String,String]](obj("extraParams"))
-        )
-        case Tag.Email_Fixed => Email.Fixed(
-          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
-          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
-          composeUntemplateName             = obj("composeUntemplateName").str,
-          confirmUntemplateName             = obj("confirmUntemplateName").str,
-          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
-          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
-          numItemsPerLetter                 = obj("numItemsPerLetter").num.toInt,
-          extraParams                       = read[Map[String,String]](obj("extraParams"))
-        )
-        case Tag.Masto_Announce => Mastodon.Announce(
-          extraParams = read[Map[String,String]](obj("extraParams"))
-        )
-        case Tag.Bsky_Announce => BlueSky.Announce(
-          extraParams = read[Map[String,String]](obj("extraParams"))
-        )
-
-  given ReadWriter[SubscriptionManager] = readwriter[ujson.Value].bimap[SubscriptionManager]( toUJsonV1, fromUJsonV1 )
-
-sealed trait SubscriptionManager extends Jsonable:
-  import SubscriptionManager.logAdapter
-
-  type D  <: Destination
-
-  def extraParams : Map[String,String]
-  def withExtraParams( extraParams : Map[String,String] ) : SubscriptionManager
-
-  def sampleWithinTypeId : String
-  def sampleDestination  : D // used for styling, but also to check at runtime that Destinations are of the expected class. See narrowXXX methods below
-
-  /*
-   *  We used to let Iffy.HintAnnounce.Policy.Never prevent assignment, as well as explicit filters.
-   *  We've removed that, so that content customizers potentially can override Iffy.HintAnnounce.Policy,
-   *  or do whatever they like with the full content except as explicitly filtered via a customizer 
-   */
-  final def withinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String] =
-    if checkFilter( subscribableName, content ) then
-      assignWithinTypeId( conn, subscribableName, feedId, guid, content, status )
-    else
-      INFO.log( s"Not assigning item due to a user-provided filter returning false. [subscribableName: ${subscribableName}, guid: ${guid}, content: ${content}]" )
-      None
-
-  protected def assignWithinTypeId( conn : Connection, subscribableName : SubscribableName, feedId : FeedId, guid : Guid, content : ItemContent, status : ItemStatus ) : Option[String]
-
-  def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean
-
-  def validateSubscriptionOrThrow( conn : Connection, fromExternalApi : Boolean, destination : Destination, subscribableName : SubscribableName ) : Unit =
-    if fromExternalApi && !supportsExternalSubscriptionApi then
-      throw new ExternalApiForibidden( s"[${subscribableName}]: Subscriptions must be made by an administrator, rather than via the public API." )
-    else
-      narrowDestination( destination ) match
-        case Right( d ) => d.assertValid
-        case Left ( _ ) =>
-          throw new InvalidDestination( s"[${subscribableName}] Incorrect destination type. We expect a ${sampleDestination.getClass.getName()}. Destination '${destination}' is not. Rejecting." )
-
-  def composeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : TemplateParams =
-    TemplateParams(
-      defaultComposeTemplateParams(subscribableName, withinTypeId, feedUrl, destination, subscriptionId, removeLink ) ++
-      Customizer.TemplateParams.retrieve( subscribableName ).fold(Nil)( customizer => customizer( subscribableName, this, feedUrl, destination, subscriptionId, removeLink ) )
-    )
-
-  def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String]
-
-  def customizeContents( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : Seq[ItemContent] =
-    val customizer = Customizer.Contents.retrieve(subscribableName)
-    customizer match
-      case Some( c ) => c( subscribableName, this, feedUrl, contents, tz )
-      case None => contents
-
-  def checkFilter( subscribableName : SubscribableName, content : ItemContent ) : Boolean =
-    val filter = Customizer.Filter.retrieve(subscribableName)
-    filter match
-      case Some( f ) => f( subscribableName, this, content )
-      case None      => true
-
-  final def route( conn : Connection, assignableKey : AssignableKey, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], apiLinkGenerator : ApiLinkGenerator ) : Unit =
-    val ( feedId, feedUrl ) = PgDatabase.feedIdUrlForSubscribableName( conn, assignableKey.subscribableName )
-    val timeZone = bestTimeZone( conn )
-    val transformedContents = transformContentsForRoute( assignableKey, feedUrl, contents, timeZone )
-    if transformedContents.nonEmpty then doRoute(conn, assignableKey, feedId, feedUrl, transformedContents, destinations, timeZone, apiLinkGenerator)
-
-  def hintAnnouncePolicy( subscribableName : SubscribableName, content : ItemContent ) : Element.Iffy.HintAnnounce.Policy =
-    val restrictionFinder = Customizer.HintAnnounceRestriction.retrieve( subscribableName ).getOrElse( ( _, _, _ ) => None )
-    restrictionFinder( subscribableName, this, content ).getOrElse( content.iffyHintAnnounceUnrestrictedPolicy )
-
-  // XXX: this can filter or reorder, but if we ever add, we'll have to be careful about SubscriptionManagers that expect single-item contents
-  def transformContentsForRoute( assignableKey : AssignableKey, feedUrl : FeedUrl, contents : Seq[ItemContent], timeZone : ZoneId ) : Seq[ItemContent] =
-    val withCustomizedContents =
-      customizeContents( assignableKey.subscribableName, assignableKey.withinTypeId, feedUrl, contents, timeZone )
-    val withHintAnnounce =
-      if this.respectHintAnnounce then
-        applyHintAnnounceForRoute( assignableKey.subscribableName, assignableKey.withinTypeId, withCustomizedContents )
-      else
-        withCustomizedContents
-    withHintAnnounce
-
-  def respectHintAnnounce : Boolean = true
-
-  def applyHintAnnounceForRoute( subscribableName : SubscribableName, withinTypeId : String, contents : Seq[ItemContent] ) : Seq[ItemContent] =
-    def policy( content : ItemContent ) : Element.Iffy.HintAnnounce.Policy = hintAnnouncePolicy( subscribableName, content )
-    val (never, notNever) = contents.partition( c => policy(c) == Element.Iffy.HintAnnounce.Policy.Never )
-    // we now never even assign nevers, so never should always be empty
-    def handleNotNevers =
-      if notNever.forall( c => policy(c) == Element.Iffy.HintAnnounce.Policy.Piggyback) then
-        if notNever.nonEmpty then INFO.log( s"""Skipping announcement entirely, due to hint-announce all Piggyback [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${notNever.mkString(", ")}]""" )
-        Nil
-      else
-        notNever
-    (never.nonEmpty, notNever.nonEmpty) match
-      case ( true, true   ) =>
-        INFO.log( s"""Skipping announcement of some items, due to hint-announce policy 'Never' [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${never.mkString(", ")}]""" )
-        handleNotNevers
-      case ( false, true  ) =>
-        handleNotNevers
-      case ( true, false  ) =>
-        INFO.log( s"""Skipping announcement of all items, due to hint-announce policy 'Never' [subscribableName: ${subscribableName}, withinTypeId: ${withinTypeId}, skipped: ${never.mkString(", ")}]""" )
-        Nil
-      case ( false, false ) =>
-        Nil
-
-  protected def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], destinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit
-
-  def json       : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this) )
-  def jsonPretty : SubscriptionManager.Json = SubscriptionManager.Json( write[SubscriptionManager](this, indent=4) )
-
-  def materializeDestination( destinationJson : Destination.Json ) : D = Destination.materialize( destinationJson ).asInstanceOf[D]
-
-  def narrowDestinationOrThrow( destination : Destination ) : D =
-    if destination.getClass == sampleDestination.getClass then
-      destination.asInstanceOf[D]
-    else
-      throw new InvalidDestination(s"Destination '$destination' is not valid for SubscriptionManager '$this'.")
-
-  def narrowDestination( destination : Destination ) : Either[Destination,D] =
-    if destination.getClass == sampleDestination.getClass then
-      Right(destination.asInstanceOf[D])
-    else
-      Left(destination)
-
-  def narrowIdentifiedDestinationOrThrow( idestination : IdentifiedDestination[Destination] ) : IdentifiedDestination[D] =
-    if idestination.destination.getClass == sampleDestination.getClass then
-      idestination.asInstanceOf[IdentifiedDestination[D]]
-    else
-      throw new InvalidDestination(s"Identified destination '$idestination' is not valid for SubscriptionManager '$this'.")
-
-  def narrowIdentifiedDestination( idestination : IdentifiedDestination[Destination] ) : Either[IdentifiedDestination[Destination],IdentifiedDestination[D]] =
-    if idestination.destination.getClass == sampleDestination.getClass then
-      Right( idestination.asInstanceOf[IdentifiedDestination[D]] )
-    else
-      Left( idestination )
-
-  final def descShort( destination : D ) : String = destination.shortDesc
-  final def descFull( destination : D ) : String  = destination.fullDesc
-
-  // these we override as convenient
-  def displayShort( destination : D ) : String = destination.shortDesc
-  def displayFull( destination : D ) : String  = destination.fullDesc
-
-  // this we defer until D is concrete
-  def destinationCsvRowHeaders : Seq[String]
-  final def destinationCsvRow( destination : D ) : Seq[String] = destination.toCsvRow
-
-  def supportsExternalSubscriptionApi : Boolean = this.isInstanceOf[SubscriptionManager.SupportsExternalSubscriptionApi]
-
-  def bestTimeZone( conn : Connection ) : ZoneId = PgDatabase.Config.timeZone( conn ) // SubscriptionManagers that allow locally-specified time zones should override
+end SubscriptionManager
