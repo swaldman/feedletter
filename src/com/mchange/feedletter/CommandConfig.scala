@@ -479,25 +479,25 @@ object CommandConfig extends SelfLogging:
       overrideUntemplateName.getOrElse:
         sman match
           case stu : SubscriptionManager.UntemplatedCompose => stu.composeUntemplateName
-          case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          case _ =>
             throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not compose through an untemplate, cannot style: $sman")
     def untemplateNameConfirm( overrideUntemplateName : Option[String], sman : SubscriptionManager, subscribableName : SubscribableName ) : String =
       overrideUntemplateName.getOrElse:
         sman match
           case stu : SubscriptionManager.UntemplatedConfirm => stu.confirmUntemplateName
-          case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          case _ =>
             throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render confirmations through an untemplate, cannot style: $sman")
     def untemplateNameStatusChange( overrideUntemplateName : Option[String], sman : SubscriptionManager, subscribableName : SubscribableName ) : String =
       overrideUntemplateName.getOrElse:
         sman match
           case stu : SubscriptionManager.UntemplatedStatusChange => stu.statusChangeUntemplateName
-          case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          case _ =>
             throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render status changes through an untemplate, cannot style: $sman")
     def untemplateNameRemovalNotification( overrideUntemplateName : Option[String], sman : SubscriptionManager, subscribableName : SubscribableName ) : String =
       overrideUntemplateName.getOrElse:
         sman match
           case stu : SubscriptionManager.UntemplatedRemovalNotification => stu.removalNotificationUntemplateName
-          case _ => // XXX: this gives an unreachable code warning, because for now all subscription types are Untemplated. But the may not always be!
+          case _ =>
             throw new InvalidSubscriptionManager(s"Subscription '${subscribableName}' does not render removal notifications through an untemplate, cannot style: $sman")
     case class ComposeUntemplateSingle(
       subscribableName       : SubscribableName,
