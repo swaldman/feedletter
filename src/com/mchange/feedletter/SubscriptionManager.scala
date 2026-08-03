@@ -3,7 +3,7 @@ package com.mchange.feedletter
 import com.mchange.feedletter.style.*
 
 import java.sql.Connection
-import java.time.{LocalDate,Instant,ZoneId}
+import java.time.{DayOfWeek,LocalDate,LocalTime,Instant,ZoneId}
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoField
 
@@ -342,8 +342,7 @@ object SubscriptionManager extends SelfLogging:
   end Email
 
   object Email:
-    type Companion = Each.type | Daily.type | Weekly.type | Fixed.type
-    type Instance  = Each      | Daily      | Weekly      | Fixed
+    type Instance = Each | Daily | Weekly | BetterWeekly | Fixed
 
     case class Each(
       from                              : Destination.Email,
@@ -382,6 +381,11 @@ object SubscriptionManager extends SelfLogging:
     // it didn't behave as I expect.
     //
     // so i now use a much simpler NaiveWeek utility
+    //
+    // Weekly is retained only so that already-defined subscribables keep working. Its
+    // weeks are anchored to January 1, so the weekday on which mail goes out drifts from
+    // year to year, and the year's last week is a 1-2 day stub. New weekly subscribables
+    // are backed by BetterWeekly, just below.
 
     final case class Weekly(
       from                              : Destination.Email,
@@ -438,6 +442,78 @@ object SubscriptionManager extends SelfLogging:
         val (minDate, maxDate) =
           if allDates.isEmpty then
             weekStartWeekEndFormattedIsoLocal(withinTypeId) // backstop, but see comments above!
+          else
+            (ISO_LOCAL_DATE.format(allDates.head), ISO_LOCAL_DATE.format(allDates.last))
+        if minDate != maxDate then
+          s"[${subscribableName}] Posts, ${minDate} to ${maxDate}"
+        else
+          s"[${subscribableName}] Posts from ${minDate}"
+
+    /**
+      * A weekly subscribable whose weeks are anchored to an explicit day-of-week and
+      * time-of-day rather than to January 1. See BetterWeek for the arithmetic and for
+      * why within-type-ids record the *end* of a period.
+      */
+    final case class BetterWeekly(
+      from                              : Destination.Email,
+      replyTo                           : Option[Destination.Email],
+      composeUntemplateName             : String,
+      confirmUntemplateName             : String,
+      statusChangeUntemplateName        : String,
+      removalNotificationUntemplateName : String,
+      dayOfWeek                         : DayOfWeek,
+      timeOfDay                         : LocalTime,
+      timeZone                          : Option[ZoneId],
+      extraParams                       : Map[String,String]
+    ) extends Email, PeriodBased:
+
+      override val sampleWithinTypeId = "2024-12-30T00:00:00" // a Monday midnight
+
+      override def withExtraParams( extraParams : Map[String,String] ) : BetterWeekly = this.copy( extraParams = extraParams )
+
+      override def withComposeUntemplateName( name : String )             : BetterWeekly = this.copy( composeUntemplateName             = name )
+      override def withConfirmUntemplateName( name : String )             : BetterWeekly = this.copy( confirmUntemplateName             = name )
+      override def withStatusChangeUntemplateName( name : String )        : BetterWeekly = this.copy( statusChangeUntemplateName        = name )
+      override def withRemovalNotificationUntemplateName( name : String ) : BetterWeekly = this.copy( removalNotificationUntemplateName = name )
+
+      override def isComposeMultiple : Boolean = true
+
+      // keyed on lastChecked rather than firstSeen, for the same reason as Weekly above:
+      // the period in which an item was first seen may already have closed
+      override def assignWithinTypeId(
+        conn             : Connection,
+        subscribableName : SubscribableName,
+        feedId           : FeedId,
+        guid             : Guid,
+        content          : ItemContent,
+        status           : ItemStatus
+      ) : Option[String] =
+        val tz = bestTimeZone( conn )
+        val local = status.lastChecked.atZone(tz).toLocalDateTime()
+        Some( BetterWeek.format( BetterWeek.periodEnd( local, dayOfWeek, timeOfDay ) ) )
+
+      override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
+        val deadline = BetterWeek.parse( withinTypeId )
+        val tz = bestTimeZone( conn )
+        !feedLastAssigned.atZone(tz).toLocalDateTime().isBefore( deadline )
+
+      override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
+        doRouteMultiple( conn, assignableKey, feedId, feedUrl, contents, idestinations, timeZone, apiLinkGenerator )
+
+      // the inclusive first and last dates covered by the period, derived from the
+      // deadline the within-type-id records. periods are half-open, so the last date
+      // covered is the day before the deadline unless the deadline falls at midnight
+      def periodStartEndFormattedIsoLocal( withinTypeId : String ) : (String,String) =
+        val periodEnd = BetterWeek.parse( withinTypeId )
+        val firstDate = BetterWeek.periodStart( periodEnd ).toLocalDate()
+        val lastDate  = periodEnd.toLocalDate().minusDays( if periodEnd.toLocalTime() == LocalTime.MIDNIGHT then 1 else 0 )
+        (ISO_LOCAL_DATE.format(firstDate),ISO_LOCAL_DATE.format(lastDate))
+
+      override def defaultSubject( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, contents : Seq[ItemContent], tz : ZoneId ) : String =
+        val allDates = contents.map( _.pubDate ).flatten.sorted.map( _.atZone(tz) )
+        val (minDate, maxDate) =
+          if allDates.isEmpty then
+            periodStartEndFormattedIsoLocal(withinTypeId)
           else
             (ISO_LOCAL_DATE.format(allDates.head), ISO_LOCAL_DATE.format(allDates.last))
         if minDate != maxDate then
@@ -663,12 +739,13 @@ object SubscriptionManager extends SelfLogging:
   object Tag:
     def forJsonVal( jsonVal : String ) : Option[Tag] = Tag.values.find( _.jsonVal == jsonVal )
   enum Tag(val jsonVal : String):
-    case Email_Each     extends Tag("Email.Each")
-    case Email_Daily    extends Tag("Email.Daily")
-    case Email_Weekly   extends Tag("Email.Weekly")
-    case Email_Fixed    extends Tag("Email.Fixed")
-    case Masto_Announce extends Tag("Mastodon.Announce")
-    case Bsky_Announce  extends Tag("BlueSky.Announce")
+    case Email_Each         extends Tag("Email.Each")
+    case Email_Daily        extends Tag("Email.Daily")
+    case Email_Weekly       extends Tag("Email.Weekly")
+    case Email_BetterWeekly extends Tag("Email.BetterWeekly")
+    case Email_Fixed        extends Tag("Email.Fixed")
+    case Masto_Announce     extends Tag("Mastodon.Announce")
+    case Bsky_Announce      extends Tag("BlueSky.Announce")
 
   given ReadWriter[SubscriptionManager] =
     readwriter[ujson.Value].bimap[SubscriptionManager]( SubscriptionManagerCodec.toUJsonV1, SubscriptionManagerCodec.fromUJsonV1 )

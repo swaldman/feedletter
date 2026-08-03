@@ -1,6 +1,6 @@
 package com.mchange.feedletter
 
-import java.time.ZoneId
+import java.time.{DayOfWeek,LocalTime,ZoneId}
 
 // Round-trip properties can't catch a refactor that changes the wire format symmetrically.
 // Since Destination and SubscriptionManager JSON is persisted in Postgres JSONB columns,
@@ -114,6 +114,66 @@ class JsonGoldenSuite extends munit.FunSuite:
         statusChangeUntemplateName        = "com.example.StatusChange",
         removalNotificationUntemplateName = "com.example.RemovalNotification",
         timeZone                          = Some( ZoneId.of("America/New_York") ),
+        extraParams                       = Map.empty
+      )
+    )
+
+  test("SubscriptionManager.Email.BetterWeekly golden fixture (with replyTo and timeZone)"):
+    assertSubscriptionManagerGolden(
+      """{
+        |  "version" : 1,
+        |  "type" : "Email.BetterWeekly",
+        |  "from" : {"version":1,"type":"Email","addressPart":"newsletter@example.com"},
+        |  "composeUntemplateName" : "com.example.Compose",
+        |  "confirmUntemplateName" : "com.example.Confirm",
+        |  "statusChangeUntemplateName" : "com.example.StatusChange",
+        |  "removalNotificationUntemplateName" : "com.example.RemovalNotification",
+        |  "replyTo" : {"version":1,"type":"Email","addressPart":"replies@example.com"},
+        |  "timeZone" : "America/New_York",
+        |  "dayOfWeek" : "MONDAY",
+        |  "timeOfDay" : "09:00:00",
+        |  "extraParams" : {}
+        |}""".stripMargin,
+      SubscriptionManager.Email.BetterWeekly(
+        from                              = Destination.Email( "newsletter@example.com", None ),
+        replyTo                           = Some( Destination.Email( "replies@example.com", None ) ),
+        composeUntemplateName             = "com.example.Compose",
+        confirmUntemplateName             = "com.example.Confirm",
+        statusChangeUntemplateName        = "com.example.StatusChange",
+        removalNotificationUntemplateName = "com.example.RemovalNotification",
+        dayOfWeek                         = DayOfWeek.MONDAY,
+        timeOfDay                         = LocalTime.of( 9, 0 ),
+        timeZone                          = Some( ZoneId.of("America/New_York") ),
+        extraParams                       = Map.empty
+      )
+    )
+
+  // pins the omitted-when-absent convention for replyTo and timeZone, and the fact that
+  // dayOfWeek and timeOfDay are always present -- they are required fields, not options
+  test("SubscriptionManager.Email.BetterWeekly golden fixture (no replyTo, no timeZone)"):
+    assertSubscriptionManagerGolden(
+      """{
+        |  "version" : 1,
+        |  "type" : "Email.BetterWeekly",
+        |  "from" : {"version":1,"type":"Email","addressPart":"newsletter@example.com"},
+        |  "composeUntemplateName" : "com.example.Compose",
+        |  "confirmUntemplateName" : "com.example.Confirm",
+        |  "statusChangeUntemplateName" : "com.example.StatusChange",
+        |  "removalNotificationUntemplateName" : "com.example.RemovalNotification",
+        |  "dayOfWeek" : "SUNDAY",
+        |  "timeOfDay" : "00:00:00",
+        |  "extraParams" : {}
+        |}""".stripMargin,
+      SubscriptionManager.Email.BetterWeekly(
+        from                              = Destination.Email( "newsletter@example.com", None ),
+        replyTo                           = None,
+        composeUntemplateName             = "com.example.Compose",
+        confirmUntemplateName             = "com.example.Confirm",
+        statusChangeUntemplateName        = "com.example.StatusChange",
+        removalNotificationUntemplateName = "com.example.RemovalNotification",
+        dayOfWeek                         = DayOfWeek.SUNDAY,
+        timeOfDay                         = LocalTime.MIDNIGHT,
+        timeZone                          = None,
         extraParams                       = Map.empty
       )
     )

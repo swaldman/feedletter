@@ -10,8 +10,9 @@ import com.mchange.feedletter.style.AllUntemplates
 import com.mchange.sc.sqlutil.migrate.DbVersionStatus
 
 import java.nio.file.{Path as JPath}
+import java.sql.Connection
 import javax.sql.DataSource
-import java.time.ZoneId
+import java.time.{DayOfWeek,LocalTime,ZoneId,ZonedDateTime}
 
 import com.mchange.conveniences.throwable.*
 import com.mchange.conveniences.collection.*
@@ -132,7 +133,26 @@ object CommandConfig extends SelfLogging:
         _    <- Console.printLine(s"A BlueSky subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
       yield ()
     end zcommand
-  case class DefineEmailSubscribable[T](
+  /**
+    * The kind of e-mail subscribable requested on the command line, along with its
+    * typed payload.
+    *
+    * Main.scala parses one of these; DefineEmailSubscribable turns it into a
+    * SubscriptionManager. Keeping the payloads typed here makes that a compiler-checked
+    * exhaustive match, rather than the untyped pair it used to be.
+    *
+    * Note that Weekly builds a SubscriptionManager.Email.BetterWeekly. The legacy
+    * Email.Weekly is no longer constructible from the command line -- see the comment
+    * on it in SubscriptionManager.scala.
+    */
+  sealed trait EmailKind
+  object EmailKind:
+    case object Each extends EmailKind
+    case class  Daily( timeZone : Option[ZoneId] ) extends EmailKind
+    case class  Weekly( dayOfWeek : Option[DayOfWeek], timeOfDay : Option[LocalTime], timeZone : Option[ZoneId] ) extends EmailKind
+    case class  Fixed( numItemsPerLetter : Int ) extends EmailKind
+
+  case class DefineEmailSubscribable(
     feedId                               : FeedId,
     subscribableName                     : SubscribableName,
     from                                 : String,
@@ -141,7 +161,7 @@ object CommandConfig extends SelfLogging:
     mbConfirmUntemplateName              : Option[String],
     mbRemovalNotificationUntemplateName  : Option[String],
     mbStatusChangeUntemplateName         : Option[String],
-    emailCompanionAndArg                 : (SubscriptionManager.Email.Companion, Option[T]),
+    kind                                 : EmailKind,
     extraParams                          : Map[String,String]
   ) extends CommandConfig:
     override def zcommand : ZCommand =
@@ -149,69 +169,71 @@ object CommandConfig extends SelfLogging:
       val statusChangeUntemplateName        = mbStatusChangeUntemplateName.getOrElse( Default.Email.statusChangeUntemplate() )
       val removalNotificationUntemplateName = mbRemovalNotificationUntemplateName.getOrElse( Default.Email.removalNotificationUntemplate() )
 
-      val subscriptionManager =
+      // a connection is required because BetterWeekly's day-of-week default is resolved
+      // against the effective time zone, which falls back to the config table
+      def subscriptionManager( conn : Connection ) : SubscriptionManager.Email =
         import SubscriptionManager.{Email as SMEM}
-        emailCompanionAndArg match
-          case (SMEM.Each, None) =>
-            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateSingle() )
+        def composeUntemplateNameSingle   = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateSingle() )
+        def composeUntemplateNameMultiple = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateMultiple() )
+        kind match
+          case EmailKind.Each =>
             SMEM.Each (
               from = Destination.Email(from),
               replyTo = replyTo.map( Destination.Email.apply ),
-              composeUntemplateName = composeUntemplateName,
+              composeUntemplateName = composeUntemplateNameSingle,
               confirmUntemplateName = confirmUntemplateName,
               statusChangeUntemplateName = statusChangeUntemplateName,
               removalNotificationUntemplateName = removalNotificationUntemplateName,
               extraParams = extraParams
             )
-          case (SMEM.Weekly, tz : Option[ZoneId @unchecked]) => // we'll check ourselves
-            tz.foreach( z => assert( z.isInstanceOf[ZoneId], "Only an Option[ZoneId] should be passed as the extra argument for Email.Weekly. Found '$z'." ) )
-            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateMultiple() )
-            SMEM.Weekly (
-              from = Destination.Email(from),
-              replyTo = replyTo.map( Destination.Email.apply ),
-              composeUntemplateName = composeUntemplateName,
-              confirmUntemplateName = confirmUntemplateName,
-              statusChangeUntemplateName = statusChangeUntemplateName,
-              removalNotificationUntemplateName = removalNotificationUntemplateName,
-              timeZone = tz,
-              extraParams = extraParams
-            )
-          case (SMEM.Daily, tz : Option[ZoneId @unchecked]) => // we'll check ourselves
-            tz.foreach( z => assert( z.isInstanceOf[ZoneId], "Only an Option[ZoneId] should be passed as the extra argument for Email.Daily. Found '$z'." ) )
-            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateMultiple() )
+          case EmailKind.Daily( timeZone ) =>
             SMEM.Daily (
               from = Destination.Email(from),
               replyTo = replyTo.map( Destination.Email.apply ),
-              composeUntemplateName = composeUntemplateName,
+              composeUntemplateName = composeUntemplateNameMultiple,
               confirmUntemplateName = confirmUntemplateName,
               statusChangeUntemplateName = statusChangeUntemplateName,
               removalNotificationUntemplateName = removalNotificationUntemplateName,
-              timeZone = tz,
+              timeZone = timeZone,
               extraParams = extraParams
             )
-          case (SMEM.Fixed, Some(nipl : Int)) =>
-            val composeUntemplateName = mbComposeUntemplateName.getOrElse( Default.Email.composeUntemplateMultiple() )
+          case EmailKind.Weekly( mbDayOfWeek, mbTimeOfDay, timeZone ) =>
+            val timeOfDay = mbTimeOfDay.getOrElse( LocalTime.MIDNIGHT )
+            // note that we persist the time zone as given, so that leaving it unset
+            // continues to track the config table. we resolve it only to pick a default
+            // day-of-week, which is frozen into the subscribable here and now.
+            val effectiveZone = timeZone.getOrElse( PgDatabase.Config.timeZone( conn ) )
+            val dayOfWeek = mbDayOfWeek.getOrElse( BetterWeek.defaultDayOfWeek( ZonedDateTime.now( effectiveZone ), timeOfDay ) )
+            SMEM.BetterWeekly (
+              from = Destination.Email(from),
+              replyTo = replyTo.map( Destination.Email.apply ),
+              composeUntemplateName = composeUntemplateNameMultiple,
+              confirmUntemplateName = confirmUntemplateName,
+              statusChangeUntemplateName = statusChangeUntemplateName,
+              removalNotificationUntemplateName = removalNotificationUntemplateName,
+              dayOfWeek = dayOfWeek,
+              timeOfDay = timeOfDay,
+              timeZone = timeZone,
+              extraParams = extraParams
+            )
+          case EmailKind.Fixed( numItemsPerLetter ) =>
             SMEM.Fixed (
               from = Destination.Email(from),
               replyTo = replyTo.map( Destination.Email.apply ),
-              composeUntemplateName = composeUntemplateName,
+              composeUntemplateName = composeUntemplateNameMultiple,
               confirmUntemplateName = confirmUntemplateName,
               statusChangeUntemplateName = statusChangeUntemplateName,
               removalNotificationUntemplateName = removalNotificationUntemplateName,
-              numItemsPerLetter = nipl,
+              numItemsPerLetter = numItemsPerLetter,
               extraParams = extraParams
             )
-          case tup @ ( SMEM.Each, Some( whatev ) ) =>
-            throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, which accepts no additional arguments." )
-          case tup @ ( SMEM.Fixed | SMEM.Weekly | SMEM.Daily, Some( whatev ) ) =>
-            throw new AssertionError( s"Additional argument '$whatev' inconsistent with ${tup(0)}, not of expected type." )
-          case tup @ ( SMEM.Fixed, None ) =>
-            throw new AssertionError( s"Missing additional argument (numItemsPerLetter : Int) expected for ${tup(0)}" )
+      end subscriptionManager
 
       for
         ds   <- ZIO.service[DataSource]
         _    <- PgDatabase.ensureDb( ds )
-        tup  <- PgDatabase.addSubscribable( ds, subscribableName, feedId, subscriptionManager )
+        sman <- withConnectionTransactional( ds )( subscriptionManager )
+        tup  <- PgDatabase.addSubscribable( ds, subscribableName, feedId, sman )
         _    <- printSubscribable(tup)
         _    <- Console.printLine(s"An email subscribable to feed with ID '${feedId}' named '${subscribableName}' has been created.")
       yield ()

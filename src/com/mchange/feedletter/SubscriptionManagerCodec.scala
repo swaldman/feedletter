@@ -1,6 +1,7 @@
 package com.mchange.feedletter
 
-import java.time.ZoneId
+import java.time.{DayOfWeek,LocalTime,ZoneId}
+import java.time.format.DateTimeFormatter.ISO_LOCAL_TIME
 
 import upickle.default.*
 
@@ -37,12 +38,18 @@ private[feedletter] object SubscriptionManagerCodec:
       ujson.Obj.from( values )
     def epbsf( pbsm : Email.Instance & PeriodBased ) : ujson.Obj = // "email period-based shared fields"
       pbsm.timeZone match
-        case Some( tz ) => ujson.Obj.from( esf( pbsm ).obj addOne( ("timeZone" -> tz.getId()) ) )
+        case Some( tz ) => ujson.Obj.from( esf( pbsm ).obj.addOne( "timeZone" -> tz.getId() ) )
         case None       => esf( pbsm )
     def eef( each : Email.Each ) : ujson.Obj = esf( each )
     def edf( daily : Email.Daily ) : ujson.Obj = epbsf( daily )
     def ewf( weekly : Email.Weekly ) : ujson.Obj = epbsf( weekly )
-    def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj addOne( ("numItemsPerLetter" -> fixed.numItemsPerLetter) ) )
+    def ebwf( bweekly : Email.BetterWeekly ) : ujson.Obj = // "email better-weekly fields"
+      ujson.Obj.from(
+        epbsf( bweekly ).obj
+          .addOne( "dayOfWeek" -> bweekly.dayOfWeek.toString() )
+          .addOne( "timeOfDay" -> ISO_LOCAL_TIME.format( bweekly.timeOfDay ) )
+      )
+    def eff( fixed : Email.Fixed ) : ujson.Obj = ujson.Obj.from( esf( fixed ).obj.addOne( "numItemsPerLetter" -> fixed.numItemsPerLetter ) )
     def maf( announce : Mastodon.Announce ) : ujson.Obj = ujson.Obj( // "mastodon announce fields"
       "extraParams" -> writeJs( announce.extraParams )
     )
@@ -51,12 +58,13 @@ private[feedletter] object SubscriptionManagerCodec:
     )
     val (fields, tpe) =
       subscriptionManager match
-        case each        : Email.Each        => ( eef(each),        Tag.Email_Each     )
-        case daily       : Email.Daily       => ( edf(daily),       Tag.Email_Daily    )
-        case weekly      : Email.Weekly      => ( ewf(weekly),      Tag.Email_Weekly   )
-        case fixed       : Email.Fixed       => ( eff(fixed),       Tag.Email_Fixed    )
-        case m_announce  : Mastodon.Announce => ( maf(m_announce),  Tag.Masto_Announce )
-        case bs_announce : BlueSky.Announce  => ( bsf(bs_announce), Tag.Bsky_Announce  )
+        case each        : Email.Each         => ( eef(each),        Tag.Email_Each         )
+        case daily       : Email.Daily        => ( edf(daily),       Tag.Email_Daily        )
+        case weekly      : Email.Weekly       => ( ewf(weekly),      Tag.Email_Weekly       )
+        case bweekly     : Email.BetterWeekly => ( ebwf(bweekly),    Tag.Email_BetterWeekly )
+        case fixed       : Email.Fixed        => ( eff(fixed),       Tag.Email_Fixed        )
+        case m_announce  : Mastodon.Announce  => ( maf(m_announce),  Tag.Masto_Announce     )
+        case bs_announce : BlueSky.Announce   => ( bsf(bs_announce), Tag.Bsky_Announce      )
     val headerFields =
        ujson.Obj(
          "version" -> 1,
@@ -100,6 +108,18 @@ private[feedletter] object SubscriptionManagerCodec:
           confirmUntemplateName             = obj("confirmUntemplateName").str,
           statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
           removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
+          timeZone                          = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
+          extraParams                       = read[Map[String,String]](obj("extraParams"))
+        )
+        case Tag.Email_BetterWeekly => Email.BetterWeekly(
+          from = read[Destination](obj("from")).asInstanceOf[Destination.Email],
+          replyTo = obj.get("replyTo").map( rtv => read[Destination](rtv).asInstanceOf[Destination.Email] ),
+          composeUntemplateName             = obj("composeUntemplateName").str,
+          confirmUntemplateName             = obj("confirmUntemplateName").str,
+          statusChangeUntemplateName        = obj("statusChangeUntemplateName").str,
+          removalNotificationUntemplateName = obj("removalNotificationUntemplateName").str,
+          dayOfWeek                         = DayOfWeek.valueOf( obj("dayOfWeek").str ),
+          timeOfDay                         = LocalTime.parse( obj("timeOfDay").str ),
           timeZone                          = obj.get("timeZone").map( _.str ).map( ZoneId.of ),
           extraParams                       = read[Map[String,String]](obj("extraParams"))
         )

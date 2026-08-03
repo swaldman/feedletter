@@ -10,7 +10,7 @@ import cats.data.{NonEmptyList,Validated,ValidatedNel}
 import LoggingApi.*
 
 import java.nio.file.{Path as JPath}
-import java.time.{Instant,ZoneId}
+import java.time.Instant
 import java.util.{Properties, Map as JMap}
 import javax.sql.DataSource
 
@@ -130,19 +130,20 @@ object Main extends AbstractMain, SelfLogging:
       val removalNotificationUntemplateName = CommonOpts.RemovalNotificationUntemplateName
       val statusChangeUntemplateName = CommonOpts.StatusChangeUntemplateName
        // modified from decline's docs
-      val kind = // we sometimes see type inference errors without the explicit type attributions, i'm not sure why
-        type K = Tuple2[SubscriptionManager.Email.Companion,Option[ZoneId | Int]]
-        val each = Opts.flag("each",help="E-mail each item.").map( _ => (SubscriptionManager.Email.Each, None) : K ) 
+      val kind =
+        val each = Opts.flag("each",help="E-mail each item.").map( _ => CommandConfig.EmailKind.Each )
         val daily =
-          val flag = Opts.flag("daily",help="E-mail a compilation, once a day.").map( _ => SubscriptionManager.Email.Daily )
+          val flag = Opts.flag("daily",help="E-mail a compilation, once a day.")
           val zone = CommonOpts.TimeZone.orNone
-          ( flag, zone ) mapN( (f, z) => ( f, z ) )
+          ( flag, zone ) mapN( (_, z) => CommandConfig.EmailKind.Daily( z ) )
         val weekly =
-          val flag = Opts.flag("weekly",help="E-mail a compilation, once a week.").map( _ => SubscriptionManager.Email.Weekly )
+          val flag = Opts.flag("weekly",help="E-mail a compilation, once a week. See --day-of-week, --time-of-day, --time-zone.")
+          val day  = CommonOpts.DayOfWeek.orNone
+          val time = CommonOpts.TimeOfDay.orNone
           val zone = CommonOpts.TimeZone.orNone
-          ( flag, zone ) mapN( (f, z) => ( f, z ) )
-        val fixed = Opts.option[Int]("num-items-per-letter",help="E-mail every fixed number of posts.",metavar="num").map( n => (SubscriptionManager.Email.Fixed, Some(n)) : K )
-        (each orElse daily orElse weekly orElse fixed).withDefault[K]( (SubscriptionManager.Email.Each, None) : K )
+          ( flag, day, time, zone ) mapN( (_, d, t, z) => CommandConfig.EmailKind.Weekly( d, t, z ) )
+        val fixed = Opts.option[Int]("num-items-per-letter",help="E-mail every fixed number of posts.",metavar="num").map( CommandConfig.EmailKind.Fixed.apply )
+        (each orElse daily orElse weekly orElse fixed).withDefault( CommandConfig.EmailKind.Each )
       val extraParams = CommonOpts.ExtraParams
       ( feedId, name, from, replyTo, composeUntemplateName, confirmUntemplateName, removalNotificationUntemplateName, statusChangeUntemplateName, kind, extraParams ) mapN: ( fi, n, f, rt, comun, conun, rnun, scun, k, ep ) =>
         CommandConfig.DefineEmailSubscribable( fi, n, f, rt, comun, conun, rnun, scun, k, ep )

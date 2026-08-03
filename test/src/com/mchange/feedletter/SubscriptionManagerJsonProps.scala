@@ -22,6 +22,9 @@ class SubscriptionManagerJsonProps extends ScalaCheckSuite:
   property("Email.Weekly round trips through JSON"):
     forAll( genEmailWeekly )( roundTrips )
 
+  property("Email.BetterWeekly round trips through JSON"):
+    forAll( genEmailBetterWeekly )( roundTrips )
+
   property("Email.Fixed round trips through JSON"):
     forAll( genEmailFixed )( roundTrips )
 

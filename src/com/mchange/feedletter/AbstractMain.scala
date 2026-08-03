@@ -62,6 +62,25 @@ trait AbstractMain extends SelfLogging:
     val ConfirmUntemplateName =
       val help = "Fully qualified name of untemplate that will ask for e-mail confirmations."
       Opts.option[String]("confirm-untemplate",help=help,metavar="fully-qualified-name").orNone
+    val DayOfWeek : Opts[java.time.DayOfWeek] =
+      val help = "Day of the week on which notifications should be sent. Defaults to the current day of week when the subscribable is defined."
+      def validate( s : String ) : ValidatedNel[String,java.time.DayOfWeek] =
+        val canonical = s.trim.toUpperCase
+        java.time.DayOfWeek.values.find( _.toString == canonical ) match
+          case Some( dow ) => Validated.valid( dow )
+          case None =>
+            // accept unambiguous prefixes, so 'mon' and 'Mon' work as well as 'monday'
+            java.time.DayOfWeek.values.filter( _.toString.startsWith(canonical) ).toList match
+              case single :: Nil => Validated.valid( single )
+              case Nil           => Validated.invalidNel(s"'${s}' does not name a day of the week.")
+              case ambiguous     => Validated.invalidNel(s"'${s}' is ambiguous, it could mean any of ${ambiguous.mkString(", ")}.")
+      Opts.option[String]("day-of-week",help=help,metavar="day").mapValidated( validate )
+    val TimeOfDay : Opts[java.time.LocalTime] =
+      val help = "Time of day, in the relevant time zone, at which notifications should be sent. Defaults to midnight."
+      def validate( s : String ) : ValidatedNel[String,java.time.LocalTime] =
+        try Validated.valid( java.time.LocalTime.parse( s.trim ) )
+        catch case _ : java.time.format.DateTimeParseException => Validated.invalidNel(s"'${s}' is not a valid time of day. Expected HH:MM or HH:MM:SS.")
+      Opts.option[String]("time-of-day",help=help,metavar="HH:MM").mapValidated( validate )
     val MaxDelayMinutes =
       val help = "Notwithstanding other settings, maximum period past which an item should be notified, regardless of its stability."
       Opts.option[Int]("max-delay-minutes", help=help, metavar="minutes")
