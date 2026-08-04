@@ -431,8 +431,9 @@ object SubscriptionManager extends SelfLogging:
       override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
         doRouteMultiple( conn, assignableKey, feedId, feedUrl, contents, idestinations, timeZone, apiLinkGenerator )
 
-      // not sure why, but there's an off-by-on issue. these dates tend to be a day later on both ends
-      // than the actual dates in the subscribable. See comment above
+      // these dates used to come out a day later on both ends than the actual dates in the
+      // subscribable, and to throw outright for week 53. See the comment on
+      // NaiveWeek.weekStartWeekEndLocalDate for what was wrong and why.
       def weekStartWeekEndFormattedIsoLocal( withinTypeId : String ) : (String,String) =
         val (weekStart, weekEnd) = NaiveWeek.weekStartWeekEndLocalDate(withinTypeId)
         (ISO_LOCAL_DATE.format(weekStart),ISO_LOCAL_DATE.format(weekEnd))
@@ -441,7 +442,7 @@ object SubscriptionManager extends SelfLogging:
         val allDates = contents.map( _.pubDate ).flatten.sorted.map( _.atZone(tz) )
         val (minDate, maxDate) =
           if allDates.isEmpty then
-            weekStartWeekEndFormattedIsoLocal(withinTypeId) // backstop, but see comments above!
+            weekStartWeekEndFormattedIsoLocal(withinTypeId) // backstop, when nothing in the batch carries a pubDate
           else
             (ISO_LOCAL_DATE.format(allDates.head), ISO_LOCAL_DATE.format(allDates.last))
         if minDate != maxDate then
