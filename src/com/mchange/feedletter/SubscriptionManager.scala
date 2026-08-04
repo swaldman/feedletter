@@ -3,7 +3,7 @@ package com.mchange.feedletter
 import com.mchange.feedletter.style.*
 
 import java.sql.Connection
-import java.time.{DayOfWeek,LocalDate,LocalTime,Instant,ZoneId}
+import java.time.{DayOfWeek,LocalDate,LocalTime,Instant,Year,ZoneId,ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoField
 
@@ -534,9 +534,21 @@ object SubscriptionManager extends SelfLogging:
       extraParams                       : Map[String,String]
     ) extends Email, PeriodBased:
 
-      private val WtiFormatter = DateTimeFormatter.ofPattern("YYYY-'day'DD")
+      // 'yyyy' is the calendar year; 'YYYY' would be the *week-based* year, the year owning
+      // the week a date falls in. This used to say YYYY, which meant that for the last few
+      // days of December -- the days whose week already belongs to the next year -- the
+      // stored year ran ahead of (or, under ISO week rules, behind) the calendar year that
+      // isComplete below reads back via ChronoField.YEAR. Assignables opened in that window
+      // either stalled for roughly a year or completed the moment they opened, depending on
+      // the JVM's locale, since week-based-year is defined by WeekFields and so varies with
+      // it. Every other day of the year the two patterns agree exactly.
+      private val WtiFormatter = DateTimeFormatter.ofPattern("yyyy-'day'DD")
 
-      override val sampleWithinTypeId = "2024-day4"
+      // exposed so the round trip against dayLocalDate can be tested; 'DD' pads to a minimum
+      // of two digits, which is why the sample below is day04 rather than day4
+      def dayWithinTypeId( zdt : ZonedDateTime ) : String = WtiFormatter.format( zdt )
+
+      override val sampleWithinTypeId = "2024-day04"
 
       override def withExtraParams( extraParams : Map[String,String] ) : Daily = this.copy( extraParams = extraParams )
 
@@ -557,9 +569,10 @@ object SubscriptionManager extends SelfLogging:
         status           : ItemStatus
       ) : Option[String] =
         val tz = bestTimeZone( conn )
-        Some( WtiFormatter.format( status.lastChecked.atZone(tz) ) )
+        Some( dayWithinTypeId( status.lastChecked.atZone(tz) ) )
 
-      // Regular TemporalFields don't work on the formatter-parsed accessor. We need a WeekFields thang first
+      // parsed by hand rather than through the formatter, because the two numbers are read
+      // back as independent quantities rather than resolved together as a date
       private def extractYearAndDay( withinTypeId : String ) : (Int, Int) =
         val ( yearStr, restStr ) = withinTypeId.span( Character.isDigit )
         val dayStr = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
@@ -575,9 +588,17 @@ object SubscriptionManager extends SelfLogging:
       override def doRoute( conn : Connection, assignableKey : AssignableKey, feedId : FeedId, feedUrl : FeedUrl, contents : Seq[ItemContent], idestinations : Set[IdentifiedDestination[D]], timeZone : ZoneId, apiLinkGenerator : ApiLinkGenerator ) : Unit =
         doRouteMultiple( conn, assignableKey, feedId, feedUrl, contents, idestinations, timeZone, apiLinkGenerator )
 
+      // The day is clamped into the stored year because within-type-ids written before the
+      // YYYY -> yyyy fix above can pair one year's number with another year's day-of-year.
+      // '2025-day366' is the reachable case -- written on 2024-12-31, and invalid because
+      // 2025 is not a leap year. Since defaultSubject calls this unconditionally, an
+      // unclamped throw here would propagate out of route() and roll back the single
+      // transaction in which completeAssignables routes *every* assignable, deterministically
+      // on each retry. Clamping keeps such a legacy key merely wrong, rather than poisonous.
       def dayLocalDate( withinTypeId : String ) : LocalDate =
         val ( year, day ) = extractYearAndDay( withinTypeId )
-        LocalDate.ofYearDay( year, day )
+        val lastDayOfYear = if Year.isLeap( year ) then 366 else 365
+        LocalDate.ofYearDay( year, day.max( 1 ).min( lastDayOfYear ) )
 
       def dayFormattedIsoLocal( withinTypeId : String ) : String = ISO_LOCAL_DATE.format( dayLocalDate( withinTypeId ) )
 
