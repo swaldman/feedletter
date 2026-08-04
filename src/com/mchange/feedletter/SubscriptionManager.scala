@@ -575,7 +575,7 @@ object SubscriptionManager extends SelfLogging:
       // back as independent quantities rather than resolved together as a date
       private def extractYearAndDay( withinTypeId : String ) : (Int, Int) =
         val ( yearStr, restStr ) = withinTypeId.span( Character.isDigit )
-        val dayStr = restStr.dropWhile( c => !Character.isDigit(c) ).toInt
+        val dayStr = restStr.dropWhile( c => !Character.isDigit(c) )
         ( yearStr.toInt, dayStr.toInt )
 
       override def isComplete( conn : Connection, feedId : FeedId, subscribableName : SubscribableName, withinTypeId : String, currentCount : Int, feedLastAssigned : Instant ) : Boolean =
