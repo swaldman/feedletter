@@ -39,6 +39,20 @@ class NaiveWeekSuite extends munit.FunSuite:
       val week = NaiveWeek.week( date.atStartOfDay( Tz ) )
       span( year, week ) // would throw a DateTimeException for week 53 before the fix
 
+  // yearWeekFromZonedDateTime has no callers in src/. It is kept as documentation of how a
+  // naive week key decomposes, so this pins it against the path that actually runs -- and
+  // gives it a caller, so it cannot be mistaken for dead code.
+  test("decomposing a date agrees with parsing its formatted key"):
+    for
+      year <- years
+      date <- daysOf( year )
+    do
+      val zdt = date.atStartOfDay( Tz )
+      assertEquals(
+        NaiveWeek.yearWeekFromZonedDateTime( zdt ),
+        NaiveWeek.yearWeekFromString( NaiveWeek.format( zdt ) )
+      )
+
   test("the year's first week is the short one, six days long"):
     assertEquals( span( 2027, 1 ), (LocalDate.parse("2027-01-01"), LocalDate.parse("2027-01-06")) )
 
