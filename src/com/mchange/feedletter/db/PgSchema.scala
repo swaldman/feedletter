@@ -14,6 +14,10 @@ import com.mchange.feedletter.Destination.Key
 
 import LoggingApi.*
 
+// for completeness, when next we update the schema, we should add
+// persistence of ItemContent.Media.medium to MastoPostableMedia and
+// BskyPostableMedia. we don't need to use it for now, buy we might,
+// eventually
 object PgSchema extends SelfLogging:
   object Unversioned:
     object Table:
