@@ -33,7 +33,13 @@ object ItemContent:
   def fromPrenormalizedSingleItemRss( guid : String, prenormalizedSingleItemRssStr : String ) : ItemContent =
     new ItemContent( guid, XML.loadString(prenormalizedSingleItemRssStr) )
 
-  final case class Media( url : String, mimeType : Option[String], length : Option[Long], alt : Option[String] )
+  // medium is the Media RSS "medium" attribute ("image", "video", "audio", ...), which can disagree with mimeType.
+  // e.g. Mastodon transcodes animated GIFs to silent looping mp4 ("gifv"), published as type="video/mp4" medium="image".
+  // It is not persisted in the Mastodon / Bluesky media queues, so it may be None on media restored from the database.
+  final case class Media( url : String, mimeType : Option[String], length : Option[Long], alt : Option[String], medium : Option[String] = None ):
+    private def mimeTypeStartsWith( prefix : String ) = mimeType.fold(false)( _.trim.toLowerCase.startsWith(prefix) )
+    def isImage : Boolean = mimeTypeStartsWith("image/")
+    def isAnimatedImageAsVideo : Boolean = mimeTypeStartsWith("video/") && medium.fold(false)( _.trim.equalsIgnoreCase("image") )
 
 
 
@@ -137,7 +143,8 @@ case class ItemContent private (
         val mimeType = (elem \@ "type").toOptionNotBlank
         val length = (elem \@ "fileSize").toOptionNotBlank.map( _.toLong )
         val alt = (elem \ "description").headOption.map( _.text.trim )
-        url.map( u => Media( u, mimeType, length, alt ) )
+        val medium = (elem \@ "medium").toOptionNotBlank
+        url.map( u => Media( u, mimeType, length, alt, medium ) )
     maybes.actuals
 
   private def mediaFromEnclosure =

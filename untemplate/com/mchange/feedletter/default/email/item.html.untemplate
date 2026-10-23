@@ -5,7 +5,7 @@ val formatter =  DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG, FormatS
 
 val (info, contents) = tup
 
-val images = contents.media.filter( _.mimeType.map( _.startsWith("image") ).getOrElse(false) )
+val images = contents.media.filter( isEmbeddableMedia )
 
 val (topImageMedia, bottomImageMedia) =
   images.size match
@@ -36,7 +36,7 @@ end val
   topImageMedia.foreach { media =>
 ()>
       <div class="media-image top-image">
-        <img src="<( media.url )>" <( media.alt.map(scala.xml.Utility.escape).fold("")(a => s"""alt="$a"""") )>>
+        <( embedMedia( media, contents.link ) )>
       </div>
 <()
   }
@@ -61,7 +61,7 @@ end val
     bottomImageMedia.foreach { media =>
 ()>
         <div class="media-image bottom-image">
-          <img src="<( media.url )>" <( media.alt.map(scala.xml.Utility.escape).fold("")(a => s"""alt="$a"""") )>>
+          <( embedMedia( media, contents.link ) )>
         </div>
 <()
     }

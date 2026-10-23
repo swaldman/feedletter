@@ -83,8 +83,12 @@
  .media-image {
    width: 100%;
  }
- .media-image img {
+ .media-image img, .media-image video {
    width: 100%;
+ }
+ .media-animated-caption {
+   font-size: 85%;
+   font-style: italic;
  }
  .unsubscribe {
    padding-top: 0.5rem;
