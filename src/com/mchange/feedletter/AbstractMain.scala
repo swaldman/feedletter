@@ -113,8 +113,33 @@ trait AbstractMain extends SelfLogging:
     import scala.jdk.CollectionConverters.*
 
     def createDataSource( appSetup : AppSetup ) : DataSource =
+      import com.mchange.v2.cfg.MConfig
+      import com.mchange.v2.c3p0.cfg.C3P0Config
+
+      // see https://www.mchange.com/projects/c3p0/#augmenting_and_refreshing_configuration
+      val refreshLogConfigProps = new Properties();
+      refreshLogConfigProps.setProperty("com.mchange.v2.c3p0.cfg.syncRefreshLogConfig","true");
+      val refreshLogConfig = MConfig.fromProperties(refreshLogConfigProps);
+
+      val c3p0RelevantProperties = appSetup.secrets.filter((k,v) => k.startsWith("c3p0.") || k.startsWith("com.mchange.")).toProperties
+      val c3p0RelevantConfig = MConfig.fromProperties(c3p0RelevantProperties);
+
+      val enforceAndFreezeConfigProps = new Properties();
+      enforceAndFreezeConfigProps.setProperty("com.mchange.v2.log.freezeConfig","true");
+      enforceAndFreezeConfigProps.setProperty("com.mchange.v2.c3p0.freezeConfig","true");
+      enforceAndFreezeConfigProps.setProperty("com.mchange.v2.reflect.byNameInstantiation.enforceWhitelist","true");
+      val enforceAndFreezeConfig = MConfig.fromProperties(enforceAndFreezeConfigProps);
+
+      C3P0Config.refreshMainConfigWithBackstopsAndOverrides(
+        Array(refreshLogConfig),                          "Let new config update log configuration",                                             // backstops
+        Array(c3p0RelevantConfig,enforceAndFreezeConfig), "Bring c3p0 config in from feedletter secrets, then freeze c3p0 and log configuration" // overrides
+      );
+      
       val nascent = new ComboPooledDataSource()
-      DataSources.overwriteC3P0PrefixedProperties( nascent, appSetup.secrets.toProperties )
+
+      // we don't need this anymore, since we've merged secrets into our own config above
+      // DataSources.overwriteC3P0PrefixedProperties( nascent, appSetup.secrets.toProperties )
+
       appSetup.secrets.get( SecretsKey.FeedletterJdbcUrl ).foreach( nascent.setJdbcUrl )
       appSetup.secrets.get( SecretsKey.FeedletterJdbcUser ).foreach( nascent.setUser )
       appSetup.secrets.get( SecretsKey.FeedletterJdbcPassword ).foreach( nascent.setPassword )
