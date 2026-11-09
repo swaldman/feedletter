@@ -22,12 +22,19 @@ object ItemContent:
       case "rss"|"channel"|"item"|"image" => false
       case _                              => true
 
+  private def singleItemRssForGuid( rawRss : Elem, guid : String ) : Elem =
+    singleItemRssStructured( rawRss, guid, SkipUnstableChannelElements ) match
+      case Left( _ : RssParseFailure.MultipleItemsFoundForGuid ) =>
+        WARNING.log( s"Found multiple items with GUID '${guid}'. Choosing first." )
+        retainFirstItemWithDuplicatedGuid( rawRss, guid ) match
+          case Left( failure ) => throw new FeedletterException( s"Could strip duplicate GUIDs to first item with GUID only to create single-item RSS (guid '${guid}'): $failure" )
+          case Right( elem )   => singleItemRssForGuid(elem, guid) // shouldn't recurse, because there should no longer be duplicates
+      case Left( otherFailure )                                  => throw new FeedletterException( s"Could not create single-item RSS: $otherFailure" )
+      case Right( elem )                                         => elem
+
   def fromRssGuid( rawRss : Elem, guid : String ) : ItemContent =
-    val singleItemRss =
-      audiofluidity.rss.util.singleItemRss( rawRss, guid, SkipUnstableChannelElements ) match
-        case Left( s )     => throw new FeedletterException( s"Could not create single-item RSS: $s" )
-        case Right( elem ) => elem
-    val normalizedSingleItemRss = stripInsignificantWhitespaceRecursive( singleItemRss, whitespaceSignificant )
+    val singleItemRssElem : Elem = singleItemRssForGuid( rawRss, guid )
+    val normalizedSingleItemRss = stripInsignificantWhitespaceRecursive( singleItemRssElem, whitespaceSignificant )
     new ItemContent( guid, normalizedSingleItemRss )
 
   def fromPrenormalizedSingleItemRss( guid : String, prenormalizedSingleItemRssStr : String ) : ItemContent =
