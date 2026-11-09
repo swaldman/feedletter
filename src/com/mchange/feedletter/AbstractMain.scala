@@ -119,16 +119,16 @@ trait AbstractMain extends SelfLogging:
       // see https://www.mchange.com/projects/c3p0/#augmenting_and_refreshing_configuration
       val refreshLogConfigProps = new Properties();
       refreshLogConfigProps.setProperty("com.mchange.v2.c3p0.cfg.syncRefreshLogConfig","true");
-      val refreshLogConfig = MConfig.fromProperties(refreshLogConfigProps);
+      val refreshLogConfig = MConfig.fromProperties("REFRESH_LOG_PROPS", refreshLogConfigProps);
 
       val c3p0RelevantProperties = appSetup.secrets.filter((k,v) => k.startsWith("c3p0.") || k.startsWith("com.mchange.")).toProperties
-      val c3p0RelevantConfig = MConfig.fromProperties(c3p0RelevantProperties);
+      val c3p0RelevantConfig = MConfig.fromProperties("FEEDLETTER_SECRETS_PROPS", c3p0RelevantProperties);
 
       val enforceAndFreezeConfigProps = new Properties();
       enforceAndFreezeConfigProps.setProperty("com.mchange.v2.log.freezeConfig","true");
       enforceAndFreezeConfigProps.setProperty("com.mchange.v2.c3p0.freezeConfig","true");
       enforceAndFreezeConfigProps.setProperty("com.mchange.v2.reflect.byNameInstantiation.enforceWhitelist","true");
-      val enforceAndFreezeConfig = MConfig.fromProperties(enforceAndFreezeConfigProps);
+      val enforceAndFreezeConfig = MConfig.fromProperties("FREEZE_AND_ENFORCE_PROPS", enforceAndFreezeConfigProps);
 
       C3P0Config.refreshMainConfigWithBackstopsAndOverrides(
         Array(refreshLogConfig),                          "Let new config update log configuration",                                             // backstops
