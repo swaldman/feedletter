@@ -60,6 +60,8 @@ object CommandConfig extends SelfLogging:
       val packageLogger = Logger.getLogger( "com.mchange.feedletter" )
       rootLogger.getHandlers().foreach( _.setLevel(Level.FINEST) )
       packageLogger.setLevel(FeedletterLevel)
+      val otherMchangeLogger = Logger.getLogger( "com.mchange" )
+      otherMchangeLogger.setLevel(Level.INFO)
     /*
     // we let the parent mill process write and sysd remove PID files now
     def writePidFile( pidf : os.Path ) =
