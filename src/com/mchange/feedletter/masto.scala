@@ -51,11 +51,29 @@ object Masto extends SelfLogging:
         else
           throw t
 
+  // mastodon doesn't like mixing images and video,
+  // if it seems like we have both, we strip the video
+  private def postableMedia(mpostable : MastoPostable) : Seq[ItemContent.Media] =
+    if mpostable.media.size <= 1 then
+      mpostable.media
+    else
+      def isVideo( media : ItemContent.Media ) : Boolean = media.mimeType.fold(false)(_.startsWith("video/")) && media.medium.fold(true)(m => !m.equalsIgnoreCase("image"))
+      def isImage( media : ItemContent.Media ) : Boolean = media.medium.fold(false)(m => m.equalsIgnoreCase("image/"))
+      val containsVideo = mpostable.media.exists(isVideo)
+      val containsImages = mpostable.media.exists(isImage)
+      if containsVideo && containsImages then
+        FINE.log(s"""Stripping video media items from Mastopostable with content "${mpostable.finalContent}", whose media ${mpostable.media.mkString("[",",","]")} seems to mix images and video, which Mastodon does not support.""")
+        mpostable.media.filterNot(isVideo)
+      else
+        mpostable.media
+
   def post( as : AppSetup, mastoPostable : MastoPostable, skipMediaOnMediaFail : Boolean = false ) : Unit =
     val accessTokenKey = s"feedletter.masto.access.token.${mastoPostable.name}"
     val accessToken = as.secrets.get( accessTokenKey ).getOrElse:
       throw new NoAccessToken( s"No access token found in application secrets under key '${accessTokenKey}'." )
-    val mediaIds = mastoPostable.media.map( media => postMedia(accessToken, mastoPostable.instanceUrl.str, media, skipMediaOnMediaFail) ).flatten
+    val mediaIds =
+      val filteredMedia = postableMedia( mastoPostable )
+      filteredMedia.map( media => postMedia(accessToken, mastoPostable.instanceUrl.str, media, skipMediaOnMediaFail) ).flatten
     val statusEndpoint = pathJoin( mastoPostable.instanceUrl.str, "api/v1/statuses/" )
     val headers = Map (
       "Authorization" -> s"Bearer ${accessToken}",

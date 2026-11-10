@@ -693,24 +693,7 @@ object SubscriptionManager extends SelfLogging:
               ( destination, templateParams )
           mastoDestinationsWithTemplateParams.foreach: ( destination, templateParams ) =>
             val fullContent = templateParams.fill( template )
-
-            val media =
-              if uniqueContent.media.size <= 1 then
-                uniqueContent.media
-              else
-                // mastodon doesn't like mixing images and video,
-                // if it seems like we have both, we strip the video
-                def isVideo( media : ItemContent.Media ) : Boolean = media.mimeType.fold(false)(_.startsWith("video/")) && media.medium.fold(true)(m => !m.equalsIgnoreCase("image"))
-                def isImage( media : ItemContent.Media ) : Boolean = media.medium.fold(false)(m => m.equalsIgnoreCase("image/"))
-                val containsVideo = uniqueContent.media.exists(isVideo)
-                val containsImages = uniqueContent.media.exists(isImage)
-                if containsVideo && containsImages then
-                  FINE.log(s"""Stripping video media items from ItemContent at ${uniqueContent.link} with media ${uniqueContent.media.mkString("[",",","]")}, which seems to mix images and video, which Mastodon does not support.""")
-                  uniqueContent.media.filterNot(isVideo)
-                else
-                uniqueContent.media
-
-            PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), media )
+            PgDatabase.queueForMastoPost( conn, fullContent, MastoInstanceUrl( destination.instanceUrl ), MastoName( destination.name ), uniqueContent.media )
 
       override def defaultComposeTemplateParams( subscribableName : SubscribableName, withinTypeId : String, feedUrl : FeedUrl, destination : D, subscriptionId : SubscriptionId, removeLink : String ) : Map[String,String] =
         Map(
