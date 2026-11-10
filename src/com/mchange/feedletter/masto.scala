@@ -8,16 +8,9 @@ import LoggingApi.*
 
 object Masto extends SelfLogging:
 
-  /*
-  private def filenameForMimeType( mimeType : String ) : String =
-    val simpleMimeType =
-      val semi = mimeType.indexOf(';') 
-      if semi >= 0 then mimeType.substring(0,semi).trim else mimeType.trim
-    simpleMimeType match
-      case ...
+  private val CrlfsRegex = """[\r\n]+""".r
 
-    val base = scala.util.Random.nextLong()
-  */
+  private def oneLineForLog(s : String) = CrlfsRegex.replaceAllIn(s," / ");
 
   private def postMedia( accessToken : String, instanceUrl : String, media : ItemContent.Media, skipFailures : Boolean ) : Option[String] =
     try
@@ -70,16 +63,16 @@ object Masto extends SelfLogging:
       val out =
         if images.nonEmpty then
           if avs.nonEmpty then
-            WARNING.log(s"""Stripping video/audio media items from MastoPostable with content "${mpostable.finalContent}", whose media ${media.mkString("[",",","]")} mixes images and video/audio, which Mastodon does not support.""")
+            WARNING.log(s"""Stripping video/audio media items from MastoPostable with content "${oneLineForLog(mpostable.finalContent)}", whose media ${media.mkString("[",",","]")} mixes images and video/audio, which Mastodon does not support.""")
           images.take( MaxImages )
         else if avs.nonEmpty then
           avs.take(1)
         else
           media // unrecognized types; leave alone
       if out.size < media.size && images.isEmpty then
-        WARNING.log(s"""Mastodon allows only one video/audio item per post; trimming media for MastoPostable with content "${mpostable.finalContent}" to the first.""")
+        WARNING.log(s"""Mastodon allows only one video/audio item per post; trimming media for MastoPostable with content "${oneLineForLog(mpostable.finalContent)}" to the first.""")
       else if images.size > MaxImages then
-        WARNING.log(s"""Mastodon allows at most ${MaxImages} images per post; trimming ${images.size} images for MastoPostable with content "${mpostable.finalContent}".""")
+        WARNING.log(s"""Mastodon allows at most ${MaxImages} images per post; trimming ${images.size} images for MastoPostable with content "${oneLineForLog(mpostable.finalContent)}".""")
       out
 
   def post( as : AppSetup, mastoPostable : MastoPostable, skipMediaOnMediaFail : Boolean = false ) : Unit =
