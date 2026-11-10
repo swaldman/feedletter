@@ -51,21 +51,36 @@ object Masto extends SelfLogging:
         else
           throw t
 
-  // mastodon doesn't like mixing images and video,
-  // if it seems like we have both, we strip the video
+  private val MaxImages = 4 // Mastodon's per-post limit
+
+  // Mastodon allows either up to 4 images, or exactly one video or audio item, but never a mix.
+  // If we have both images and video/audio, we strip the video/audio.
+  // Otherwise we cap images at MaxImages, and keep only the first video/audio item.
   private def postableMedia(mpostable : MastoPostable) : Seq[ItemContent.Media] =
-    if mpostable.media.size <= 1 then
-      mpostable.media
+    val media = mpostable.media
+    if media.size <= 1 then
+      media
     else
-      def isVideo( media : ItemContent.Media ) : Boolean = media.mimeType.fold(false)(_.startsWith("video/")) && media.medium.fold(true)(m => !m.equalsIgnoreCase("image"))
-      def isImage( media : ItemContent.Media ) : Boolean = media.medium.fold(false)(m => m.equalsIgnoreCase("image/"))
-      val containsVideo = mpostable.media.exists(isVideo)
-      val containsImages = mpostable.media.exists(isImage)
-      if containsVideo && containsImages then
-        WARNING.log(s"""Stripping video media items from Mastopostable with content "${mpostable.finalContent}", whose media ${mpostable.media.mkString("[",",","]")} seems to mix images and video, which Mastodon does not support.""")
-        mpostable.media.filterNot(isVideo)
-      else
-        mpostable.media
+      def mimeStarts( m : ItemContent.Media, prefix : String ) : Boolean = m.mimeType.fold(false)( _.trim.toLowerCase.startsWith(prefix) )
+      // animated-image-as-video ("gifv") items are treated as images, not video
+      def isImageLike( m : ItemContent.Media ) : Boolean = m.isImage || m.isAnimatedImageAsVideo
+      def isVideoOrAudio( m : ItemContent.Media ) : Boolean = !isImageLike(m) && (mimeStarts(m, "video/") || mimeStarts(m, "audio/"))
+      val images = media.filter( isImageLike )
+      val avs    = media.filter( isVideoOrAudio )
+      val out =
+        if images.nonEmpty then
+          if avs.nonEmpty then
+            WARNING.log(s"""Stripping video/audio media items from MastoPostable with content "${mpostable.finalContent}", whose media ${media.mkString("[",",","]")} mixes images and video/audio, which Mastodon does not support.""")
+          images.take( MaxImages )
+        else if avs.nonEmpty then
+          avs.take(1)
+        else
+          media // unrecognized types; leave alone
+      if out.size < media.size && images.isEmpty then
+        WARNING.log(s"""Mastodon allows only one video/audio item per post; trimming media for MastoPostable with content "${mpostable.finalContent}" to the first.""")
+      else if images.size > MaxImages then
+        WARNING.log(s"""Mastodon allows at most ${MaxImages} images per post; trimming ${images.size} images for MastoPostable with content "${mpostable.finalContent}".""")
+      out
 
   def post( as : AppSetup, mastoPostable : MastoPostable, skipMediaOnMediaFail : Boolean = false ) : Unit =
     val accessTokenKey = s"feedletter.masto.access.token.${mastoPostable.name}"
