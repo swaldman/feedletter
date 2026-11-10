@@ -39,7 +39,7 @@ object Masto extends SelfLogging:
     catch
       case NonFatal(t) =>
         if skipFailures then
-          WARNING.log("Failed to post media item, skipping: ${media}", t)
+          WARNING.log(s"Failed to post media item, skipping: ${media}", t)
           None
         else
           throw t
