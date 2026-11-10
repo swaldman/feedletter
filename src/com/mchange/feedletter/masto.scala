@@ -63,7 +63,7 @@ object Masto extends SelfLogging:
       val out =
         if images.nonEmpty then
           if avs.nonEmpty then
-            WARNING.log(s"""Stripping video/audio media items from MastoPostable with content "${oneLineForLog(mpostable.finalContent)}", whose media ${media.mkString("[",",","]")} mixes images and video/audio, which Mastodon does not support.""")
+            WARNING.log(s"""Stripping video/audio media items from MastoPostable with content "${oneLineForLog(mpostable.finalContent)}", whose media ${oneLineForLog(media.mkString("[",",","]"))} mixes images and video/audio, which Mastodon does not support.""")
           images.take( MaxImages )
         else if avs.nonEmpty then
           avs.take(1)
@@ -97,7 +97,7 @@ object Masto extends SelfLogging:
       requests.post( statusEndpoint, data=jsonData, headers=headers )
     catch
       case rfe : requests.RequestFailedException =>
-        FINE.log( s"Initial attempt to post MastoPostable failed! MastoPostable: ${mastoPostable}", rfe )
+        FINE.log( s"Initial attempt to post MastoPostable failed! MastoPostable: ${oneLineForLog(mastoPostable.finalContent)}", rfe )
         val statusCode = rfe.response.statusCode
         if statusCode == 422 then // often this means the server requires a delay to finish processing the media
           FINE.log( "Pausing then retrying masto-post in case medie needs to be processed." )
