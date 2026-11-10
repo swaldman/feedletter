@@ -62,7 +62,7 @@ object Masto extends SelfLogging:
       val containsVideo = mpostable.media.exists(isVideo)
       val containsImages = mpostable.media.exists(isImage)
       if containsVideo && containsImages then
-        FINE.log(s"""Stripping video media items from Mastopostable with content "${mpostable.finalContent}", whose media ${mpostable.media.mkString("[",",","]")} seems to mix images and video, which Mastodon does not support.""")
+        WARNING.log(s"""Stripping video media items from Mastopostable with content "${mpostable.finalContent}", whose media ${mpostable.media.mkString("[",",","]")} seems to mix images and video, which Mastodon does not support.""")
         mpostable.media.filterNot(isVideo)
       else
         mpostable.media
